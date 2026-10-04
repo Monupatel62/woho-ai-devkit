@@ -1,0 +1,14 @@
+{
+  "name": "@woho/core",
+  "version": "0.1.0",
+  "description": "Core abstractions for WoHo AI DevKit.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node -e "console.log('No tests yet')"
+  }
+}
