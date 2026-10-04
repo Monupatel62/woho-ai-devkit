@@ -1,6 +1,6 @@
 {
   "name": "@woho/provider-openai",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "OpenAI-compatible provider for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
