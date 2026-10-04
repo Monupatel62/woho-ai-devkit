@@ -53,8 +53,8 @@ function mapError(status: number, body: string): Error {
   return new NetworkError(body || "Provider returned HTTP " + status);
 }
 
-function normalizeToolCalls(message: ProviderResponse["choices"] extends Array<infer T> ? T extends { message?: infer M } ? M : never : never): AIToolCall[] {
-  const calls = (message as { tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } | undefined)?.tool_calls ?? [];
+function normalizeToolCalls(message: { tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } | undefined): AIToolCall[] {
+  const calls = message?.tool_calls ?? [];
   return calls
     .filter((call) => Boolean(call.function?.name))
     .map((call, index) => ({
