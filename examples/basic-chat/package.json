@@ -1,0 +1,7 @@
+{
+  "name": "basic-chat-example",
+  "private": true,
+  "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@woho/core": "workspace:*", "@woho/provider-openai": "workspace:*" }
+}
