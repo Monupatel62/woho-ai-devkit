@@ -1,0 +1,7 @@
+{
+  "name": "agent-example",
+  "private": true,
+  "type": "module",
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@woho/core": "workspace:*", "@woho/agents": "workspace:*" }
+}
