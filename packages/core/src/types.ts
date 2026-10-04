@@ -1,10 +1,23 @@
 export type Role = "system" | "user" | "assistant" | "tool";
 
+export interface AIToolDefinition {
+  name: string;
+  description: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface AIToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
 export interface AIMessage {
   role: Role;
   content: string;
   name?: string;
   toolCallId?: string;
+  toolCalls?: AIToolCall[];
 }
 
 export interface AIRequest {
@@ -14,6 +27,7 @@ export interface AIRequest {
   maxTokens?: number;
   topP?: number;
   stop?: string[];
+  tools?: AIToolDefinition[];
   signal?: AbortSignal;
 }
 
@@ -31,6 +45,7 @@ export interface AIResponse {
   model: string;
   usage?: AIUsage;
   finishReason?: FinishReason;
+  toolCalls?: AIToolCall[];
 }
 
 export interface AIStreamChunk {
