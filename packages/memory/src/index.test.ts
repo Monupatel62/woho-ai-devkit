@@ -15,6 +15,8 @@ const run = async () => {
   await store.clear();
   assert.equal((await store.list()).length, 0);
   assert.throws(() => createInMemoryStore({ maxMessages: 0 }), /positive integer/);
+  await assert.rejects(() => store.add({ id: "bad-role", role: "invalid" as never, content: "x" }), /role is invalid/);
+  await assert.rejects(() => store.add({ id: "bad-time", role: "user", content: "x", timestamp: Number.NaN }), /timestamp must be finite/);
   await assert.rejects(() => store.list({ before: Number.NaN }), /finite number/);
   await assert.rejects(() => store.list({ sessionId: " " }), /sessionId cannot be empty/);
 
@@ -33,7 +35,8 @@ const run = async () => {
   assert.equal((await other.messages()).length, 1);
 
   const dir = await mkdtemp(join(tmpdir(), "woho-memory-"));
-  const fileStore = createJsonFileStore({ filePath: join(dir, "memory.json"), maxMessages: 10 });
+  const fileStore = createJsonFileStore({ filePath: join(dir, "memory.json"), maxMessages: 10, maxFileBytes: 1024 });
+  assert.throws(() => createJsonFileStore({ filePath: join(dir, "x.json"), maxFileBytes: 0 }), /positive integer/);
   const persistentA = createConversation({ sessionId: "a", store: fileStore });
   const persistentB = createConversation({ sessionId: "b", store: fileStore });
   await persistentA.add({ id: "pa", role: "user", content: "private a" });
@@ -49,6 +52,9 @@ const run = async () => {
   assert.equal((await fileStore.list()).length, 0);
   await import("node:fs/promises").then(({ writeFile }) => writeFile(join(dir, "invalid.json"), JSON.stringify([{ id: "", role: "user", content: "bad" }])));
   const invalidStore = createJsonFileStore({ filePath: join(dir, "invalid.json") });
+  await import("node:fs/promises").then(({ writeFile }) => writeFile(join(dir, "bad-role.json"), JSON.stringify([{ id: "x", role: "invalid", content: "bad" }])));
+  const badRoleStore = createJsonFileStore({ filePath: join(dir, "bad-role.json") });
+  await assert.rejects(() => badRoleStore.list(), /invalid message/);
   await assert.rejects(() => invalidStore.list(), /invalid message/);
 
   const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
