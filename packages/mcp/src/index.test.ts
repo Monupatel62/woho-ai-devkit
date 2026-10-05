@@ -61,6 +61,33 @@ const run = async () => {
   await assert.rejects(() => restricted.listTools(), /not allowed/);
   await restricted.close();
   await client.close();
+
+  const slowTransport: MCPTransport = {
+    async request() { await new Promise((resolve) => setTimeout(resolve, 30)); return { ok: true }; },
+  };
+  const slowClient = createMCPClient({ transport: slowTransport, timeoutMs: 5 });
+  await assert.rejects(() => slowClient.listTools(), /timed out/);
+  await slowClient.close();
+
+  const oversizedTransport: MCPTransport = {
+    async request(method) {
+      if (method === "initialize") return {};
+      return { data: "x".repeat(100) };
+    },
+  };
+  const oversizedClient = createMCPClient({ transport: oversizedTransport, security: { maxResponseBytes: 20 } });
+  await assert.rejects(() => oversizedClient.listTools(), /maxResponseBytes/);
+  await oversizedClient.close();
+
+  const unserializableTransport: MCPTransport = {
+    async request(method) {
+      if (method === "initialize") return {};
+      return { value: BigInt(1) };
+    },
+  };
+  const unserializableClient = createMCPClient({ transport: unserializableTransport });
+  await assert.rejects(() => unserializableClient.listTools(), /not serializable/);
+  await unserializableClient.close();
   console.log("mcp runtime tests passed");
 };
 
