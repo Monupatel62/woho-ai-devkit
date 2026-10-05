@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+
+- Hardened core streaming with timeout and cancellation propagation.
+- Made retry backoff cancellation-aware.
+
 ## 0.7.0
 
 - Started Stage 7 production SDK hardening.
