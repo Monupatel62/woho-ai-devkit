@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- Added `@woho/memory` with a bounded in-memory store.
+- Added memory message/query abstractions and runtime tests.
+
 ## 0.4.5
 
 - Added runtime tool input validation for object schemas.
