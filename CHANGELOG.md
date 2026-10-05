@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.9
+
+- Added memory summarization runtime coverage.
+- Normalized generated TypeScript sources and fixed newline artifacts.
+- Hardened Stage 5.9 memory compaction implementation.
+
 ## 0.5.8
 
 - Added pluggable AI memory summarization.
