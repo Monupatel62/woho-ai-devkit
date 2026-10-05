@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.6
+
+- Added Stage 6 MCP integration documentation and security guidance.
+- Documented stdio transport and agent-tool integration.
+
 ## 0.6.5
 
 - Added MCP client method allowlisting.
