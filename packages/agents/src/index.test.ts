@@ -136,7 +136,16 @@ const run = async () => {
       { id: "b", agent: "general", input: "b", dependsOn: ["a"] },
     ],
   }), /cycle or unknown dependency/);
-  assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);\n  let retryCount = 0;\n  const retryRegistry = new AgentRegistry();\n  retryRegistry.register({ id: "retry", name: "Retry", role: "general" }, ({ ai }) => createAgent(ai, { name: "Retry" }));\n  const retryRuntime = new AgentRuntime({ maxConcurrency: 1, retry: { maxAttempts: 2, delayMs: 0 } }, retryRegistry);\n  const retryAI = createAI({ provider: { name: "retry", async chat() { retryCount += 1; if (retryCount === 1) throw new Error("retry-me"); return { id: "ok", text: "recovered", model: "retry" }; } } });\n  const retryResult = await retryRuntime.run(retryAI, { agent: "retry", input: "recover" });\n  assert.equal(retryResult.text, "recovered");\n  assert.equal(retryCount, 2);\n  const executionStore = new InMemoryExecutionStore();
+  assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);
+  let retryCount = 0;
+  const retryRegistry = new AgentRegistry();
+  retryRegistry.register({ id: "retry", name: "Retry", role: "general" }, ({ ai }) => createAgent(ai, { name: "Retry" }));
+  const retryRuntime = new AgentRuntime({ maxConcurrency: 1, retry: { maxAttempts: 2, delayMs: 0 } }, retryRegistry);
+  const retryAI = createAI({ provider: { name: "retry", async chat() { retryCount += 1; if (retryCount === 1) throw new Error("retry-me"); return { id: "ok", text: "recovered", model: "retry" }; } } });
+  const retryResult = await retryRuntime.run(retryAI, { agent: "retry", input: "recover" });
+  assert.equal(retryResult.text, "recovered");
+  assert.equal(retryCount, 2);
+  const executionStore = new InMemoryExecutionStore();
   const storedRuntime = new AgentRuntime({ store: executionStore }, registry);
   const stored = await storedRuntime.run(createAI({ provider: createMockProvider({ response: "stored" }) }), { agent: "general", input: "store me" });
   const record = executionStore.get(stored.runId);
