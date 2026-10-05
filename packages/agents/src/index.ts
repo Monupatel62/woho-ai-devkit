@@ -148,6 +148,8 @@ export class Agent {
   }
 }
 
+export { createAISummarizer, type AISummarizerOptions } from "./summarizer.js";
+
 export function createAgent(ai: AIClient, options: AgentOptions): Agent {
   return new Agent(ai, options);
 }
