@@ -84,7 +84,7 @@ export class MCPClient {
     this.transport = options.transport;
     this.timeoutMs = options.timeoutMs ?? 30000;
     this.clientName = options.clientName ?? "woho-ai-devkit";
-    this.clientVersion = options.clientVersion ?? "0.6.12";
+    this.clientVersion = options.clientVersion ?? "0.6.13";
     this.protocolVersion = options.protocolVersion ?? "2025-06-18";
     if (!this.clientName.trim()) throw new Error("clientName is required");
     if (!this.clientVersion.trim()) throw new Error("clientVersion is required");
