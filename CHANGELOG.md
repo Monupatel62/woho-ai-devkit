@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.32
+
+- Added durable file-backed execution history with atomic record replacement and bounded persistence size.
+- Added regression coverage for reopening persisted runs, lifecycle events, duplicate creation, limits, and path-safe run IDs.
+- Documented durable execution storage for agent runtimes.
+- Bumped all six public packages for the coordinated release.
+
+
 ## 0.8.31
 
 - Added a unified `createProjectTools` factory that binds workspace, Git, and optional allowlisted command execution to one project root.
