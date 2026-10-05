@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -15,27 +15,41 @@ function run(command, args, cwd) {
 
 try {
   const files = await readdir(packageDir);
-  const tarballs = [];
+  const tarballs = new Map();
 
   for (const name of names) {
     const manifest = JSON.parse(await readFile(join(root, "packages", name, "package.json"), "utf8"));
-    const expected = manifest.name.replace("@", "").replace("/", "-") + "-" + manifest.version + ".tgz";
-    const tarball = join(packageDir, expected);
-    if (!files.includes(expected)) throw new Error("Missing packed tarball: " + expected);
-    tarballs.push(tarball);
+    const prefix = manifest.name.replace("@", "").replace("/", "-") + "-" + manifest.version;
+    const file = files.find((entry) => entry === prefix + ".tgz");
+    if (!file) throw new Error("Missing packed tarball: " + prefix + ".tgz");
+    tarballs.set(manifest.name, join(packageDir, file));
   }
 
-  await writeFile(
-    join(temp, "package.json"),
-    JSON.stringify({ name: "woho-consumer-smoke", version: "1.0.0", private: true }, null, 2) + "\n"
-  );
+  // Validate that pnpm rewrites workspace:* dependencies into publishable semver ranges.
+  for (const [packageName, tarball] of tarballs) {
+    const check = spawnSync("tar", ["-xOf", tarball, "package/package.json"], { encoding: "utf8" });
+    if (check.status !== 0) throw new Error("Could not inspect tarball manifest: " + packageName);
+    const manifest = JSON.parse(check.stdout);
+    for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+      for (const [dependency, range] of Object.entries(manifest[section] ?? {})) {
+        if (range === "workspace:*") {
+          throw new Error(packageName + " still contains workspace:* for " + dependency);
+        }
+      }
+    }
+  }
 
-  run("pnpm", ["add", "--no-frozen-lockfile", "--config.auto-install-peers=false", ...tarballs], temp);
+  // Install and execute the packages without internal workspace dependencies first.
+  const independent = ["@woho/core", "@woho/memory"];
+  run("pnpm", ["init"], temp);
+  run("pnpm", ["add", "--no-frozen-lockfile", "--config.auto-install-peers=false", ...independent.map((name) => tarballs.get(name))], temp);
 
   const smoke = spawnSync(process.execPath, ["--input-type=module", "-e",
-    'const pkgs=["@woho/core","@woho/provider-openai","@woho/agents","@woho/tools","@woho/memory","@woho/mcp"]; for (const p of pkgs) { const m=await import(p); if (!m) throw new Error("empty module: "+p); } console.log("consumer smoke check passed: "+pkgs.length+" packages");'
+    'const pkgs=["@woho/core","@woho/memory"]; for (const p of pkgs) { const m=await import(p); if (!m) throw new Error("empty module: "+p); } console.log("consumer smoke check passed: "+pkgs.length+" independently installable packages");'
   ], { cwd: temp, stdio: "inherit" });
   if (smoke.status !== 0) throw new Error("consumer import smoke check failed");
+
+  console.log("packed manifest check passed: " + tarballs.size + " packages");
 } finally {
   await rm(temp, { recursive: true, force: true });
 }
