@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.3
+
+- Hardened MCP stdio transport with direct request timeouts, stderr backpressure protection, write-error handling, and malformed JSON rejection.
+- Added runtime coverage for MCP stdio request success and timeout behavior.
+- Bumped `@woho/mcp` to 0.6.8 and aligned default client version metadata.
+
 ## 0.8.2
 
 - Hardened search/tool policies with strict integer limits and directory validation.
