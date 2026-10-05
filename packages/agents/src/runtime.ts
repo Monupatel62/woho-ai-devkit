@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AIClient, ExecutionContext, ExecutionEvent } from "@woho/core";
-import { Agent, type AgentOptions, type AgentRunResult } from "./index.js";
+import { Agent, type AgentApprovalHandler, type AgentOptions, type AgentRunResult } from "./index.js";
 import { AgentRegistry, type AgentDefinition } from "./definition.js";
 import type { ExecutionStore } from "./execution-store.js";
 
@@ -14,6 +14,7 @@ export interface AgentRuntimeOptions {
   readonly maxConcurrency?: number;
   readonly onEvent?: (event: ExecutionEvent) => void | Promise<void>;
   readonly retry?: AgentRetryPolicy;
+  readonly approval?: AgentApprovalHandler;
   readonly store?: ExecutionStore;
 }
 
