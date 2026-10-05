@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.3
+
+- Added session-scoped `Conversation` management.
+- Added bounded message retrieval and simple text-memory search.
+- Added conversation runtime tests.
+
 ## 0.5.2
 
 - Added persistent JSON-file memory storage.
