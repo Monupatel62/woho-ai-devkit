@@ -21,6 +21,10 @@ export interface AgentRunOptions { signal?: AbortSignal; }
 
 export interface AgentOptions {
   name: string;
+  id?: string;
+  role?: string;
+  capabilities?: string[];
+  permissions?: PermissionPolicy;
   instructions?: string;
   tools?: AgentTool[];
   maxSteps?: number;
