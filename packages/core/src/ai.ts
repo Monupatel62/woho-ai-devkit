@@ -73,6 +73,7 @@ export class AIClient {
       await this.observability?.onEvent?.({ type: "request.start", request, attempt });
       const merged = mergeSignals(request.signal, this.timeoutMs);
       try {
+        if (merged.signal.aborted) throw merged.signal.reason ?? new Error("Aborted");
         const response = await this.provider.chat({ ...request, signal: merged.signal });
         await this.observability?.onEvent?.({ type: "request.success", response, attempt, durationMs: Date.now() - started });
         return response;
@@ -96,6 +97,7 @@ export class AIClient {
     await this.observability?.onEvent?.({ type: "stream.start", request });
     const merged = mergeSignals(request.signal, this.timeoutMs);
     try {
+      if (merged.signal.aborted) throw merged.signal.reason ?? new Error("Aborted");
       const iterator = this.provider.stream({ ...request, signal: merged.signal })[Symbol.asyncIterator]();
       try {
         while (true) {
