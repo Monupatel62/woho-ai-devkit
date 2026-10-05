@@ -13,7 +13,8 @@ export function createAISummarizer(ai: AIClient, options: AISummarizerOptions = 
       const response = await ai.chat({
         messages: [
           { role: "system", content: instruction },
-          { role: "user", content: messages.map((m) => m.role + ": " + m.content).join("\n") },
+          { role: "user", content: messages.map((m) => m.role + ": " + m.content).join("
+") },
         ],
       });
       const text = response.text.trim();
