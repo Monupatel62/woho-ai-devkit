@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.4
+
+- Added MCP resource discovery and reading.
+- Added MCP prompt discovery and execution.
+- Added server-side resource and prompt registration with runtime coverage.
+
 ## 0.6.3
 
 - Added `MCPStdioTransport` for connecting to external MCP server processes over stdin/stdout.
