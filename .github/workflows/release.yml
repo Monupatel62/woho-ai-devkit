@@ -37,6 +37,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
+      - run: pnpm pack:check
 
       - name: Verify package metadata
         run: |
@@ -64,6 +65,7 @@ jobs:
 
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm build
+      - run: pnpm pack:check
 
       - name: Check publish status
         run: |
