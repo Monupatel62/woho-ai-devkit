@@ -2,6 +2,11 @@
 
 ## 0.7.5
 
+- Hardened tool policy validation and file path containment.
+- Expanded tools security runtime coverage.
+
+## 0.7.5
+
 - Hardened agent configuration validation.
 - Added agent runtime coverage for tool execution, memory, limits, and max-step safety.
 - Fixed MCP client security option typing and normalized MCP test sources.
