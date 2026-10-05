@@ -46,7 +46,7 @@ const roleInstructions: Record<AgentRole, string> = {
   general: "Complete the user's task using available tools, memory, and explicit permissions with verification."
 };
 
-export function createSpecializedAgent(ai: AIClient, role: AgentRole, options: SpecializedAgentOptions = []) {
+export function createSpecializedAgent(ai: AIClient, role: AgentRole, options: SpecializedAgentOptions = {}) {
   const normalized = Array.isArray(options) ? {} : options;
   const name = normalized.name ?? role[0]!.toUpperCase() + role.slice(1) + " Agent";
   return new Agent(ai, {
