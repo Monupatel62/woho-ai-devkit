@@ -1,4 +1,5 @@
 import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition } from "@woho/core";
+import type { MemoryStore } from "@woho/memory";
 
 export interface AgentTool {
   name: string;
@@ -18,6 +19,7 @@ export interface AgentOptions {
   instructions?: string;
   tools?: AgentTool[];
   maxSteps?: number;
+  memory?: MemoryStore;
 }
 
 export interface AgentRunResult {
@@ -55,6 +57,7 @@ export class Agent {
   readonly tools: AgentTool[];
   readonly maxSteps: number;
   private readonly ai: AIClient;
+  private readonly memory?: MemoryStore;
 
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
@@ -62,6 +65,7 @@ export class Agent {
     this.instructions = options.instructions;
     this.tools = options.tools ?? [];
     this.maxSteps = options.maxSteps ?? 8;
+    this.memory = options.memory;
     if (this.maxSteps < 1) throw new AIError("maxSteps must be at least 1", "INVALID_AGENT_CONFIG");
   }
 
@@ -73,7 +77,15 @@ export class Agent {
     const toolsByName = new Map(this.tools.map((tool) => [tool.name, tool]));
 
     if (this.instructions) messages.push({ role: "system", content: this.instructions });
-    messages.push({ role: "user", content: input });
+    if (this.memory) {
+      const history = await this.memory.list();
+      messages.push(...history.map(({ role, content, name, toolCallId, toolCalls }) => ({
+        role, content, ...(name ? { name } : {}), ...(toolCallId ? { toolCallId } : {}), ...(toolCalls ? { toolCalls } : {}),
+      })));
+    }
+    const userMessage: AIMessage = { role: "user", content: input };
+    messages.push(userMessage);
+    if (this.memory) await this.memory.add({ id: `user-${Date.now()}-${Math.random()}`, role: "user", content: input, timestamp: Date.now() });
 
     for (let step = 1; step <= this.maxSteps; step += 1) {
       const response = await this.ai.chat({
@@ -82,11 +94,13 @@ export class Agent {
       });
 
       const calls = response.toolCalls ?? [];
-      messages.push({
+      const assistantMessage: AIMessage = {
         role: "assistant",
         content: response.text,
         ...(calls.length ? { toolCalls: calls } : {}),
-      });
+      };
+      messages.push(assistantMessage);
+      if (this.memory) await this.memory.add({ id: `assistant-${Date.now()}-${step}`, ...assistantMessage, timestamp: Date.now() });
 
       if (!calls.length) {
         return { text: response.text, steps: step, messages, toolResults };
@@ -97,18 +111,24 @@ export class Agent {
         if (!tool) {
           const error = { error: "Unknown tool: " + call.name };
           toolResults[call.id] = error;
-          messages.push({ role: "tool", content: serializeToolResult(error), toolCallId: call.id, name: call.name });
+          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(error), toolCallId: call.id, name: call.name };
+          messages.push(toolMessage);
+          if (this.memory) await this.memory.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
           continue;
         }
 
         try {
           const result = await tool.execute(parseArguments(call.arguments));
           toolResults[call.id] = result;
-          messages.push({ role: "tool", content: serializeToolResult(result), toolCallId: call.id, name: call.name });
+          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result), toolCallId: call.id, name: call.name };
+          messages.push(toolMessage);
+          if (this.memory) await this.memory.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         } catch (error) {
           const failure = { error: error instanceof Error ? error.message : String(error) };
           toolResults[call.id] = failure;
-          messages.push({ role: "tool", content: serializeToolResult(failure), toolCallId: call.id, name: call.name });
+          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure), toolCallId: call.id, name: call.name };
+          messages.push(toolMessage);
+          if (this.memory) await this.memory.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         }
       }
     }
