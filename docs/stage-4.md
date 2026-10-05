@@ -15,7 +15,7 @@ Use `createToolPolicy()` to create a normalized policy. Network and filesystem t
 The model cannot grant itself access. Empty allowlists deny access.
 
 ## Runtime verification
-The package includes runtime assertions for deterministic tools and security boundaries. The workspace `test` command currently uses TypeScript checks as its baseline; the runtime test file is included as the next CI execution target.
+The package includes runtime assertions for deterministic tools and security boundaries. The package test command now performs typecheck, build, and the runtime security test.
 
 ## Next
 Wire runtime tests into CI, add stronger argument validation, and add opt-in search tooling with explicit provider boundaries.
