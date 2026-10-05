@@ -1,6 +1,6 @@
 {
   "name": "@woho/mcp",
-  "version": "0.6.11",
+  "version": "0.6.12",
   "description": "Provider-neutral Model Context Protocol primitives for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
