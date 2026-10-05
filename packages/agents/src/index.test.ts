@@ -167,6 +167,26 @@ const run = async () => {
   assert.equal(approved, true);
   assert.ok(approvalEvents.includes("run.waiting"));
   assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
+  let verificationAttempts = 0;
+  const verificationRuntime = new AgentRuntime({
+    retry: { maxAttempts: 2, delayMs: 0 },
+    verify: (result) => {
+      verificationAttempts += 1;
+      return result.text === "verified" && verificationAttempts === 2;
+    },
+  }, registry);
+  const verificationResult = await verificationRuntime.run(
+    createAI({ provider: createMockProvider({ response: "verified" }) }),
+    { agent: "general", input: "verify" },
+  );
+  assert.equal(verificationResult.text, "verified");
+  assert.equal(verificationAttempts, 2);
+  const planVerification = await runAgentPlan(
+    verificationRuntime,
+    createAI({ provider: createMockProvider({ response: "plan-verified" }) }),
+    { steps: [{ id: "verified-step", agent: "general", input: "verify", verify: (result) => result.text === "plan-verified" }] },
+  );
+  assert.equal(planVerification.steps["verified-step"]?.text, "plan-verified");
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
