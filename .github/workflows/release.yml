@@ -36,6 +36,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm test
+      - run: pnpm release:check
       - run: pnpm pack:check
 
       - name: Verify package metadata
