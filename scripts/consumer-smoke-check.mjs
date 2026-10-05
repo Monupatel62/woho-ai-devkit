@@ -58,7 +58,15 @@ try {
 
     const listing = spawnSync("tar", ["-tzf", tarball], { encoding: "utf8" });
     if (listing.status !== 0) throw new Error("Could not list tarball: " + packageName);
-    for (const entry of listing.stdout.split("\n").filter(Boolean)) {
+    const entries = listing.stdout.split("\n").filter(Boolean);
+    for (const required of ["package/package.json", "package/README.md", "package/LICENSE", "package/dist/index.js", "package/dist/index.d.ts"]) {
+      if (!entries.includes(required)) throw new Error(packageName + " tarball missing required file: " + required);
+    }
+    const licenseCheck = spawnSync("tar", ["-xOf", tarball, "package/LICENSE"], { encoding: "utf8" });
+    if (licenseCheck.status !== 0 || !licenseCheck.stdout.includes("Apache License") || !licenseCheck.stdout.includes("Version 2.0, January 2004") || !licenseCheck.stdout.includes("END OF TERMS AND CONDITIONS")) {
+      throw new Error(packageName + " tarball does not contain the full Apache-2.0 license text");
+    }
+    for (const entry of entries) {
       if (/package\/(?:src|test|tests|\.github|\.git|\.env|tsconfig|coverage)\b|(?:\.map|\.ts)$/.test(entry)) {
         throw new Error(packageName + " tarball contains development/source artifact: " + entry);
       }
