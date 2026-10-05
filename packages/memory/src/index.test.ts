@@ -24,6 +24,10 @@ const run = async () => {
   await conversation.add({ id: "m1", role: "user", content: "How does TypeScript work?" });
   await conversation.add({ id: "m2", role: "assistant", content: "TypeScript adds types to JavaScript." });
   await conversation.add({ id: "m3", role: "user", content: "Tell me about Python instead." });
+  const other = createConversation({ sessionId: "s2", store: conversation["store"] });
+  await other.add({ id: "other", role: "user", content: "typescript from another session" });
+  assert.equal((await conversation.messages()).length, 3);
+  assert.equal((await other.messages()).length, 1);
   assert.equal((await conversation.messages()).length, 3);
   assert.equal((await conversation.search({ query: "typescript" })).length, 2);
   assert.throws(() => createConversation({ sessionId: "", store: createInMemoryStore() }), /sessionId/);
