@@ -21,6 +21,8 @@ export interface AgentOptions {
   maxSteps?: number;
   memory?: MemoryStore;
   sessionId?: string;
+  maxContextMessages?: number;
+  maxContextChars?: number;
 }
 
 export interface AgentRunResult {
@@ -60,6 +62,8 @@ export class Agent {
   private readonly ai: AIClient;
   private readonly memory?: MemoryStore;
   private readonly sessionId?: string;
+  private readonly maxContextMessages?: number;
+  private readonly maxContextChars?: number;
 
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
@@ -69,6 +73,8 @@ export class Agent {
     this.maxSteps = options.maxSteps ?? 8;
     this.memory = options.memory;
     this.sessionId = options.sessionId;
+    this.maxContextMessages = options.maxContextMessages;
+    this.maxContextChars = options.maxContextChars;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
     if (this.maxSteps < 1) throw new AIError("maxSteps must be at least 1", "INVALID_AGENT_CONFIG");
   }
@@ -83,7 +89,7 @@ export class Agent {
     if (this.instructions) messages.push({ role: "system", content: this.instructions });
     const conversation = this.memory && this.sessionId ? createConversation({ sessionId: this.sessionId, store: this.memory }) : undefined;
     if (conversation) {
-      const history = await conversation.messages();
+      const history = await conversation.messages(this.maxContextMessages);
       messages.push(...history.map(({ role, content, name, toolCallId, toolCalls }) => ({
         role, content, ...(name ? { name } : {}), ...(toolCallId ? { toolCallId } : {}), ...(toolCalls ? { toolCalls } : {}),
       })));
