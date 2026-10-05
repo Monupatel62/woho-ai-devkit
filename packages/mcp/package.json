@@ -12,6 +12,20 @@
       "import": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Monupatel62/woho-ai-devkit.git",
+    "directory": "packages/mcp"
+  },
+  "homepage": "https://github.com/Monupatel62/woho-ai-devkit/tree/main/packages/mcp",
   "devDependencies": {
     "@types/node": "^22.0.0"
   },
