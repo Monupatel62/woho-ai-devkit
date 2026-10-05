@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { createMCPClient, createMCPServer, type MCPTransport } from "./index.js";
+import { createMCPClient, createMCPServer, createMCPStdioTransport, type MCPTransport } from "./index.js";
+import { execPath } from "node:process";
 
 const server = createMCPServer({
   name: "test-server",
@@ -88,6 +89,16 @@ const run = async () => {
   const unserializableClient = createMCPClient({ transport: unserializableTransport });
   await assert.rejects(() => unserializableClient.listTools(), /not serializable/);
   await unserializableClient.close();
+  const script = 'process.stdin.setEncoding("utf8"); let b=""; process.stdin.on("data",c=>{b+=c; const lines=b.split("\\n"); b=lines.pop()??""; for(const line of lines){if(!line.trim())continue; const m=JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:m.id,result:{ok:true}})+"\\n");}});';
+  const stdio = createMCPStdioTransport({ command: execPath, args: ["-e", script], timeoutMs: 1000 });
+  assert.deepEqual(await stdio.request("ping"), { ok: true });
+  await stdio.close();
+
+  const slowStdioScript = 'process.stdin.resume();';
+  const slowStdio = createMCPStdioTransport({ command: execPath, args: ["-e", slowStdioScript], timeoutMs: 10 });
+  await assert.rejects(() => slowStdio.request("ping"), /timed out/);
+  await slowStdio.close();
+
   console.log("mcp runtime tests passed");
 };
 
