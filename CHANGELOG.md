@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.6
+
+- Hardened persistent JSON memory with message validation and safe per-process temporary files.
+- Added validation for persistent-memory query timestamps and session IDs.
+- Added runtime coverage for invalid persisted messages.
+- Bumped `@woho/memory` to 0.6.0.
+
 ## 0.8.5
 
 - Hardened agent tool-call parsing: malformed JSON arguments now fail as structured tool errors instead of being passed through as strings.
