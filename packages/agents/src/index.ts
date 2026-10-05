@@ -87,7 +87,11 @@ function validateToolParameters(tool: AgentTool, input: unknown): void {
   }
 }
 
-async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promise<void> {\n  await options.onEvent?.(event);\n}\n\nfunction serializeToolResult(value: unknown, maxChars: number): string {
+async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promise<void> {
+  await options.onEvent?.(event);
+}
+
+function serializeToolResult(value: unknown, maxChars: number): string {
   let text: string;
   if (typeof value === "string") text = value;
   else {
@@ -95,7 +99,8 @@ async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promis
     catch { text = String(value); }
   }
   if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + "\n[tool result truncated]";
+  return text.slice(0, maxChars) + "
+[tool result truncated]";
 }
 
 function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
