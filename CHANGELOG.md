@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.1
+
+- Integrated optional `MemoryStore` into agents.
+- Agents now load prior memory and persist user, assistant, and tool messages.
+
 ## 0.5.0
 
 - Added `@woho/memory` with a bounded in-memory store.
