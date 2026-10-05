@@ -30,7 +30,7 @@ try {
     JSON.stringify({ name: "woho-consumer-smoke", version: "1.0.0", private: true }, null, 2) + "\n"
   );
 
-  run("pnpm", ["add", "--no-frozen-lockfile", ...tarballs], temp);
+  run("pnpm", ["add", "--no-frozen-lockfile", "--config.auto-install-peers=false", ...tarballs], temp);
 
   const smoke = spawnSync(process.execPath, ["--input-type=module", "-e",
     'const pkgs=["@woho/core","@woho/provider-openai","@woho/agents","@woho/tools","@woho/memory","@woho/mcp"]; for (const p of pkgs) { const m=await import(p); if (!m) throw new Error("empty module: "+p); } console.log("consumer smoke check passed: "+pkgs.length+" packages");'
