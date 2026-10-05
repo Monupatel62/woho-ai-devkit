@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.4
+
+- Added session-aware memory queries.
+- Added provider-level optional message deletion support.
+- Made conversation clearing safe and session-scoped.
+
 ## 0.5.3
 
 - Added session-scoped `Conversation` management.
