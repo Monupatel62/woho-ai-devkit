@@ -103,6 +103,39 @@ const run = async () => {
   });
   const denied = await permissioned.run("run secure");
   assert.match(String(denied.toolResults["mock-call-1"] && (denied.toolResults["mock-call-1"] as { error: string }).error), /needs approval/);
+  const missingPolicy = createAgent(createAI({ provider: createMockProvider({ response: "policy-required", toolCall: { name: "unprotected", arguments: "{}" } }) }), {
+    name: "missing-policy",
+    tools: [{ name: "unprotected", description: "Unprotected", capability: "computer", action: "execute", execute: async () => "should-not-run" }],
+    maxSteps: 2,
+  });
+  const missingPolicyResult = await missingPolicy.run("run unprotected");
+  assert.match(String(missingPolicyResult.toolResults["mock-call-1"] && (missingPolicyResult.toolResults["mock-call-1"] as { error: string }).error), /permission policy/);
+  let toolAborted = false;
+  const abortingTool = createAgent(createAI({
+    provider: {
+      name: "abort-tool",
+      async chat(request) {
+        if (request.messages.at(-1)?.role === "tool") return { id: "done", text: "done", model: "abort-tool" };
+        return { id: "call", text: "", model: "abort-tool", finishReason: "tool_call", toolCalls: [{ id: "abort-1", name: "abortable", arguments: "{}" }] };
+      },
+    },
+  }), {
+    name: "abortable-agent",
+    toolTimeoutMs: 5,
+    tools: [{
+      name: "abortable",
+      description: "Abortable",
+      execute: async (_input, context) => {
+        await new Promise<void>((resolve) => {
+          context?.signal?.addEventListener("abort", () => { toolAborted = true; resolve(); }, { once: true });
+        });
+        return "never";
+      },
+    }],
+  });
+  const abortingResult = await abortingTool.run("run");
+  assert.equal(abortingResult.text, "done");
+  assert.equal(toolAborted, true);
   const calling = createSpecializedAgent(createAI({ provider: createMockProvider({ response: "calling-role" }) }), "calling");
   assert.equal(calling.role, "calling");
   assert.ok(calling.capabilities.includes("calling"));
