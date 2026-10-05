@@ -2,6 +2,8 @@ import type { AgentTool } from "@woho/agents";
 import { validateToolInput } from "./validation.js";
 export { ToolRegistry, createToolRegistry } from "./registry.js";
 export { commandTool, type CommandToolPolicy } from "./command.js";
+export { gitTool, type GitToolPolicy } from "./git.js";
+export { workspaceTool, createWorkspaceTool, type WorkspaceToolPolicy, type WorkspaceEntry } from "./workspace.js";
 export { validateToolInput } from "./validation.js";
 import { assertAllowedHost, createToolPolicy, type ToolPolicy } from "./policy.js";
 export { createSearchProvider, searchTool, type SearchProvider, type SearchResult, type SearchToolPolicy } from "./search.js";
