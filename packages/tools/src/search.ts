@@ -19,7 +19,7 @@ export interface SearchToolPolicy {
 export function searchTool(policy: SearchToolPolicy): AgentTool {
   const maxQueryLength = policy.maxQueryLength ?? 500;
   const maxResults = policy.maxResults ?? 10;
-  if (maxQueryLength <= 0 || maxResults <= 0) throw new Error("Search limits must be positive");
+  if (!Number.isInteger(maxQueryLength) || maxQueryLength < 1 || !Number.isInteger(maxResults) || maxResults < 1) throw new Error("Search limits must be positive integers");
 
   return {
     name: "search",
@@ -40,6 +40,7 @@ export function searchTool(policy: SearchToolPolicy): AgentTool {
       if (!Number.isInteger(requested) || requested < 1) throw new Error("limit must be a positive integer");
       const limit = Math.min(requested, maxResults);
       const results = await policy.provider.search(value.query.trim(), { limit });
+      if (!Array.isArray(results)) throw new Error("Search provider returned invalid results");
       return results.slice(0, limit);
     },
   };
