@@ -142,6 +142,8 @@ export function createMCPClient(options: MCPClientOptions): MCPClient {
   return new MCPClient(options);
 }
 
+export { MCPStdioTransport, createMCPStdioTransport, type MCPStdioTransportOptions } from "./stdio.js";
+
 export function createMCPServer(options: MCPServerOptions): MCPServer {
   return new MCPServer(options);
 }
