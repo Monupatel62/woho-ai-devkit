@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createAI, createMockProvider, AIError } from "@woho/core";
 import { createInMemoryStore } from "@woho/memory";
-import { createAgent, AgentRegistry, AgentRuntime, runAgentPlan } from "./index.js";
+import { createAgent, AgentRegistry, AgentRuntime, InMemoryExecutionStore, runAgentPlan } from "./index.js";
 import { createSpecializedAgent } from "./specialized.js";
 
 const run = async () => {
@@ -136,6 +136,12 @@ const run = async () => {
       { id: "b", agent: "general", input: "b", dependsOn: ["a"] },
     ],
   }), /cycle or unknown dependency/);
-  assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);\n  let retryCount = 0;\n  const retryRegistry = new AgentRegistry();\n  retryRegistry.register({ id: "retry", name: "Retry", role: "general" }, ({ ai }) => createAgent(ai, { name: "Retry" }));\n  const retryRuntime = new AgentRuntime({ maxConcurrency: 1, retry: { maxAttempts: 2, delayMs: 0 } }, retryRegistry);\n  const retryAI = createAI({ provider: { name: "retry", async chat() { retryCount += 1; if (retryCount === 1) throw new Error("retry-me"); return { id: "ok", text: "recovered", model: "retry" }; } } });\n  const retryResult = await retryRuntime.run(retryAI, { agent: "retry", input: "recover" });\n  assert.equal(retryResult.text, "recovered");\n  assert.equal(retryCount, 2);\n  console.log("agent runtime tests passed");
+  assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);\n  let retryCount = 0;\n  const retryRegistry = new AgentRegistry();\n  retryRegistry.register({ id: "retry", name: "Retry", role: "general" }, ({ ai }) => createAgent(ai, { name: "Retry" }));\n  const retryRuntime = new AgentRuntime({ maxConcurrency: 1, retry: { maxAttempts: 2, delayMs: 0 } }, retryRegistry);\n  const retryAI = createAI({ provider: { name: "retry", async chat() { retryCount += 1; if (retryCount === 1) throw new Error("retry-me"); return { id: "ok", text: "recovered", model: "retry" }; } } });\n  const retryResult = await retryRuntime.run(retryAI, { agent: "retry", input: "recover" });\n  assert.equal(retryResult.text, "recovered");\n  assert.equal(retryCount, 2);\n  const executionStore = new InMemoryExecutionStore();
+  const storedRuntime = new AgentRuntime({ store: executionStore }, registry);
+  const stored = await storedRuntime.run(createAI({ provider: createMockProvider({ response: "stored" }) }), { agent: "general", input: "store me" });
+  const record = executionStore.get(stored.runId);
+  assert.equal(record?.status, "succeeded");
+  assert.ok((record?.events.length ?? 0) >= 2);
+  console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
