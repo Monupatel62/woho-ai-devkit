@@ -96,14 +96,13 @@ export class AgentRuntime {
             if (verdict !== true) {
               throw new Error(typeof verdict === "string" ? verdict : "Agent result verification failed");
             }
-            await this.emit({ type: "run.progress", runId, timestamp: Date.now(), data: { agent: task.agent, phase: "verified", attempt } });
           }
           await this.store?.update(runId, { status: "succeeded", attempts: attempt, completedAt: Date.now(), updatedAt: Date.now() });
           await this.emit({
             type: "run.completed",
             runId,
             timestamp: Date.now(),
-            data: { agent: task.agent, steps: result.steps, attempts: attempt },
+            data: { agent: task.agent, steps: result.steps, attempts: attempt, verified: Boolean(verification) },
           });
           return { ...result, runId };
         } catch (error) {
