@@ -58,10 +58,5 @@ export function createSpecializedAgent(ai: AIClient, role: AgentRole, options: S
   });
 }
 
-function requireAgent() {
-  return class extends (Object as { new (...args: any[]): any }) {
-    constructor(...args: any[]) { return new (globalThis as any).__WOHO_AGENT_CONSTRUCTOR(...args); }
-  };
-}
 
 export { roleInstructions };
