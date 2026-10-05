@@ -39,13 +39,13 @@ export class AIClient {
   readonly provider: AIConfig["provider"];
   private readonly timeoutMs: number;
   private readonly retries: number;
-  private readonly retryDelayMs: number;
+  private readonly retryDelayMs: number;\n  private readonly observability?: AIObservability;
 
   constructor(config: AIConfig) {
     this.provider = config.provider;
     this.timeoutMs = config.timeoutMs ?? 30_000;
     this.retries = config.retries ?? 2;
-    this.retryDelayMs = config.retryDelayMs ?? 250;
+    this.retryDelayMs = config.retryDelayMs ?? 250;\n    this.observability = config.observability;
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new AIError("timeoutMs must be a positive integer", "INVALID_CONFIG");
     if (!Number.isInteger(this.retries) || this.retries < 0) throw new AIError("retries must be a non-negative integer", "INVALID_CONFIG");
     if (!Number.isInteger(this.retryDelayMs) || this.retryDelayMs < 0) throw new AIError("retryDelayMs must be a non-negative integer", "INVALID_CONFIG");
@@ -55,11 +55,11 @@ export class AIClient {
     validate(request);
     let attempt = 0;
     while (true) {
-      const merged = mergeSignals(request.signal, this.timeoutMs);
+      const started = Date.now();\n      await this.observability?.onEvent?.({ type: "request.start", request, attempt });\n      const started = Date.now();\n    await this.observability?.onEvent?.({ type: "stream.start", request });\n    const merged = mergeSignals(request.signal, this.timeoutMs);
       try {
-        return await this.provider.chat({ ...request, signal: merged.signal });
+        const response = await this.provider.chat({ ...request, signal: merged.signal });\n        await this.observability?.onEvent?.({ type: "request.success", response, attempt, durationMs: Date.now() - started });\n        return response;
       } catch (error) {
-        const normalized = merged.signal.aborted && !request.signal?.aborted ? new TimeoutError() : error;
+        const normalized = merged.signal.aborted && !request.signal?.aborted ? new TimeoutError() : error;\n        await this.observability?.onEvent?.({ type: "request.error", error: normalized, attempt, durationMs: Date.now() - started });
         const retryable = normalized instanceof AIError ? normalized.retryable : false;
         if (!retryable || attempt >= this.retries) throw normalized;
         attempt += 1;
@@ -80,7 +80,7 @@ export class AIClient {
           if (request.signal?.aborted) throw request.signal.reason ?? new Error("Aborted");
           throw new TimeoutError();
         }
-        yield chunk;
+        await this.observability?.onEvent?.({ type: "stream.chunk", chunk });\n        yield chunk;
       }
     } finally {
       merged.cleanup();
