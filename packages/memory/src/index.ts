@@ -54,12 +54,23 @@ export class InMemoryStore implements MemoryStore {
   }
 }
 
-export interface MemorySummarizer {\n  summarize(messages: MemoryMessage[], options?: { maxCharacters?: number }): Promise<string>;\n}\n\nexport interface MemorySummaryOptions {
+export interface MemorySummarizer {
+  summarize(messages: MemoryMessage[], options?: { maxCharacters?: number }): Promise<string>;
+}
+
+export interface MemorySummaryOptions {
   maxCharacters: number;
   sessionId?: string;
 }
 
-export async function summarizeMemoryWith(summarizer: MemorySummarizer, messages: MemoryMessage[], options: MemorySummaryOptions): Promise<MemoryMessage> {\n  const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;\n  const content = await summarizer.summarize(source, { maxCharacters: options.maxCharacters });\n  if (!content.trim()) throw new Error("Memory summarizer returned empty content");\n  return { id: "summary-" + Date.now(), role: "system", content: content.slice(0, options.maxCharacters), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };\n}\n\nexport function summarizeMemory(messages: MemoryMessage[], options: MemorySummaryOptions): MemoryMessage {
+export async function summarizeMemoryWith(summarizer: MemorySummarizer, messages: MemoryMessage[], options: MemorySummaryOptions): Promise<MemoryMessage> {
+  const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;
+  const content = await summarizer.summarize(source, { maxCharacters: options.maxCharacters });
+  if (!content.trim()) throw new Error("Memory summarizer returned empty content");
+  return { id: "summary-" + Date.now(), role: "system", content: content.slice(0, options.maxCharacters), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };
+}
+
+export function summarizeMemory(messages: MemoryMessage[], options: MemorySummaryOptions): MemoryMessage {
   if (!Number.isInteger(options.maxCharacters) || options.maxCharacters < 1) throw new Error("maxCharacters must be a positive integer");
   const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;
   const lines: string[] = [];
@@ -71,11 +82,13 @@ export async function summarizeMemoryWith(summarizer: MemorySummarizer, messages
     lines.push(line);
     used = next;
   }
-  return { id: "summary-" + Date.now(), role: "system", content: lines.join("\\n"), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };
+  return { id: "summary-" + Date.now(), role: "system", content: lines.join("\
+"), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };
 }
 
 export function createInMemoryStore(options?: MemoryOptions): MemoryStore {
   return new InMemoryStore(options);
 }
-\nexport { createJsonFileStore, JsonFileStore, type JsonFileStoreOptions } from "./json.js";
-export { Conversation, createConversation, type ConversationOptions, type MemorySearchOptions } from "./conversation.js";\n
+
+export { createJsonFileStore, JsonFileStore, type JsonFileStoreOptions } from "./json.js";
+export { Conversation, createConversation, type ConversationOptions, type MemorySearchOptions } from "./conversation.js";
