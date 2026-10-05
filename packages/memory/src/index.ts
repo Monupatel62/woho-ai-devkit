@@ -33,6 +33,7 @@ export class InMemoryStore implements MemoryStore {
   }
 
   async add(message: MemoryMessage): Promise<void> {
+    if (!message || typeof message !== "object") throw new Error("Memory message is required");
     if (!message.id.trim()) throw new Error("Memory message id is required");
     if (!message.content.trim()) throw new Error("Memory message content is required");
     this.messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
@@ -40,6 +41,8 @@ export class InMemoryStore implements MemoryStore {
   }
 
   async list(query: MemoryQuery = {}): Promise<MemoryMessage[]> {
+    if (query.before !== undefined && !Number.isFinite(query.before)) throw new Error("before must be a finite number");
+    if (query.sessionId !== undefined && !query.sessionId.trim()) throw new Error("sessionId cannot be empty");
     const limit = query.limit ?? this.maxMessages;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     let items = query.before === undefined ? [...this.messages] : this.messages.filter((m) => (m.timestamp ?? 0) < query.before!);
@@ -68,6 +71,8 @@ export interface MemorySummaryOptions {
 }
 
 export async function summarizeMemoryWith(summarizer: MemorySummarizer, messages: MemoryMessage[], options: MemorySummaryOptions): Promise<MemoryMessage> {
+  if (!Number.isInteger(options.maxCharacters) || options.maxCharacters < 1) throw new Error("maxCharacters must be a positive integer");
+  if (!Array.isArray(messages)) throw new Error("messages must be an array");
   const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;
   const content = await summarizer.summarize(source, { maxCharacters: options.maxCharacters });
   if (!content.trim()) throw new Error("Memory summarizer returned empty content");
