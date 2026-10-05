@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import type { MemoryMessage, MemoryQuery, MemoryStore } from "./index.js";
 
 export interface JsonFileStoreOptions {
@@ -47,17 +48,27 @@ export class JsonFileStore implements MemoryStore {
   }
 
   private async persist(messages: MemoryMessage[]): Promise<void> {
+    const serialized = JSON.stringify(messages);
+    const bytes = Buffer.byteLength(serialized, "utf8");
+    if (bytes > this.maxFileBytes) throw new Error("Memory file exceeds maxFileBytes");
     await mkdir(dirname(this.filePath), { recursive: true });
-    const temp = this.filePath + ".tmp-" + process.pid + "-" + Date.now();
-    await writeFile(temp, JSON.stringify(messages), "utf8");
-    await rename(temp, this.filePath);
+    const temp = this.filePath + ".tmp-" + process.pid + "-" + randomUUID();
+    try {
+      await writeFile(temp, serialized, { encoding: "utf8", mode: 0o600 });
+      await rename(temp, this.filePath);
+    } catch (error) {
+      try { await (await import("node:fs/promises")).unlink(temp); } catch { /* best effort */ }
+      throw error;
+    }
   }
 
   async add(message: MemoryMessage): Promise<void> {
+    if (!message || typeof message !== "object") throw new Error("Memory message is required");
     if (typeof message.id !== "string" || !message.id.trim()) throw new Error("Memory message id is required");
     if (typeof message.content !== "string" || !message.content.trim()) throw new Error("Memory message content is required");
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
+    if (message.metadata !== undefined && (typeof message.metadata !== "object" || message.metadata === null || Array.isArray(message.metadata))) throw new Error("Memory message metadata must be an object");
     this.writeQueue = this.writeQueue.then(async () => {
       const messages = await this.load();
       messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
