@@ -4,14 +4,23 @@ import { createMCPClient, createMCPServer, type MCPTransport } from "./index.js"
 const server = createMCPServer({
   name: "test-server",
   version: "0.1.0",
-  tools: [{ definition: { name: "echo" }, execute: async (input) => input }],\n    resources: [{ definition: { uri: "memory://hello", name: "hello" }, read: async () => [{ uri: "memory://hello", text: "hello" }] }],\n    prompts: [{ definition: { name: "greet" }, get: async (args) => ({ text: "Hello " + (args?.name ?? "world") }) }],
+  tools: [{ definition: { name: "echo" }, execute: async (input) => input }],
+  resources: [{ definition: { uri: "memory://hello", name: "hello" }, read: async () => [{ uri: "memory://hello", text: "hello" }] }],
+  prompts: [{ definition: { name: "greet" }, get: async (args) => ({ text: "Hello " + (args?.name ?? "world") }) }],
 });
 
 const transport: MCPTransport = {
   async request(method, params, signal) {
     if (signal?.aborted) throw new Error("aborted");
     if (method === "initialize") return { serverInfo: server.info, capabilities: { tools: {} } };
-    if (method === "tools/list") return { tools: server.listTools() };\n    if (method === "resources/list") return { resources: server.listResources() };\n    if (method === "resources/read") return { contents: await server.readResource((params as { uri: string }).uri) };\n    if (method === "prompts/list") return { prompts: server.listPrompts() };\n    if (method === "prompts/get") { const value = params as { name: string; arguments?: Record<string, string> }; return await server.getPrompt(value.name, value.arguments); }
+    if (method === "tools/list") return { tools: server.listTools() };
+    if (method === "resources/list") return { resources: server.listResources() };
+    if (method === "resources/read") return { contents: await server.readResource((params as { uri: string }).uri) };
+    if (method === "prompts/list") return { prompts: server.listPrompts() };
+    if (method === "prompts/get") {
+      const value = params as { name: string; arguments?: Record<string, string> };
+      return server.getPrompt(value.name, value.arguments);
+    }
     if (method === "tools/call") {
       const value = params as { name: string; arguments: unknown };
       const result = await server.callTool(value.name, value.arguments);
@@ -19,9 +28,7 @@ const transport: MCPTransport = {
     }
     throw new Error("Unknown method: " + method);
   },
-  async notify(method) {
-    assert.equal(method, "notifications/initialized");
-  },
+  async notify(method) { assert.equal(method, "notifications/initialized"); },
 };
 
 const run = async () => {
@@ -30,18 +37,30 @@ const run = async () => {
   assert.throws(() => server.registerTool({ definition: { name: "echo" }, execute: async () => null }), /Duplicate/);
   await assert.rejects(() => server.callTool("missing", {}), /Unknown/);
 
-  const client = createMCPClient({\n    transport,\n    timeoutMs: 1000,\n    security: { maxResponseBytes: 10000, allowedMethods: ["initialize", "notifications/initialized", "tools/list", "tools/call", "resources/list", "resources/read", "prompts/list", "prompts/get"] },\n  });
-  const resources = await client.listResources();\n  assert.equal(resources[0].uri, "memory://hello");\n  assert.deepEqual(await client.readResource("memory://hello"), [{ uri: "memory://hello", text: "hello" }]);\n  const prompts = await client.listPrompts();\n  assert.equal(prompts[0].name, "greet");\n  assert.deepEqual(await client.getPrompt("greet", { name: "Monu" }), { text: "Hello Monu" });\n\n  const tools = await client.listTools();
+  const client = createMCPClient({
+    transport,
+    timeoutMs: 1000,
+    security: {
+      maxResponseBytes: 10000,
+      allowedMethods: ["initialize", "tools/list", "tools/call", "resources/list", "resources/read", "prompts/list", "prompts/get"],
+    },
+  });
+  const resources = await client.listResources();
+  assert.equal(resources[0].uri, "memory://hello");
+  assert.deepEqual(await client.readResource("memory://hello"), [{ uri: "memory://hello", text: "hello" }]);
+  const prompts = await client.listPrompts();
+  assert.equal(prompts[0].name, "greet");
+  assert.deepEqual(await client.getPrompt("greet", { name: "Monu" }), { text: "Hello Monu" });
+  const tools = await client.listTools();
   assert.deepEqual(tools, [{ name: "echo" }]);
   const result = await client.callTool("echo", { ok: true });
   assert.equal(result.isError, false);
-  assert.equal(result.content[0].type, "text");
+  assert.equal((result.content as Array<{ type: string }>)[0].type, "text");
 
   const restricted = createMCPClient({ transport, security: { allowedMethods: ["initialize"] } });
   await assert.rejects(() => restricted.listTools(), /not allowed/);
   await restricted.close();
   await client.close();
-
   console.log("mcp runtime tests passed");
 };
 
