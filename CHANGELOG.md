@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.5
+
+- Added MCP client method allowlisting.
+- Added MCP response-size limits and security-policy runtime coverage.
+
 ## 0.6.4
 
 - Added MCP resource discovery and reading.
