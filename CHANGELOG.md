@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.8
+
+- Hardened HTTP/file tool boundaries against credential-bearing URLs and oversized file reads.
+- Normalized allowed host policies consistently.
+- Added search-provider response-size limits and strict timeout validation.
+- Added runtime coverage for the new security boundaries.
+- Bumped `@woho/tools` to 0.4.7.
+
 ## 0.8.7
 
 - Hardened the OpenAI-compatible provider with HTTPS base URL validation (localhost allowed for development).
