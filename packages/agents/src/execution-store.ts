@@ -112,7 +112,9 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .filter((record) => options.status === undefined || record.status === options.status)
       .sort((a, b) => b.updatedAt - a.updatedAt);
     return records.slice(0, options.limit ?? records.length).map(cloneRecord);
-  }  remove(runId: string): boolean {
+  }
+
+  remove(runId: string): boolean {
     validateRunId(runId);
     return this.records.delete(runId);
   }
