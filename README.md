@@ -76,7 +76,9 @@ pnpm test
 
 ## Status
 
-Core, agents, tools, memory and MCP foundations are implemented. The project is continuing through final production hardening before the first public npm release. npm package metadata and tarball boundaries are now prepared for release validation.
+The six publishable packages are in a verified release-ready state. CI covers Node 20 and 22, typecheck, build, tests, release-graph validation, npm tarball validation, consumer import smoke testing, and CodeQL.
+
+The workspace root is private and the six `@woho/*` packages are the publishable packages. Public npm publishing remains a deliberate release action rather than an automatic step on every push.
 
 ## Release
 
