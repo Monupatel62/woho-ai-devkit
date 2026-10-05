@@ -68,12 +68,13 @@ export function httpGetTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
       const urlText = requireObject(input).url;
       if (typeof urlText !== "string") throw new Error("url is required");
       const url = new URL(urlText);
+      if (url.username || url.password) throw new Error("Credential-bearing URLs are not allowed");
       if (url.protocol !== "https:") throw new Error("Only HTTPS URLs are allowed");
       assertAllowedHost(url.hostname, policy.allowedHosts);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), policy.timeoutMs);
       try {
-        const response = await fetch(url, { signal: controller.signal, redirect: "error" });
+        const response = await fetch(url, { signal: controller.signal, redirect: "error", headers: { accept: "text/plain, application/json, text/*;q=0.9" } });
         const contentLength = Number(response.headers.get("content-length") ?? 0);
         if (contentLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
         const text = await response.text();
