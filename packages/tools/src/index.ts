@@ -1,5 +1,6 @@
 import type { AgentTool } from "@woho/agents";
 import { assertAllowedHost, createToolPolicy, type ToolPolicy } from "./policy.js";
+export { createSearchProvider, searchTool, type SearchProvider, type SearchResult, type SearchToolPolicy } from "./search.js";
 
 export type ToolSecurityPolicy = Partial<ToolPolicy>;
 
@@ -71,9 +72,7 @@ export function httpGetTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
         const text = await response.text();
         if (new TextEncoder().encode(text).byteLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
         return { status: response.status, contentType: response.headers.get("content-type"), text };
-      } finally {
-        clearTimeout(timer);
-      }
+      } finally { clearTimeout(timer); }
     },
   };
 }
@@ -104,6 +103,6 @@ export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
   };
 }
 
-export { assertAllowedHost, createToolPolicy, defaultToolPolicy };
-export type { ToolPolicy };
+export { assertAllowedHost, createToolPolicy, defaultToolPolicy } from "./policy.js";
+export type { ToolPolicy } from "./policy.js";
 export const builtInTools = { calculator: calculatorTool, json: jsonTool, textLength: textLengthTool, httpGet: httpGetTool, fileRead: fileReadTool };
