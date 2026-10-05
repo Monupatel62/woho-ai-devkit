@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Added provider-neutral `MCPClient` and transport abstraction.
+- Added MCP initialization, tool discovery, tool calls, timeout handling, and runtime coverage.
+
 ## 0.6.0
 
 - Added `@woho/mcp` with provider-neutral MCP server and tool primitives.
