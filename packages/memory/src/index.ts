@@ -54,3 +54,4 @@ export class InMemoryStore implements MemoryStore {
 export function createInMemoryStore(options?: MemoryOptions): MemoryStore {
   return new InMemoryStore(options);
 }
+\nexport { createJsonFileStore, JsonFileStore, type JsonFileStoreOptions } from "./json.js";\n
