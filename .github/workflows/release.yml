@@ -13,6 +13,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -63,6 +67,7 @@ jobs:
 
       - name: Check publish status
         run: |
+          set -euo pipefail
           for p in core provider-openai agents tools memory mcp; do
             name=$(node -p "require('./packages/$p/package.json').name")
             version=$(node -p "require('./packages/$p/package.json').version")
@@ -70,7 +75,8 @@ jobs:
               echo "$name@$version already exists on npm; aborting to avoid accidental republish."
               exit 1
             fi
+            echo "Ready: $name@$version"
           done
 
       - name: Publish packages
-        run: pnpm -r --filter './packages/*' publish --access public --no-git-checks
+        run: pnpm -r --filter './packages/*' publish --access public --provenance --no-git-checks
