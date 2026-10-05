@@ -107,8 +107,10 @@ export class AgentRuntime {
       throw new Error("Agent runtime exhausted retry loop");
     } catch (error) {
       if (task.signal?.aborted) {
+        await this.store?.update(runId, { status: "cancelled", completedAt: Date.now(), updatedAt: Date.now() });
         await this.emit({ type: "run.cancelled", runId, timestamp: Date.now(), data: { agent: task.agent } });
       } else {
+        await this.store?.update(runId, { status: "failed", completedAt: Date.now(), updatedAt: Date.now(), error: error instanceof Error ? error.message : String(error) });
         await this.emit({
           type: "run.failed",
           runId,
@@ -154,6 +156,7 @@ export class AgentRuntime {
   }
 
   private async emit(event: ExecutionEvent): Promise<void> {
+    await this.store?.appendEvent(event.runId, event);
     await this.onEvent?.(event);
   }
 
