@@ -32,6 +32,20 @@ function mergeSignals(external: AbortSignal | undefined, timeoutMs: number) {
   return { signal: controller.signal, cleanup: () => { clearTimeout(timer); external?.removeEventListener("abort", onAbort); } };
 }
 
+async function nextWithSignal<T>(iterator: AsyncIterator<T>, signal: AbortSignal): Promise<IteratorResult<T>> {
+  if (signal.aborted) throw signal.reason ?? new Error("Aborted");
+  let onAbort: (() => void) | undefined;
+  const abort = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason ?? new Error("Aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([iterator.next(), abort]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 export class AIClient {
   readonly provider: AIConfig["provider"];
   private readonly timeoutMs: number;
@@ -81,13 +95,21 @@ export class AIClient {
     await this.observability?.onEvent?.({ type: "stream.start", request });
     const merged = mergeSignals(request.signal, this.timeoutMs);
     try {
-      for await (const chunk of this.provider.stream({ ...request, signal: merged.signal })) {
-        if (merged.signal.aborted) {
-          if (request.signal?.aborted) throw request.signal.reason ?? new Error("Aborted");
-          throw new TimeoutError();
+      const iterator = this.provider.stream({ ...request, signal: merged.signal })[Symbol.asyncIterator]();
+      while (true) {
+        let result: IteratorResult<AIStreamChunk>;
+        try {
+          result = await nextWithSignal(iterator, merged.signal);
+        } catch (error) {
+          if (merged.signal.aborted) {
+            if (request.signal?.aborted) throw request.signal.reason ?? new Error("Aborted");
+            throw new TimeoutError();
+          }
+          throw error;
         }
-        await this.observability?.onEvent?.({ type: "stream.chunk", chunk });
-        yield chunk;
+        if (result.done) break;
+        await this.observability?.onEvent?.({ type: "stream.chunk", chunk: result.value });
+        yield result.value;
       }
     } finally {
       await this.observability?.onEvent?.({ type: "stream.end", durationMs: Date.now() - started });
