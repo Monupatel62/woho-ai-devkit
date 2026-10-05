@@ -38,6 +38,7 @@ jobs:
       - run: pnpm test
       - run: pnpm release:check
       - run: pnpm pack:check
+      - run: pnpm consumer:check
 
       - name: Verify package metadata
         run: |
