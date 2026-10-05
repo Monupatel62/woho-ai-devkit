@@ -1,6 +1,6 @@
 {
   "name": "@woho/agents",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "Composable AI agents for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
@@ -20,6 +20,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json --noEmit"
+    "test": "pnpm typecheck && pnpm build && node --experimental-strip-types src/index.test.ts"
   }
 }
