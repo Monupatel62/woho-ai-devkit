@@ -12,6 +12,9 @@
       "import": "./dist/index.js"
     }
   },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
