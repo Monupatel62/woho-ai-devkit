@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.18
+
+- Hardened MCP client initialization against close/initialize races.
+- Validated MCP client tool/prompt names and request method inputs.
+- Updated MCP client default version metadata to 0.6.12.
+- Added runtime coverage for client-side name normalization.
+- Bumped `@woho/mcp` to 0.6.13.
+
 ## 0.8.17
 
 - Hardened MCP stdio framing with byte-bounded streaming stdout parsing instead of unbounded line buffering.
