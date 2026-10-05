@@ -30,5 +30,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm typecheck && pnpm build && node --experimental-strip-types src/observability.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
   }
 }
