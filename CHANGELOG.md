@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.7
+
+- Hardened the OpenAI-compatible provider with HTTPS base URL validation (localhost allowed for development).
+- Added configurable provider response-size limits for chat and streaming responses.
+- Added OpenAI stream reader cleanup on completion, cancellation, and response-size failure.
+- Added runtime coverage for provider URL and response-size security checks.
+- Bumped `@woho/provider-openai` to 0.2.4.
+
 ## 0.8.6
 
 - Hardened persistent JSON memory with message validation and safe per-process temporary files.
