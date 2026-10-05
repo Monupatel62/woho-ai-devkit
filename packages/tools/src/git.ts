@@ -24,12 +24,19 @@ async function safeRoot(root: string): Promise<string> {
   return real;
 }
 
+function assertGitPath(value: string): void {
+  if (!value || path.isAbsolute(value)) throw new Error("Git paths must be non-empty relative paths");
+  const normalized = value.replaceAll("\\\\", "/");
+  if (normalized.split("/").some((part) => part === "..")) throw new Error("Git parent traversal is not allowed");
+}
+
 function normalizeArgs(operation: string, input: Record<string, unknown>): string[] {
   const pathArgs = input.paths;
   if (pathArgs !== undefined && (!Array.isArray(pathArgs) || pathArgs.some((item) => typeof item !== "string"))) {
     throw new Error("paths must be an array of strings");
   }
   const paths = (pathArgs as string[] | undefined) ?? [];
+  paths.forEach(assertGitPath);
   if (operation === "status") return ["status", "--short", "--branch"];
   if (operation === "diff") return ["diff", "--", ...paths];
   if (operation === "log") return ["log", "-n", "20", "--oneline", "--decorate"];
