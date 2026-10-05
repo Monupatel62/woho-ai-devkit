@@ -1,10 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+- Added policy-gated HTTPS HTTP GET tool.
+- Added policy-gated UTF-8 file read tool.
+- Added timeout, redirect, response-size and path-containment protections.
+
 ## 0.4.0
 
 - Added reusable @woho/tools package.
 - Added safe calculator, JSON, and text-length tools.
-- Added bounded input validation and explicit safety boundaries.
 
 ## 0.3.0
 
