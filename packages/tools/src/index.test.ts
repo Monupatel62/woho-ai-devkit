@@ -16,12 +16,19 @@ const run = async () => {
   assert.deepEqual(await jsonTool().execute({ text: '{"ok":true}' }), { ok: true });
   assert.deepEqual(await textLengthTool().execute({ text: "hello" }), { length: 5 });
 
-  assert.throws(() => createToolPolicy({ timeoutMs: 0 }), /positive/);
+  assert.throws(() => createToolPolicy({ timeoutMs: 0 }), /positive integer/);
+  assert.throws(() => createToolPolicy({ timeoutMs: 1.5 }), /positive integer/);
+  assert.throws(() => createToolPolicy({ maxResponseBytes: -1 }), /positive integer/);
+  assert.throws(() => createToolPolicy({ allowedHosts: [""] }), /non-empty strings/);
+  assert.throws(() => createToolPolicy({ allowedHosts: ["Example.COM"] }).allowedHosts.includes("example.com"), /false/);
   await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
 
+  const normalizedPolicy = createToolPolicy({ allowedHosts: ["Example.COM."] });
+  assert.deepEqual(normalizedPolicy.allowedHosts, ["example.com."]);
   const policy = createToolPolicy({ allowedHosts: ["example.com"] });
   assert.equal(policy.timeoutMs, 10_000);
+  await assert.rejects(() => httpGetTool({ allowedHosts: ["example.com"], maxResponseBytes: 1 }).execute({ url: "https://example.com" }), /size limit|Response/);
 
   const root = await mkdtemp(join(tmpdir(), "woho-tools-"));
   const safeFile = join(root, "safe.txt");
