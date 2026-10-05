@@ -20,7 +20,7 @@ const run = async () => {
   assert.throws(() => createToolPolicy({ timeoutMs: 1.5 }), /positive integer/);
   assert.throws(() => createToolPolicy({ maxResponseBytes: -1 }), /positive integer/);
   assert.throws(() => createToolPolicy({ allowedHosts: [""] }), /non-empty strings/);
-  assert.throws(() => createToolPolicy({ allowedHosts: ["Example.COM"] }).allowedHosts.includes("example.com"), /false/);
+  assert.deepEqual(createToolPolicy({ allowedHosts: ["Example.COM"] }).allowedHosts, ["example.com"]);
   await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
 
