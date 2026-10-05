@@ -36,6 +36,17 @@ function assertRelative(input: string): void {
   if (normalized.split("/").some((part) => part === "..")) throw new Error("Parent traversal is not allowed");
 }
 
+async function rejectSymlink(root: string, relative: string): Promise<void> {
+  assertRelative(relative);
+  const target = path.resolve(root, relative);
+  try {
+    const stat = await fs.lstat(target);
+    if (stat.isSymbolicLink()) throw new Error("Symbolic links are not allowed for this operation");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+}
+
 async function safeExisting(root: string, relative: string): Promise<string> {
   assertRelative(relative);
   const target = path.resolve(root, relative);
@@ -143,6 +154,7 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
       if (operation === "mkdir") {
         if (!canWrite) throw new Error("Workspace write is disabled by policy");
         const { target } = await safeParent(root, relative as string);
+        await rejectSymlink(root, relative as string);
         await fs.mkdir(target, { recursive: true, mode: 0o700 });
         await safeExisting(root, relative as string);
         return { path: relative, created: true };
@@ -150,6 +162,7 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
 
       if (operation === "delete") {
         if (!canDelete) throw new Error("Workspace delete is disabled by policy");
+        await rejectSymlink(root, relative as string);
         const target = await safeExisting(root, relative as string);
         if (target === root) throw new Error("Workspace root cannot be deleted");
         const recursive = value.recursive === true;
@@ -162,6 +175,8 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
       if (operation === "move") {
         if (!canMove) throw new Error("Workspace move is disabled by policy");
         if (typeof value.destination !== "string") throw new Error("destination is required");
+        await rejectSymlink(root, relative as string);
+        await rejectSymlink(root, value.destination);
         const source = await safeExisting(root, relative as string);
         const { target: destination, parent } = await safeParent(root, value.destination);
         await fs.mkdir(parent, { recursive: true });
