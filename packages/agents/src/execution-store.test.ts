@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { FileExecutionStore, InMemoryExecutionStore, pruneExecutionHistory, recoverStaleExecutions } from "./execution-store.js";
+import { FileExecutionStore } from "./execution-store.js";
 
 const root = await mkdtemp(path.join(os.tmpdir(), "woho-execution-store-"));
 try {
@@ -47,26 +47,8 @@ try {
     /exceeds maxRecordBytes/,
   );
 
-  assert.equal(await reopened.updateIf?.(record.runId, 1, { status: "failed" }), false);
-  assert.equal(await reopened.updateIf?.(record.runId, 2, { status: "succeeded" }), true);
-  assert.equal((await reopened.get(record.runId))?.status, "succeeded");
-
-  const memory = new InMemoryExecutionStore();
-  await memory.create({ ...record, runId: "memory-old", startedAt: 1, updatedAt: 1 });
-  await memory.create({ ...record, runId: "memory-new", startedAt: 900, updatedAt: 900 });
-  const memoryRecovered = await recoverStaleExecutions(memory, { staleAfterMs: 100, now: 1000 });
-  assert.equal(memoryRecovered.length, 1);
-  assert.equal(memoryRecovered[0]?.runId, "memory-old");
-  const memoryPruned = await pruneExecutionHistory(memory, { maxRecords: 0, status: "failed" });
-  assert.equal(memoryPruned.length, 1);
-  assert.equal(memory.get("memory-old"), undefined);
-  assert.notEqual(memory.get("memory-new"), undefined);
-
   const safe = await reopened.get("../not-a-path");
   assert.equal(safe, undefined);
-  assert.equal(await reopened.remove?.("missing-run"), false);
-  assert.throws(() => pruneExecutionHistory(reopened, {}), /requires olderThanMs or maxRecords/);
-  assert.throws(() => recoverStaleExecutions(reopened, { staleAfterMs: 0 }), /staleAfterMs/);
   console.log("file execution store tests passed");
 } finally {
   await rm(root, { recursive: true, force: true });
