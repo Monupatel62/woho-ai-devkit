@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.2
+
+- Added formal ToolPolicy and policy normalization.
+- Added runtime security-boundary assertions for tools.
+- Exported policy helpers for application-level composition.
+
 ## 0.4.1
 
 - Added policy-gated HTTPS HTTP GET tool.
