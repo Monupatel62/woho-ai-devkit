@@ -32,7 +32,7 @@ export class MCPServer {
     for (const prompt of options.prompts ?? []) this.registerPrompt(prompt);
   }
   registerTool(tool: MCPTool): void {
-    if (!tool.definition.name.trim()) throw new Error("MCP tool name is required");
+    if (!tool.definition.name.trim()) throw new Error("MCP tool name is required");\n    if (tool.definition.name !== tool.definition.name.trim()) throw new Error("MCP tool name cannot have surrounding whitespace");
     if (this.tools.has(tool.definition.name)) throw new Error("Duplicate MCP tool: " + tool.definition.name);
     this.tools.set(tool.definition.name, tool);
   }
@@ -49,7 +49,7 @@ export class MCPServer {
     return resource.read();
   }
   registerPrompt(prompt: MCPPrompt): void {
-    if (!prompt.definition.name.trim()) throw new Error("MCP prompt name is required");
+    if (!prompt.definition.name.trim()) throw new Error("MCP prompt name is required");\n    if (prompt.definition.name !== prompt.definition.name.trim()) throw new Error("MCP prompt name cannot have surrounding whitespace");
     if (this.prompts.has(prompt.definition.name)) throw new Error("Duplicate MCP prompt: " + prompt.definition.name);
     this.prompts.set(prompt.definition.name, prompt);
   }
@@ -82,8 +82,8 @@ export class MCPClient {
     this.transport = options.transport;
     this.timeoutMs = options.timeoutMs ?? 30000;
     this.clientName = options.clientName ?? "woho-ai-devkit";
-    this.clientVersion = options.clientVersion ?? "0.6.8";
-    this.protocolVersion = options.protocolVersion ?? "2025-06-18";
+    this.clientVersion = options.clientVersion ?? "0.6.11";
+    this.protocolVersion = options.protocolVersion ?? "2025-06-18";\n    if (!this.clientName.trim()) throw new Error("clientName is required");\n    if (!this.clientVersion.trim()) throw new Error("clientVersion is required");\n    if (!this.protocolVersion.trim()) throw new Error("protocolVersion is required");
     this.maxResponseBytes = options.security?.maxResponseBytes ?? 4 * 1024 * 1024;
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
     if (options.security?.allowedMethods) {
