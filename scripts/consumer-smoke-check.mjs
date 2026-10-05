@@ -42,7 +42,7 @@ try {
   // Install and execute the packages without internal workspace dependencies first.
   const independent = ["@woho/core", "@woho/memory"];
   run("pnpm", ["init"], temp);
-  run("pnpm", ["add", "--no-frozen-lockfile", "--config.auto-install-peers=false", ...independent.map((name) => tarballs.get(name))], temp);
+  run("pnpm", ["add", "--config.auto-install-peers=false", ...independent.map((name) => tarballs.get(name))], temp);
 
   const smoke = spawnSync(process.execPath, ["--input-type=module", "-e",
     'const pkgs=["@woho/core","@woho/memory"]; for (const p of pkgs) { const m=await import(p); if (!m) throw new Error("empty module: "+p); } console.log("consumer smoke check passed: "+pkgs.length+" independently installable packages");'
