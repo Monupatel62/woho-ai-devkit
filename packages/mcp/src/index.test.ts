@@ -65,6 +65,12 @@ const run = async () => {
   assert.equal(result.isError, false);
   assert.equal((result.content as Array<{ type: string }>)[0].type, "text");
 
+  const toolRestricted = createMCPClient({ transport, security: { allowedToolNames: ["missing"] } });
+  await assert.rejects(() => toolRestricted.callTool("echo", {}), /not allowed/);
+  await toolRestricted.close();
+  const schemeRestricted = createMCPClient({ transport, security: { allowedResourceSchemes: ["https"] } });
+  await assert.rejects(() => schemeRestricted.readResource("memory://hello"), /scheme is not allowed/);
+  await schemeRestricted.close();
   const restricted = createMCPClient({ transport, security: { allowedMethods: ["initialize"] } });
   await assert.rejects(() => restricted.listTools(), /not allowed/);
   await restricted.close();
