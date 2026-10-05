@@ -1,6 +1,7 @@
 import type { AgentTool } from "@woho/agents";
 import { assertAllowedHost, createToolPolicy, type ToolPolicy } from "./policy.js";
 export { createSearchProvider, searchTool, type SearchProvider, type SearchResult, type SearchToolPolicy } from "./search.js";
+export { createBraveSearchProvider, createTavilySearchProvider, type SearchProviderOptions } from "./search-providers.js";
 
 export type ToolSecurityPolicy = Partial<ToolPolicy>;
 
