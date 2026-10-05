@@ -136,6 +136,6 @@ const run = async () => {
       { id: "b", agent: "general", input: "b", dependsOn: ["a"] },
     ],
   }), /cycle or unknown dependency/);
-  console.log("agent runtime tests passed");
+  assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);\n  console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
