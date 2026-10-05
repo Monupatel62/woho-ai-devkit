@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.30
+
+- Added a policy-bounded workspace tool for secure project file inspection and mutation.
+- Added a constrained Git tool with read operations, opt-in write operations, cancellation, output limits, and path validation.
+- Added regression coverage for workspace traversal and Git repository operations.
+- Bumped all six public packages for the coordinated release.
+
+
 ## 0.8.29
 
 - Hardened capability-bearing agent tools to require an explicit permission policy.
