@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+- Added `createMCPAgentTools` to expose MCP server tools as agent tools.
+- Added MCP tool failure propagation through the agent tool interface.
+
 ## 0.6.1
 
 - Added provider-neutral `MCPClient` and transport abstraction.
