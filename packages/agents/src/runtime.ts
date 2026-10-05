@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { AIClient, ExecutionContext, ExecutionEvent } from "@woho/core";
-import { Agent, type AgentApprovalHandler, type AgentOptions, type AgentRunResult } from "./index.js";
+import { AIError, type AIClient, type ExecutionContext, type ExecutionEvent } from "@woho/core";
+import { Agent, type AgentApprovalHandler, type AgentRunResult } from "./index.js";
 import { AgentRegistry, type AgentDefinition } from "./definition.js";
 import type { ExecutionStore } from "./execution-store.js";
 
@@ -96,7 +96,7 @@ export class AgentRuntime {
           if (verification) {
             const verdict = await verification(result, task);
             if (verdict !== true) {
-              throw new Error(typeof verdict === "string" ? verdict : "Agent result verification failed");
+              throw new AIError(typeof verdict === "string" ? verdict : "Agent result verification failed", "VERIFICATION_FAILED");
             }
           }
           await this.store?.update(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt: Date.now(), updatedAt: Date.now() });
@@ -185,11 +185,27 @@ export class AgentRuntime {
     }
     await new Promise<void>((resolve, reject) => {
       const waiter = { resolve, reject, signal };
+      let settled = false;
+      const cleanup = () => signal?.removeEventListener("abort", onAbort);
+      const grant = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
       const onAbort = () => {
         const index = this.waiters.indexOf(waiter);
         if (index >= 0) this.waiters.splice(index, 1);
-        reject(signal?.reason ?? new Error("Aborted"));
+        fail(signal?.reason ?? new Error("Aborted"));
       };
+      waiter.resolve = grant;
+      waiter.reject = fail;
       if (signal) signal.addEventListener("abort", onAbort, { once: true });
       this.waiters.push(waiter);
     });
