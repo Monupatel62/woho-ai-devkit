@@ -1,6 +1,6 @@
 {
   "name": "@woho/agents",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Composable AI agents for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@woho/core": "workspace:*",
-    "@woho/memory": "workspace:*"
+    "@woho/memory": "workspace:*",
+    "@woho/mcp": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
