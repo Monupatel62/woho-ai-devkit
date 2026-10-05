@@ -59,6 +59,12 @@ const run = async () => {
   const badRoleStore = createJsonFileStore({ filePath: join(dir, "bad-role.json") });
   await assert.rejects(() => badRoleStore.list(), /invalid message/);
   await assert.rejects(() => invalidStore.list(), /invalid message/);
+  await import("node:fs/promises").then(({ writeFile }) => writeFile(join(dir, "queue.json"), JSON.stringify([{ id: "", role: "user", content: "bad" }])));
+  const queueStore = createJsonFileStore({ filePath: join(dir, "queue.json") });
+  await assert.rejects(() => queueStore.add({ id: "ok", role: "user", content: "ok" }), /invalid message/);
+  await import("node:fs/promises").then(({ writeFile }) => writeFile(join(dir, "queue.json"), "[]"));
+  await queueStore.add({ id: "ok2", role: "user", content: "ok2" });
+  assert.deepEqual((await queueStore.list()).map((m) => m.id), ["ok2"]);
 
   const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
   assert.equal(summary.role, "system");
