@@ -63,7 +63,7 @@ async function safeParent(root: string, relative: string): Promise<{ target: str
     try {
       const realParent = await fs.realpath(parent);
       if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
-      return { target, parent: realParent };
+      return { target, parent };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       const next = path.dirname(parent);
