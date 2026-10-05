@@ -1,6 +1,6 @@
 {
   "name": "@woho/memory",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "Memory abstractions and bounded in-memory storage for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
