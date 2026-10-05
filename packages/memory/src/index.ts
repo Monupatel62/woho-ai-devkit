@@ -105,3 +105,5 @@ export function createInMemoryStore(options?: MemoryOptions): MemoryStore {
 export { createJsonFileStore, JsonFileStore, type JsonFileStoreOptions } from "./json.js";
 export { Conversation, createConversation, type ConversationOptions, type MemorySearchOptions } from "./conversation.js";
 export { searchMemory, type MemorySearchResult } from "./search.js";
+
+export { searchMemorySemantic, type MemoryEmbedder, type SemanticMemoryResult } from "./vector.js";
