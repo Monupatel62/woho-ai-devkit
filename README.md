@@ -17,7 +17,7 @@ Open-source AI developer toolkit for TypeScript and JavaScript.
 pnpm install
 ```
 
-During development, workspace packages are available directly. Published package installation will be documented with the first npm release.
+During development, workspace packages are available directly. Published packages are installed individually, for example: `pnpm add @woho/core @woho/provider-openai`.
 
 ## Quick start
 
