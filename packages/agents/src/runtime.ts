@@ -79,6 +79,7 @@ export class AgentRuntime {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
         try {
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
+          await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
           const result = await agent.run(task.input, { signal: context.signal });
           await this.emit({
