@@ -9,7 +9,43 @@ export interface MCPTool {
   execute(input: unknown): Promise<unknown>;
 }
 
-export interface MCPServerInfo {
+
+export interface MCPResourceDefinition {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface MCPResourceContent {
+  uri: string;
+  mimeType?: string;
+  text?: string;
+  blob?: string;
+}
+
+export interface MCPResource {
+  definition: MCPResourceDefinition;
+  read(): Promise<MCPResourceContent[]>;
+}
+
+export interface MCPPromptArgument {
+  name: string;
+  description?: string;
+  required?: boolean;
+}
+
+export interface MCPPromptDefinition {
+  name: string;
+  description?: string;
+  arguments?: MCPPromptArgument[];
+}
+
+export interface MCPPrompt {
+  definition: MCPPromptDefinition;
+  get(arguments?: Record<string, string>): Promise<unknown>;
+}
+\nexport interface MCPServerInfo {
   name: string;
   version: string;
 }
@@ -17,7 +53,7 @@ export interface MCPServerInfo {
 export interface MCPServerOptions {
   name: string;
   version: string;
-  tools?: MCPTool[];
+  tools?: MCPTool[];\n  resources?: MCPResource[];\n  prompts?: MCPPrompt[];
 }
 
 export interface MCPTransport {
@@ -48,13 +84,13 @@ export class MCPError extends Error {
 
 export class MCPServer {
   readonly info: MCPServerInfo;
-  private readonly tools = new Map<string, MCPTool>();
+  private readonly tools = new Map<string, MCPTool>();\n  private readonly resources = new Map<string, MCPResource>();\n  private readonly prompts = new Map<string, MCPPrompt>();
 
   constructor(options: MCPServerOptions) {
     if (!options.name.trim()) throw new Error("MCP server name is required");
     if (!options.version.trim()) throw new Error("MCP server version is required");
     this.info = { name: options.name, version: options.version };
-    for (const tool of options.tools ?? []) this.registerTool(tool);
+    for (const tool of options.tools ?? []) this.registerTool(tool);\n    for (const resource of options.resources ?? []) this.registerResource(resource);\n    for (const prompt of options.prompts ?? []) this.registerPrompt(prompt);
   }
 
   registerTool(tool: MCPTool): void {
@@ -67,7 +103,7 @@ export class MCPServer {
     return [...this.tools.values()].map((tool) => ({ ...tool.definition }));
   }
 
-  async callTool(name: string, input: unknown): Promise<unknown> {
+  registerResource(resource: MCPResource): void {\n    if (!resource.definition.uri.trim()) throw new Error("MCP resource URI is required");\n    if (this.resources.has(resource.definition.uri)) throw new Error("Duplicate MCP resource: " + resource.definition.uri);\n    this.resources.set(resource.definition.uri, resource);\n  }\n\n  listResources(): MCPResourceDefinition[] {\n    return [...this.resources.values()].map((resource) => ({ ...resource.definition }));\n  }\n\n  async readResource(uri: string): Promise<MCPResourceContent[]> {\n    const resource = this.resources.get(uri);\n    if (!resource) throw new Error("Unknown MCP resource: " + uri);\n    return resource.read();\n  }\n\n  registerPrompt(prompt: MCPPrompt): void {\n    if (!prompt.definition.name.trim()) throw new Error("MCP prompt name is required");\n    if (this.prompts.has(prompt.definition.name)) throw new Error("Duplicate MCP prompt: " + prompt.definition.name);\n    this.prompts.set(prompt.definition.name, prompt);\n  }\n\n  listPrompts(): MCPPromptDefinition[] {\n    return [...this.prompts.values()].map((prompt) => ({ ...prompt.definition }));\n  }\n\n  async getPrompt(name: string, arguments?: Record<string, string>): Promise<unknown> {\n    const prompt = this.prompts.get(name);\n    if (!prompt) throw new Error("Unknown MCP prompt: " + name);\n    return prompt.get(arguments);\n  }\n\n  async callTool(name: string, input: unknown): Promise<unknown> {
     const tool = this.tools.get(name);
     if (!tool) throw new Error("Unknown MCP tool: " + name);
     return tool.execute(input);
@@ -105,7 +141,7 @@ export class MCPClient {
     return result;
   }
 
-  async listTools(): Promise<MCPToolDefinition[]> {
+  async listResources(): Promise<MCPResourceDefinition[]> {\n    await this.initialize();\n    const result = await this.request("resources/list");\n    const value = result as { resources?: MCPResourceDefinition[] };\n    return Array.isArray(value?.resources) ? value.resources : [];\n  }\n\n  async readResource(uri: string): Promise<MCPResourceContent[]> {\n    await this.initialize();\n    const result = await this.request("resources/read", { uri });\n    const value = result as { contents?: MCPResourceContent[] };\n    return Array.isArray(value?.contents) ? value.contents : [];\n  }\n\n  async listPrompts(): Promise<MCPPromptDefinition[]> {\n    await this.initialize();\n    const result = await this.request("prompts/list");\n    const value = result as { prompts?: MCPPromptDefinition[] };\n    return Array.isArray(value?.prompts) ? value.prompts : [];\n  }\n\n  async getPrompt(name: string, arguments?: Record<string, string>): Promise<unknown> {\n    if (!name.trim()) throw new Error("prompt name is required");\n    await this.initialize();\n    return this.request("prompts/get", { name, ...(arguments ? { arguments } : {}) });\n  }\n\n  async listTools(): Promise<MCPToolDefinition[]> {
     await this.initialize();
     const result = await this.request("tools/list");
     const value = result as { tools?: MCPToolDefinition[] };
