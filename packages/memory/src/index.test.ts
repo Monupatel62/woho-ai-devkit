@@ -16,6 +16,7 @@ const run = async () => {
   assert.equal((await store.list()).length, 0);
   assert.throws(() => createInMemoryStore({ maxMessages: 0 }), /positive integer/);
   await assert.rejects(() => store.add({ id: "bad-role", role: "invalid" as never, content: "x" }), /role is invalid/);
+  await assert.rejects(() => store.add(null as never), /message is required/);
   await assert.rejects(() => store.add({ id: "bad-time", role: "user", content: "x", timestamp: Number.NaN }), /timestamp must be finite/);
   await assert.rejects(() => store.list({ before: Number.NaN }), /finite number/);
   await assert.rejects(() => store.list({ sessionId: " " }), /sessionId cannot be empty/);
@@ -37,6 +38,8 @@ const run = async () => {
   const dir = await mkdtemp(join(tmpdir(), "woho-memory-"));
   const fileStore = createJsonFileStore({ filePath: join(dir, "memory.json"), maxMessages: 10, maxFileBytes: 1024 });
   assert.throws(() => createJsonFileStore({ filePath: join(dir, "x.json"), maxFileBytes: 0 }), /positive integer/);
+  const boundedStore = createJsonFileStore({ filePath: join(dir, "bounded.json"), maxFileBytes: 40 });
+  await assert.rejects(() => boundedStore.add({ id: "large", role: "user", content: "x".repeat(100) }), /exceeds maxFileBytes/);
   const persistentA = createConversation({ sessionId: "a", store: fileStore });
   const persistentB = createConversation({ sessionId: "b", store: fileStore });
   await persistentA.add({ id: "pa", role: "user", content: "private a" });
