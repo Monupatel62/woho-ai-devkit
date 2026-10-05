@@ -8,6 +8,27 @@ export { createBraveSearchProvider, createTavilySearchProvider, type SearchProvi
 
 export type ToolSecurityPolicy = Partial<ToolPolicy>;
 
+async function readResponseTextWithLimit(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) throw new Error("Response body is unavailable");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) throw new Error("Response exceeds size limit");
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 function requireObject(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
   return input as Record<string, unknown>;
@@ -77,8 +98,7 @@ export function httpGetTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
         const response = await fetch(url, { signal: controller.signal, redirect: "error", headers: { accept: "text/plain, application/json, text/*;q=0.9" } });
         const contentLength = Number(response.headers.get("content-length") ?? 0);
         if (contentLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
-        const text = await response.text();
-        if (new TextEncoder().encode(text).byteLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
+        const text = await readResponseTextWithLimit(response, policy.maxResponseBytes);
         return { status: response.status, contentType: response.headers.get("content-type"), text };
       } finally { clearTimeout(timer); }
     },
