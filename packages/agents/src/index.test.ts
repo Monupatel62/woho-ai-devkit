@@ -184,6 +184,28 @@ const run = async () => {
   const record = executionStore.get(stored.runId);
   assert.equal(record?.status, "succeeded");
   assert.ok((record?.events.length ?? 0) >= 2);
+
+  const recoverStore = new InMemoryExecutionStore();
+  await recoverStore.create({
+    runId: "stale-runtime-run",
+    agent: "general",
+    metadata: {},
+    status: "running",
+    startedAt: 100,
+    updatedAt: 100,
+    attempts: 1,
+    events: [],
+  });
+  const maintenanceRuntime = new AgentRuntime({ store: recoverStore }, registry);
+  const recoveredRuns = await maintenanceRuntime.recoverStale({ staleAfterMs: 50, now: 200 });
+  assert.equal(recoveredRuns.length, 1);
+  assert.equal(recoveredRuns[0]?.status, "failed");
+  assert.equal((recoverStore.get("stale-runtime-run")?.events.length ?? 0), 1);
+  const prunedRuns = await maintenanceRuntime.pruneHistory({ maxRecords: 0, status: "failed" });
+  assert.equal(prunedRuns.length, 1);
+  assert.equal(recoverStore.get("stale-runtime-run"), undefined);
+  await assert.rejects(() => new AgentRuntime().recoverStale({ staleAfterMs: 50 }), /Execution store is required/);
+  await assert.rejects(() => new AgentRuntime().pruneHistory({ maxRecords: 0 }), /Execution store is required/);
   const contextualPlan = await runAgentPlan(runtime, createAI({ provider: createMockProvider({ response: "context-ok" }) }), { steps: [
     { id: "first", agent: "general", input: "first" },
     { id: "second", agent: "general", input: ({ completed }) => "second after " + completed.first?.text, dependsOn: ["first"] },
