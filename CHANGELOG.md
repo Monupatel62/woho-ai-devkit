@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.0
+
+- Started Stage 7 production SDK hardening.
+- Added bounded AI input validation and validated core client configuration.
+
 ## 0.6.6
 
 - Added Stage 6 MCP integration documentation and security guidance.
