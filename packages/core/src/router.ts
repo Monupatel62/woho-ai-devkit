@@ -42,7 +42,7 @@ export class ModelRouter implements AIProvider {
       } catch (error) {
         lastError = error;
         if (!this.fallbackOnError || request.signal?.aborted) throw error;
-        if (error instanceof AIError && !error.retryable) throw error;
+        if (!(error instanceof AIError) || !error.retryable) throw error;
       }
     }
     throw lastError ?? new AIError("No model route available", "NO_PROVIDER");
@@ -53,10 +53,15 @@ export class ModelRouter implements AIProvider {
     let lastError: unknown;
     for (const route of routes) {
       if (!route.provider.stream) continue;
+      let emitted = false;
       try {
-        yield* route.provider.stream(request);
+        for await (const chunk of route.provider.stream(request)) {
+          emitted = true;
+          yield chunk;
+        }
         return;
       } catch (error) {
+        if (emitted) throw error;
         lastError = error;
         if (!this.fallbackOnError || request.signal?.aborted) throw error;
         if (error instanceof AIError && !error.retryable) throw error;
