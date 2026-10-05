@@ -59,3 +59,34 @@ const timedOut = createAI({
 await assert.rejects(timedOut.chat({ messages: [{ role: "user", content: "slow" }] }), (error) => error instanceof TimeoutError);
 
 console.log("core runtime tests passed");
+
+
+const stalled = createAI({
+  timeoutMs: 5,
+  retries: 0,
+  provider: {
+    name: "stalled-stream",
+    async chat() { return { id: "x", text: "", model: "stalled-stream" }; },
+    async *stream() { await new Promise((resolve) => setTimeout(resolve, 30)); yield { text: "late" }; },
+  },
+});
+const stalledIterator = stalled.stream({ messages: [{ role: "user", content: "stall" }] })[Symbol.asyncIterator]();
+await assert.rejects(() => stalledIterator.next(), (error) => error instanceof TimeoutError);
+await stalledIterator.return?.();
+
+const abortController = new AbortController();
+const aborting = createAI({
+  timeoutMs: 1000,
+  provider: {
+    name: "abort-stream",
+    async chat() { return { id: "x", text: "", model: "abort-stream" }; },
+    async *stream() { await new Promise((resolve) => setTimeout(resolve, 30)); yield { text: "late" }; },
+  },
+});
+const abortIterator = aborting.stream({ messages: [{ role: "user", content: "abort" }], signal: abortController.signal })[Symbol.asyncIterator]();
+const pending = abortIterator.next();
+abortController.abort(new Error("user aborted"));
+await assert.rejects(() => pending, /user aborted/);
+await abortIterator.return?.();
+
+console.log("core streaming timeout tests passed");
