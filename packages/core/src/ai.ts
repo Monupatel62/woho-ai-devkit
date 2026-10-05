@@ -33,6 +33,20 @@ function mergeSignals(external: AbortSignal | undefined, timeoutMs: number) {
   return { signal: controller.signal, cleanup: () => { clearTimeout(timer); external?.removeEventListener("abort", onAbort); } };
 }
 
+async function awaitWithSignal<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) throw signal.reason ?? new Error("Aborted");
+  let onAbort: (() => void) | undefined;
+  const abort = new Promise<never>((_, reject) => {
+    onAbort = () => reject(signal.reason ?? new Error("Aborted"));
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([operation, abort]);
+  } finally {
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
+
 async function nextWithSignal<T>(iterator: AsyncIterator<T>, signal: AbortSignal): Promise<IteratorResult<T>> {
   if (signal.aborted) throw signal.reason ?? new Error("Aborted");
   let onAbort: (() => void) | undefined;
@@ -74,7 +88,7 @@ export class AIClient {
       const merged = mergeSignals(request.signal, this.timeoutMs);
       try {
         if (merged.signal.aborted) throw merged.signal.reason ?? new Error("Aborted");
-        const response = await this.provider.chat({ ...request, signal: merged.signal });
+        const response = await awaitWithSignal(this.provider.chat({ ...request, signal: merged.signal }), merged.signal);
         await this.observability?.onEvent?.({ type: "request.success", response, attempt, durationMs: Date.now() - started });
         return response;
       } catch (error) {
