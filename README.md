@@ -78,6 +78,12 @@ pnpm test
 
 Core, agents, tools, memory and MCP foundations are implemented. The project is continuing through final production hardening before the first public npm release. npm package metadata and tarball boundaries are now prepared for release validation.
 
+## Release
+
+Public npm releases are guarded by GitHub Actions. The release workflow first runs typecheck, build, tests and package metadata validation. Publishing is manual and requires the workflow's `publish` input to be enabled in the configured `npm` environment.
+
+The workspace root is intentionally private; the six `@woho/*` packages are the publishable packages.
+
 ## License
 
 Apache-2.0
