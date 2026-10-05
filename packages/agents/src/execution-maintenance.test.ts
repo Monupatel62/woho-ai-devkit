@@ -44,12 +44,13 @@ const run = async () => {
   assert.equal(oldRemoved[0]?.runId, "done");
   assert.equal(store.get("done"), undefined);
 
-  await store.create(makeRecord("failed-a", "failed", 200));
-  await store.create(makeRecord("failed-b", "failed", 300));
-  const countRemoved = await pruneExecutionHistory(store, { maxRecords: 1, status: "failed" });
+  const countStore = new InMemoryExecutionStore();
+  await countStore.create(makeRecord("failed-a", "failed", 200));
+  await countStore.create(makeRecord("failed-b", "failed", 300));
+  const countRemoved = await pruneExecutionHistory(countStore, { maxRecords: 1, status: "failed" });
   assert.equal(countRemoved.length, 1);
   assert.equal(countRemoved[0]?.runId, "failed-a");
-  assert.notEqual(store.get("failed-b"), undefined);
+  assert.notEqual(countStore.get("failed-b"), undefined);
 
   const noDeleteStore: ExecutionStore = {
     create: async () => undefined,
