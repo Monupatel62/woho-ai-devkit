@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.19
+
+- Completed a cross-package runtime hardening audit across provider, agents, tools, and memory.
+- Bounded OpenAI-compatible streaming error responses using the provider response limit.
+- Fixed source newline artifacts in provider and agent runtime code.
+- Hardened JSON memory write queues so one failed persistence operation does not permanently poison later writes.
+- Corrected allowed-host normalization for trailing dots and expanded regression coverage.
+- Bumped `@woho/provider-openai` to 0.2.7, `@woho/agents` to 0.3.13, `@woho/tools` to 0.4.10, and `@woho/memory` to 0.6.3.
+
 ## 0.8.18
 
 - Hardened MCP client initialization against close/initialize races.
