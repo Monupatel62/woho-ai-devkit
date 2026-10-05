@@ -95,7 +95,7 @@ const run = async () => {
   assert.equal(largeResult.text, "done");
   assert.ok((largeResult.messages.at(-2)?.content ?? "").includes("[tool result truncated]"));
 
-  const permissioned = createAgent(createAI({ provider: createMockProvider({ response: "permission-ok" }) }), {
+  const permissioned = createAgent(createAI({ provider: createMockProvider({ response: "permission-ok", toolCall: { name: "secure", arguments: "{}" } }) }), {
     name: "permissioned",
     permissions: { check: () => ({ allowed: false, reason: "needs approval", requiresApproval: true }) },
     tools: [{ name: "secure", description: "secure", capability: "computer", action: "execute", execute: async () => "secret" }],
