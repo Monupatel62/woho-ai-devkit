@@ -22,7 +22,8 @@ function cleanList(values: string[], name: string, normalizeHost = false): strin
   if (!Array.isArray(values)) throw new Error(name + " must be an array");
   return values.map((value) => {
     if (typeof value !== "string" || !value.trim()) throw new Error(name + " entries must be non-empty strings");
-    const cleaned = value.trim();\n    return normalizeHost ? cleaned.toLowerCase().replace(/\\.+$/, "") : cleaned;
+    const cleaned = value.trim();
+    return normalizeHost ? cleaned.toLowerCase().replace(/\\.+$/, "") : cleaned;
   });
 }
 
