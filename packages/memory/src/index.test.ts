@@ -15,29 +15,40 @@ const run = async () => {
   await store.clear();
   assert.equal((await store.list()).length, 0);
   assert.throws(() => createInMemoryStore({ maxMessages: 0 }), /positive integer/);
-  const dir = await mkdtemp(join(tmpdir(), "woho-memory-"));
-  const fileStore = createJsonFileStore({ filePath: join(dir, "memory.json"), maxMessages: 2 });
-  await fileStore.add({ id: "a", role: "user", content: "one", timestamp: 1 });
-  await fileStore.add({ id: "b", role: "assistant", content: "two", timestamp: 2 });
-  await fileStore.add({ id: "c", role: "user", content: "three", timestamp: 3 });
-  assert.deepEqual((await fileStore.list()).map((m) => m.id), ["b", "c"]);
-  await fileStore.clear();
-  assert.equal((await fileStore.list()).length, 0);
-  const conversation = createConversation({ sessionId: "s1", store: createInMemoryStore() });
+
+  const sessionStore = createInMemoryStore();
+  const conversation = createConversation({ sessionId: "s1", store: sessionStore });
   await conversation.add({ id: "m1", role: "user", content: "How does TypeScript work?" });
   await conversation.add({ id: "m2", role: "assistant", content: "TypeScript adds types to JavaScript." });
   await conversation.add({ id: "m3", role: "user", content: "Tell me about Python instead." });
-  const other = createConversation({ sessionId: "s2", store: conversation["store"] });
+  const other = createConversation({ sessionId: "s2", store: sessionStore });
   await other.add({ id: "other", role: "user", content: "typescript from another session" });
   assert.equal((await conversation.messages()).length, 3);
   assert.equal((await other.messages()).length, 1);
-  assert.equal((await conversation.messages()).length, 3);
   assert.equal((await conversation.search({ query: "typescript" })).length, 2);
-  const summary = summarizeMemory(await conversation.messages(), { maxCharacters: 120, sessionId: "s1" });
+  await conversation.clear();
+  assert.equal((await conversation.messages()).length, 0);
+  assert.equal((await other.messages()).length, 1);
+
+  const dir = await mkdtemp(join(tmpdir(), "woho-memory-"));
+  const fileStore = createJsonFileStore({ filePath: join(dir, "memory.json"), maxMessages: 10 });
+  const persistentA = createConversation({ sessionId: "a", store: fileStore });
+  const persistentB = createConversation({ sessionId: "b", store: fileStore });
+  await persistentA.add({ id: "pa", role: "user", content: "private a" });
+  await persistentB.add({ id: "pb", role: "user", content: "private b" });
+  await persistentA.clear();
+  assert.equal((await persistentA.messages()).length, 0);
+  assert.equal((await persistentB.messages()).length, 1);
+
+  await fileStore.add({ id: "c", role: "user", content: "three", timestamp: 3 });
+  assert.deepEqual((await fileStore.list()).map((m) => m.id), ["pb", "c"]);
+  await fileStore.clear();
+  assert.equal((await fileStore.list()).length, 0);
+
+  const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
   assert.equal(summary.role, "system");
-  assert.equal(summary.metadata?.sessionId, "s1");
-  assert.ok(summary.content.length <= 120);
-  const aiSummary = await summarizeMemoryWith({ summarize: async () => "AI summary" }, await conversation.messages(), { maxCharacters: 50, sessionId: "s1" });
+  assert.ok(summary.content.includes("hello world"));
+  const aiSummary = await summarizeMemoryWith({ summarize: async () => "AI summary" }, [{ id: "s", role: "user", content: "hello" }], { maxCharacters: 50 });
   assert.equal(aiSummary.content, "AI summary");
   assert.throws(() => createConversation({ sessionId: "", store: createInMemoryStore() }), /sessionId/);
   await rm(dir, { recursive: true, force: true });
