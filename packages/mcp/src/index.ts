@@ -115,7 +115,7 @@ export class MCPClient {
   private readonly timeoutMs: number;
   private readonly clientName: string;
   private readonly clientVersion: string;
-  private readonly protocolVersion: string;
+  private readonly protocolVersion: string;\n  private readonly maxResponseBytes: number;\n  private readonly allowedMethods?: Set<string>;
   private initialized = false;
 
   constructor(options: MCPClientOptions) {
@@ -126,7 +126,7 @@ export class MCPClient {
     this.timeoutMs = options.timeoutMs ?? 30000;
     this.clientName = options.clientName ?? "woho-ai-devkit";
     this.clientVersion = options.clientVersion ?? "0.6.0";
-    this.protocolVersion = options.protocolVersion ?? "2025-06-18";
+    this.protocolVersion = options.protocolVersion ?? "2025-06-18";\n    this.maxResponseBytes = options.security?.maxResponseBytes ?? 4 * 1024 * 1024;\n    if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");\n    this.allowedMethods = options.security?.allowedMethods ? new Set(options.security.allowedMethods) : undefined;
   }
 
   async initialize(): Promise<unknown> {
@@ -159,11 +159,11 @@ export class MCPClient {
     await this.transport.close?.();
   }
 
-  private async request(method: string, params?: unknown): Promise<unknown> {
+  private async request(method: string, params?: unknown): Promise<unknown> {\n    if (this.allowedMethods && !this.allowedMethods.has(method)) throw new MCPError("MCP method is not allowed: " + method, method);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      return await this.transport.request(method, params, controller.signal);
+      const result = await this.transport.request(method, params, controller.signal);\n      let bytes = 0;\n      try { bytes = Buffer.byteLength(JSON.stringify(result) ?? "", "utf8"); } catch { throw new MCPError("MCP response is not serializable", method); }\n      if (bytes > this.maxResponseBytes) throw new MCPError("MCP response exceeds maxResponseBytes", method);\n      return result;
     } catch (error) {
       if (controller.signal.aborted) throw new MCPError("MCP request timed out: " + method, method);
       if (error instanceof MCPError) throw error;
