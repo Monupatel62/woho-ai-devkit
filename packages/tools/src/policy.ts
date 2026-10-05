@@ -14,12 +14,24 @@ export const defaultToolPolicy: ToolPolicy = {
   timeoutMs: 10_000,
 };
 
+function positiveInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 1) throw new Error(name + " must be a positive integer");
+}
+
+function cleanList(values: string[], name: string): string[] {
+  if (!Array.isArray(values)) throw new Error(name + " must be an array");
+  return values.map((value) => {
+    if (typeof value !== "string" || !value.trim()) throw new Error(name + " entries must be non-empty strings");
+    return value.trim().toLowerCase();
+  });
+}
+
 export function createToolPolicy(input: Partial<ToolPolicy> = {}): ToolPolicy {
-  if (input.maxResponseBytes !== undefined && input.maxResponseBytes <= 0) throw new Error("maxResponseBytes must be positive");
-  if (input.maxFileBytes !== undefined && input.maxFileBytes <= 0) throw new Error("maxFileBytes must be positive");
-  if (input.timeoutMs !== undefined && input.timeoutMs <= 0) throw new Error("timeoutMs must be positive");
+  if (input.maxResponseBytes !== undefined) positiveInteger(input.maxResponseBytes, "maxResponseBytes");
+  if (input.maxFileBytes !== undefined) positiveInteger(input.maxFileBytes, "maxFileBytes");
+  if (input.timeoutMs !== undefined) positiveInteger(input.timeoutMs, "timeoutMs");
   return {
-    allowedHosts: [...(input.allowedHosts ?? defaultToolPolicy.allowedHosts)],
+    allowedHosts: cleanList(input.allowedHosts ?? defaultToolPolicy.allowedHosts, "allowedHosts"),
     allowedDirectories: [...(input.allowedDirectories ?? defaultToolPolicy.allowedDirectories)],
     maxResponseBytes: input.maxResponseBytes ?? defaultToolPolicy.maxResponseBytes,
     maxFileBytes: input.maxFileBytes ?? defaultToolPolicy.maxFileBytes,
@@ -28,7 +40,10 @@ export function createToolPolicy(input: Partial<ToolPolicy> = {}): ToolPolicy {
 }
 
 export function assertAllowedHost(host: string, allowedHosts: string[]): void {
-  if (!allowedHosts.some((allowed) => host === allowed || host.endsWith("." + allowed))) {
-    throw new Error("Host is not allowed by policy");
-  }
+  const normalized = host.trim().toLowerCase().replace(/\.$/, "");
+  if (!normalized) throw new Error("Host is required");
+  if (!allowedHosts.some((allowed) => {
+    const entry = allowed.trim().toLowerCase().replace(/\.$/, "");
+    return normalized === entry || normalized.endsWith("." + entry);
+  })) throw new Error("Host is not allowed by policy");
 }
