@@ -15,6 +15,8 @@ export interface AgentContext {
   step: number;
 }
 
+export interface AgentRunOptions { signal?: AbortSignal; }
+
 export interface AgentOptions {
   name: string;
   instructions?: string;
@@ -144,8 +146,9 @@ export class Agent {
     if (new Set(names).size !== names.length) throw new AIError("Duplicate tool name", "INVALID_AGENT_CONFIG");
   }
 
-  async run(input: string): Promise<AgentRunResult> {
+  async run(input: string, runOptions: AgentRunOptions = {}): Promise<AgentRunResult> {
     if (!input.trim()) throw new AIError("Agent input cannot be empty", "INVALID_AGENT_INPUT");
+    if (runOptions.signal?.aborted) throw runOptions.signal.reason ?? new AIError("Agent run aborted", "AGENT_ABORTED");
 
     const messages: AIMessage[] = [];
     const toolResults: Record<string, unknown> = {};
@@ -173,6 +176,7 @@ export class Agent {
       const response = await this.ai.chat({
         messages,
         tools: this.tools.length ? toolDefinitions(this.tools) : undefined,
+        signal: runOptions.signal,
       });
 
       const calls = response.toolCalls ?? [];
@@ -251,6 +255,8 @@ export async function createMCPAgentTools(client: MCPClient): Promise<AgentTool[
 }
 
 export { createAISummarizer, type AISummarizerOptions } from "./summarizer.js";
+export * from "./definition.js";
+export * from "./runtime.js";
 
 export function createAgent(ai: AIClient, options: AgentOptions): Agent {
   return new Agent(ai, options);
