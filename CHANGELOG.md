@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.24
+
+- Prepared the next coordinated six-package npm release after the successful Trusted Publishing OIDC rollout.
+- Added automatic npm publishing on GitHub Release publication while retaining manual workflow dispatch for recovery.
+- Bumped all six public package patch versions for the next release test.
+
 ## 0.8.23
 
 - Prepared the six public packages for npm Trusted Publishing through GitHub Actions OIDC.
