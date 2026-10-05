@@ -12,7 +12,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r --sort build && pnpm -r typecheck",
-    "pack:check": "pnpm -r --filter './packages/*' pack --pack-destination .release-packages"
+    "pack:check": "pnpm -r --filter './packages/*' pack --pack-destination .release-packages",
+    "release:check": "node scripts/check-release-graph.mjs"
   },
   "keywords": [
     "ai",
