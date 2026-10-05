@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- Added `@woho/mcp` with provider-neutral MCP server and tool primitives.
+- Added MCP tool registration, discovery, execution, and runtime tests.
+
 ## 0.5.9
 
 - Added memory summarization runtime coverage.
