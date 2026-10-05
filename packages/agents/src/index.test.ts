@@ -187,6 +187,26 @@ const run = async () => {
     { steps: [{ id: "verified-step", agent: "general", input: "verify", verify: (result) => result.text === "plan-verified" }] },
   );
   assert.equal(planVerification.steps["verified-step"]?.text, "plan-verified");
+  const usageAI = createAI({
+    provider: {
+      name: "usage-test",
+      async chat() {
+        return {
+          id: "usage",
+          text: "usage-ok",
+          model: "usage-test",
+          usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15, cost: { currency: "USD", amount: 0.002 } },
+        };
+      },
+    },
+  });
+  const usageAgent = createAgent(usageAI, { name: "usage-agent" });
+  const usageResult = await usageAgent.run("usage");
+  assert.deepEqual(usageResult.usage, { inputTokens: 10, outputTokens: 5, totalTokens: 15, cost: { currency: "USD", amount: 0.002 } });
+  const usageStore = new InMemoryExecutionStore();
+  const usageRuntime = new AgentRuntime({ store: usageStore }, registry);
+  const usageRuntimeResult = await usageRuntime.run(usageAI, { agent: "general", input: "usage" });
+  assert.deepEqual(usageStore.get(usageRuntimeResult.runId)?.usage, usageRuntimeResult.usage);
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
