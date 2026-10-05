@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createAI, createMockProvider, AIError } from "@woho/core";
 import { createInMemoryStore } from "@woho/memory";
-import { createAgent } from "./index.js";
+import { createAgent, AgentRegistry, AgentRuntime } from "./index.js";
 
 const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "", maxSteps: 1 }), /Agent name is required/);
@@ -94,6 +94,20 @@ const run = async () => {
   assert.equal(largeResult.text, "done");
   assert.ok((largeResult.messages.at(-2)?.content ?? "").includes("[tool result truncated]"));
 
+  const registry = new AgentRegistry();
+  registry.register({ id: "general", name: "General", role: "general" }, ({ ai }) => createAgent(ai, { name: "General" }));
+  assert.equal(registry.list()[0]?.role, "general");
+  const runtimeEvents: string[] = [];
+  const runtime = new AgentRuntime({ maxConcurrency: 2, onEvent: (event) => { runtimeEvents.push(event.type); } }, registry);
+  const runtimeResult = await runtime.run(createAI({ provider: createMockProvider({ response: "runtime-ok" }) }), { agent: "general", input: "hello" });
+  assert.equal(runtimeResult.text, "runtime-ok");
+  assert.equal(runtimeEvents[0], "run.started");
+  assert.equal(runtimeEvents.at(-1), "run.completed");
+  const parallel = await runtime.runParallel(createAI({ provider: createMockProvider({ response: "parallel-ok" }) }), [
+    { agent: "general", input: "one" }, { agent: "general", input: "two" },
+  ]);
+  assert.equal(parallel.length, 2);
+  await assert.rejects(() => runtime.run(createAI({ provider: createMockProvider({ response: "x" }) }), { agent: "missing", input: "x" }), /Unknown agent/);
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
