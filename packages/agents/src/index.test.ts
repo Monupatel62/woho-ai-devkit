@@ -8,6 +8,9 @@ const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxSteps: 0 }), /maxSteps must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxContextMessages: 0 }), /maxContextMessages must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxContextChars: 0 }), /maxContextChars must be a positive integer/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxToolResultChars: 0 }), /maxToolResultChars must be a positive integer/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "dup", description: "a", execute: async () => 1 }, { name: "dup", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "x", description: "", execute: async () => 1 }] }), /Tool description is required/);
 
   const store = createInMemoryStore();
   const ai = createAI({
@@ -53,6 +56,19 @@ const run = async () => {
     },
   }), { name: "loop", maxSteps: 1 });
   await assert.rejects(failing.run("loop"), (error) => error instanceof AIError && error.code === "AGENT_MAX_STEPS");
+
+  const limitedTool = createAgent(createAI({
+    provider: {
+      name: "large-result",
+      async chat(request) {
+        if (request.messages.at(-1)?.role === "tool") return { id: "done", text: "done", model: "large-result" };
+        return { id: "call", text: "", model: "large-result", finishReason: "tool_call", toolCalls: [{ id: "large-1", name: "large", arguments: "{}" }] };
+      },
+    },
+  }), { name: "large-result-agent", maxToolResultChars: 20, tools: [{ name: "large", description: "Large result", execute: async () => "abcdefghijklmnopqrstuvwxyz" }] });
+  const largeResult = await limitedTool.run("run");
+  assert.equal(largeResult.text, "done");
+  assert.ok((largeResult.messages.at(-2)?.content ?? "").includes("[tool result truncated]"));
 
   console.log("agent runtime tests passed");
 };
