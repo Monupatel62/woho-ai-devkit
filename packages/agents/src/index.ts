@@ -1,5 +1,6 @@
 import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition } from "@woho/core";
 import { createConversation, type MemoryStore, type MemoryMessage, type MemorySummarizer } from "@woho/memory";
+import type { MCPClient } from "@woho/mcp";
 
 export interface AgentTool {
   name: string;
@@ -156,6 +157,20 @@ export class Agent {
 
     throw new AIError("Agent exceeded maxSteps (" + this.maxSteps + ")", "AGENT_MAX_STEPS");
   }
+}
+
+export async function createMCPAgentTools(client: MCPClient): Promise<AgentTool[]> {
+  const definitions = await client.listTools();
+  return definitions.map((definition) => ({
+    name: definition.name,
+    description: definition.description ?? `MCP tool: ${definition.name}`,
+    parameters: definition.inputSchema,
+    execute: async (input: unknown) => {
+      const result = await client.callTool(definition.name, input);
+      if (result.isError) throw new AIError(`MCP tool failed: ${definition.name}`, "MCP_TOOL_ERROR");
+      return result.content;
+    },
+  }));
 }
 
 export { createAISummarizer, type AISummarizerOptions } from "./summarizer.js";
