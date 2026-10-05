@@ -30,6 +30,7 @@ const run = async () => {
   const policy = createToolPolicy({ allowedHosts: ["example.com"] });
   assert.equal(policy.timeoutMs, 10_000);
   await assert.rejects(() => httpGetTool({ allowedHosts: ["example.com"], maxResponseBytes: 1 }).execute({ url: "https://example.com" }), /size limit|Response/);
+  await assert.rejects(() => httpGetTool({ allowedHosts: ["example.com"] }).execute({ url: "https://user:pass@example.com" }), /Credential-bearing/);
 
   const root = await mkdtemp(join(tmpdir(), "woho-tools-"));
   const safeFile = join(root, "safe.txt");
@@ -56,6 +57,7 @@ const run = async () => {
     assert.equal(body.query, "woho");
     return new Response(JSON.stringify({ results: [{ title: "Tavily result", url: "https://example.org", content: "content" }] }), { status: 200 });
   };
+  assert.throws(() => createBraveSearchProvider({ apiKey: "test", timeoutMs: 1.5 }), /positive integer/);
   const brave = createBraveSearchProvider({ apiKey: "test", fetchImpl: mockFetch });
   assert.deepEqual(await brave.search("woho", { limit: 1 }), [{ title: "Brave result", url: "https://example.com", snippet: "snippet" }]);
   const tavily = createTavilySearchProvider({ apiKey: "test", fetchImpl: mockFetch });
