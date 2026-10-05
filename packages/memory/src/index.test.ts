@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createInMemoryStore, createJsonFileStore } from "./index.js";\nimport { mkdtemp, rm } from "node:fs/promises";\nimport { join } from "node:path";\nimport { tmpdir } from "node:os";
+import { createInMemoryStore, createJsonFileStore, createConversation } from "./index.js";\nimport { mkdtemp, rm } from "node:fs/promises";\nimport { join } from "node:path";\nimport { tmpdir } from "node:os";
 
 const run = async () => {
   const store = createInMemoryStore({ maxMessages: 2 });
@@ -20,6 +20,13 @@ const run = async () => {
   assert.deepEqual((await fileStore.list()).map((m) => m.id), ["b", "c"]);
   await fileStore.clear();
   assert.equal((await fileStore.list()).length, 0);
+  const conversation = createConversation({ sessionId: "s1", store: createInMemoryStore() });
+  await conversation.add({ id: "m1", role: "user", content: "How does TypeScript work?" });
+  await conversation.add({ id: "m2", role: "assistant", content: "TypeScript adds types to JavaScript." });
+  await conversation.add({ id: "m3", role: "user", content: "Tell me about Python instead." });
+  assert.equal((await conversation.messages()).length, 3);
+  assert.equal((await conversation.search({ query: "typescript" })).length, 2);
+  assert.throws(() => createConversation({ sessionId: "", store: createInMemoryStore() }), /sessionId/);
   await rm(dir, { recursive: true, force: true });
   console.log("memory runtime tests passed");
 };
