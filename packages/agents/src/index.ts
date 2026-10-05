@@ -246,6 +246,7 @@ export class Agent {
             });
             if (!decision.allowed) {
               if (decision.requiresApproval) {
+                await runEvent(runOptions, { type: "run.waiting", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { reason: "approval", tool: tool.name, capability: tool.capability, action: tool.action ?? "execute" } });
                 const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, tool: tool.name, capability: tool.capability, action: tool.action ?? "execute", input: parsed, reason: decision.reason });
                 if (!approved) throw new AIError(decision.reason ?? "Tool action was not approved", "APPROVAL_REQUIRED");
               } else {
