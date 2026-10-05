@@ -34,8 +34,10 @@ export class InMemoryStore implements MemoryStore {
 
   async add(message: MemoryMessage): Promise<void> {
     if (!message || typeof message !== "object") throw new Error("Memory message is required");
-    if (!message.id.trim()) throw new Error("Memory message id is required");
-    if (!message.content.trim()) throw new Error("Memory message content is required");
+    if (typeof message.id !== "string" || !message.id.trim()) throw new Error("Memory message id is required");
+    if (typeof message.content !== "string" || !message.content.trim()) throw new Error("Memory message content is required");
+    if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
+    if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
     this.messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
     while (this.messages.length > this.maxMessages) this.messages.shift();
   }
@@ -71,6 +73,7 @@ export interface MemorySummaryOptions {
 }
 
 export async function summarizeMemoryWith(summarizer: MemorySummarizer, messages: MemoryMessage[], options: MemorySummaryOptions): Promise<MemoryMessage> {
+  if (!summarizer || typeof summarizer.summarize !== "function") throw new Error("summarizer is required");
   if (!Number.isInteger(options.maxCharacters) || options.maxCharacters < 1) throw new Error("maxCharacters must be a positive integer");
   if (!Array.isArray(messages)) throw new Error("messages must be an array");
   const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;
@@ -80,6 +83,7 @@ export async function summarizeMemoryWith(summarizer: MemorySummarizer, messages
 }
 
 export function summarizeMemory(messages: MemoryMessage[], options: MemorySummaryOptions): MemoryMessage {
+  if (!Array.isArray(messages)) throw new Error("messages must be an array");
   if (!Number.isInteger(options.maxCharacters) || options.maxCharacters < 1) throw new Error("maxCharacters must be a positive integer");
   const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;
   const lines: string[] = [];
