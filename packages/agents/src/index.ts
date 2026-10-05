@@ -1,5 +1,5 @@
 import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition } from "@woho/core";
-import { createConversation, type MemoryStore } from "@woho/memory";
+import { createConversation, type MemoryStore, type MemoryMessage, type MemorySummarizer } from "@woho/memory";
 
 export interface AgentTool {
   name: string;
@@ -22,7 +22,7 @@ export interface AgentOptions {
   memory?: MemoryStore;
   sessionId?: string;
   maxContextMessages?: number;
-  maxContextChars?: number;
+  maxContextChars?: number;\n  memorySummarizer?: MemorySummarizer;\n  memorySummaryThreshold?: number;
 }
 
 export interface AgentRunResult {
@@ -63,7 +63,7 @@ export class Agent {
   private readonly memory?: MemoryStore;
   private readonly sessionId?: string;
   private readonly maxContextMessages?: number;
-  private readonly maxContextChars?: number;
+  private readonly maxContextChars?: number;\n  private readonly memorySummarizer?: MemorySummarizer;\n  private readonly memorySummaryThreshold?: number;
 
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
@@ -74,7 +74,7 @@ export class Agent {
     this.memory = options.memory;
     this.sessionId = options.sessionId;
     this.maxContextMessages = options.maxContextMessages;
-    this.maxContextChars = options.maxContextChars;
+    this.maxContextChars = options.maxContextChars;\n    this.memorySummarizer = options.memorySummarizer;\n    this.memorySummaryThreshold = options.memorySummaryThreshold ?? 50;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
     if (this.maxSteps < 1) throw new AIError("maxSteps must be at least 1", "INVALID_AGENT_CONFIG");
   }
@@ -89,7 +89,7 @@ export class Agent {
     if (this.instructions) messages.push({ role: "system", content: this.instructions });
     const conversation = this.memory && this.sessionId ? createConversation({ sessionId: this.sessionId, store: this.memory }) : undefined;
     if (conversation) {
-      const history = await conversation.messages(this.maxContextMessages);
+      let history = await conversation.messages(this.maxContextMessages);\n      if (this.memorySummarizer && history.length >= this.memorySummaryThreshold) {\n        const summary = await this.memorySummarizer.summarize(history, { maxCharacters: this.maxContextChars ?? 4000 });\n        if (summary.trim()) history = [{ role: "system", content: summary } as MemoryMessage];\n      }
       messages.push(...history.map(({ role, content, name, toolCallId, toolCalls }) => ({
         role, content, ...(name ? { name } : {}), ...(toolCallId ? { toolCallId } : {}), ...(toolCalls ? { toolCalls } : {}),
       })));
