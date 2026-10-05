@@ -99,7 +99,7 @@ export class AgentRuntime {
               throw new Error(typeof verdict === "string" ? verdict : "Agent result verification failed");
             }
           }
-          await this.store?.update(runId, { status: "succeeded", attempts: attempt, completedAt: Date.now(), updatedAt: Date.now() });
+          await this.store?.update(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt: Date.now(), updatedAt: Date.now() });
           await this.emit({
             type: "run.completed",
             runId,
