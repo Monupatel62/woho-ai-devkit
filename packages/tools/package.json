@@ -1,6 +1,6 @@
 {
   "name": "@woho/tools",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Safe, reusable tools for WoHo AI DevKit agents.",
   "license": "Apache-2.0",
   "type": "module",
