@@ -95,8 +95,11 @@ const run = async () => {
   const gitRoot = await mkdtemp(join(tmpdir(), "woho-git-"));
   (await import("node:child_process")).execFileSync("git", ["init"], { cwd: gitRoot, stdio: "ignore" });
   await writeFile(join(gitRoot, "README.md"), "woho\n", "utf8");
+  (await import("node:child_process")).execFileSync("git", ["config", "user.email", "test@woho.invalid"], { cwd: gitRoot });
+  (await import("node:child_process")).execFileSync("git", ["config", "user.name", "WoHo Test"], { cwd: gitRoot });
   const git = (await import("./git.js")).gitTool({ root: gitRoot, allowWrite: true });
   const status = await git.execute({ operation: "status" }) as { stdout: string };
+  await assert.rejects(() => git.execute({ operation: "add", paths: ["../outside"] }), /parent traversal/);
   assert.match(status.stdout, /README/);
   await git.execute({ operation: "add", paths: ["README.md"] });
   await git.execute({ operation: "commit", message: "test: workspace git" });
