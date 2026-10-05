@@ -26,7 +26,7 @@ export function searchTool(policy: SearchToolPolicy): AgentTool {
     description: "Search the configured search provider. The application controls which provider is used.",
     parameters: {
       type: "object",
-      properties: { query: { type: "string" }, limit: { type: "number" } },
+      properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1 } },
       required: ["query"],
       additionalProperties: false,
     },
