@@ -43,7 +43,7 @@ try {
 
   const limited = new FileExecutionStore({ directory: root, maxRecordBytes: 100 });
   await assert.rejects(
-    () => limited.update(record.runId, { metadata: { oversized: "x".repeat(200) } }),
+    () => limited.create({ ...record, runId: "oversized", metadata: { oversized: "x".repeat(200) } }),
     /exceeds maxRecordBytes/,
   );
 
