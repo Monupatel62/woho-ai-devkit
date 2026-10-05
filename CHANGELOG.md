@@ -138,12 +138,8 @@
 
 ## 0.8.0
 
-- Enabled runtime testing for the OpenAI-compatible provider package.
+- Added runtime testing for the OpenAI-compatible provider package.
 - Added MCP timeout, oversized-response, and non-serializable-response coverage.
-
-## 0.8.0
-
-- Added runtime coverage for the OpenAI-compatible provider.
 - Enabled provider typecheck/build/runtime tests in package validation.
 - Corrected MCP default client version metadata to 0.6.6.
 
@@ -162,13 +158,8 @@
 ## 0.7.5
 
 - Hardened MCP stdio request handling and normalized MCP runtime tests.
-
-## 0.7.5
-
 - Hardened tool policy validation and file path containment.
 - Expanded tools security runtime coverage.
-
-## 0.7.5
 
 - Hardened agent configuration validation.
 - Added agent runtime coverage for tool execution, memory, limits, and max-step safety.
