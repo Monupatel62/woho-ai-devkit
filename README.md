@@ -7,7 +7,7 @@ Open-source AI developer toolkit for TypeScript and JavaScript.
 - **@woho/core** — provider-independent AI client, retries, timeouts, cancellation, streaming, validation, errors and observability.
 - **@woho/provider-openai** — OpenAI-compatible HTTP and SSE provider.
 - **@woho/agents** — multi-agent runtime with registries, specialized roles, dependency-aware plans, retries, execution history, approval hooks, tool events, context limits, memory and MCP bridging.
-- **@woho/tools** — calculator, JSON, text, HTTP and file tools with security policies plus search-provider abstractions.
+- **@woho/tools** — calculator, JSON, text, HTTP, file, search, secure workspace and constrained Git tools with explicit security policies.
 - **@woho/memory** — in-memory and JSON-file conversation storage, ranked search, semantic embedding search, session isolation and summarization.
 - **@woho/mcp** — MCP server/client primitives, resources, prompts, security controls and stdio transport.
 
@@ -76,7 +76,7 @@ pnpm test
 
 ## Execution platform
 
-The runtime follows **Plan → Execute → Observe → Verify → Recover → Complete**. It provides model routing, multi-agent execution, bounded concurrency, retryable recovery, human approval, execution history and observable lifecycle/tool events. See `docs/execution-platform.md` for the architecture and production integration contract.
+The runtime follows **Plan → Execute → Observe → Verify → Recover → Complete**. Workspace and Git action tools now provide the first bounded project-execution layer beneath that runtime. It provides model routing, multi-agent execution, bounded concurrency, retryable recovery, human approval, execution history and observable lifecycle/tool events. See `docs/execution-platform.md` for the architecture and production integration contract.
 
 ## Status
 
