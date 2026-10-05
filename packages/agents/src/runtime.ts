@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AIClient, ExecutionContext, ExecutionEvent } from "@woho/core";
 import { Agent, type AgentOptions, type AgentRunResult } from "./index.js";
 import { AgentRegistry, type AgentDefinition } from "./definition.js";
+import type { ExecutionStore } from "./execution-store.js";
 
 export interface AgentRetryPolicy {
   readonly maxAttempts?: number;
@@ -13,6 +14,7 @@ export interface AgentRuntimeOptions {
   readonly maxConcurrency?: number;
   readonly onEvent?: (event: ExecutionEvent) => void | Promise<void>;
   readonly retry?: AgentRetryPolicy;
+  readonly store?: ExecutionStore;
 }
 
 export interface AgentTask {
@@ -30,6 +32,7 @@ export class AgentRuntime {
   private readonly maxConcurrency: number;
   private readonly onEvent?: AgentRuntimeOptions["onEvent"];
   private readonly defaultRetry: Required<AgentRetryPolicy>;
+  private readonly store?: ExecutionStore;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -38,6 +41,7 @@ export class AgentRuntime {
     this.maxConcurrency = options.maxConcurrency ?? 4;
     this.onEvent = options.onEvent;
     this.defaultRetry = this.validateRetry(options.retry ?? {});
+    this.store = options.store;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
   }
 
