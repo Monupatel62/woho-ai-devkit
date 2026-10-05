@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
-import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool, fileReadTool, createSearchProvider, searchTool, createBraveSearchProvider, createTavilySearchProvider } from "./index.js";
+import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool, fileReadTool, createSearchProvider, searchTool, createBraveSearchProvider, createTavilySearchProvider, createToolRegistry, validateToolInput } from "./index.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const run = async () => {
   assert.deepEqual(await calculatorTool().execute({ expression: "6 * 7" }), { expression: "6 * 7", result: 42 });
+  validateToolInput({ type: "object", properties: { x: { type: "number" } }, required: ["x"], additionalProperties: false }, { x: 1 });
+  assert.throws(() => validateToolInput({ type: "object", properties: { x: { type: "number" } }, required: ["x"], additionalProperties: false }, { x: "1" }), /Invalid type/);
+  assert.throws(() => validateToolInput({ type: "object", properties: { x: { type: "number" } }, additionalProperties: false }, { y: 1 }), /Unknown parameter/);
+  const registry = createToolRegistry([calculatorTool()]);
+  assert.equal(registry.has("calculator"), true);
+  assert.equal(registry.list().length, 1);
+  assert.throws(() => registry.register(calculatorTool()), /Duplicate tool/);
   assert.deepEqual(await jsonTool().execute({ text: '{"ok":true}' }), { ok: true });
   assert.deepEqual(await textLengthTool().execute({ text: "hello" }), { length: 5 });
 
