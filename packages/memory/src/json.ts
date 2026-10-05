@@ -59,6 +59,15 @@ export class JsonFileStore implements MemoryStore {
     return filtered.slice(Math.max(0, filtered.length - limit)).map((m) => ({ ...m, metadata: m.metadata ? { ...m.metadata } : undefined }));
   }
 
+  async delete(id: string): Promise<void> {
+    if (!id.trim()) throw new Error("id is required");
+    this.writeQueue = this.writeQueue.then(async () => {
+      const messages = await this.load();
+      await this.persist(messages.filter((message) => message.id !== id));
+    });
+    return this.writeQueue;
+  }
+
   async clear(): Promise<void> {
     this.writeQueue = this.writeQueue.then(() => this.persist([]));
     return this.writeQueue;
