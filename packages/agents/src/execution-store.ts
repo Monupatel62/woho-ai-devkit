@@ -11,6 +11,7 @@ export interface ExecutionRecord {
   updatedAt: number;
   completedAt?: number;
   attempts: number;
+  usage?: import("@woho/core").AIUsage;
   error?: string;
   events: ExecutionEvent[];
 }
