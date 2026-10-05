@@ -101,6 +101,16 @@ const run = async () => {
   assert.deepEqual(await stdio.request("ping"), { ok: true });
   await stdio.close();
 
+  const malformedStdioScript = 'process.stdin.setEncoding("utf8"); process.stdin.on("data",()=>process.stdout.write(JSON.stringify({jsonrpc:"1.0",id:1,result:{ok:true}})+"\\n"));';
+  const malformedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", malformedStdioScript], timeoutMs: 1000 });
+  await assert.rejects(() => malformedStdio.request("ping"), /Invalid MCP JSON-RPC response/);
+  await malformedStdio.close();
+
+  const oversizedStdioScript = 'process.stdin.resume(); process.stdout.write("x".repeat(200));';
+  const oversizedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", oversizedStdioScript], timeoutMs: 1000, maxMessageBytes: 50 });
+  await assert.rejects(() => oversizedStdio.request("ping"), /exceeds maxMessageBytes/);
+  await oversizedStdio.close();
+
   const slowStdioScript = 'process.stdin.resume();';
   const slowStdio = createMCPStdioTransport({ command: execPath, args: ["-e", slowStdioScript], timeoutMs: 10 });
   await assert.rejects(() => slowStdio.request("ping"), /timed out/);
