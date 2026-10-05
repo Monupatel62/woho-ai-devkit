@@ -150,7 +150,7 @@ export class Agent {
           toolResults[call.id] = failure;
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
-          if (this.memory) await this.memory.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
+          if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         }
       }
     }
