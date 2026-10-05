@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.13
+
+- Hardened core chat timeout/cancellation for providers that do not honor `AbortSignal`.
+- Added runtime coverage for non-cooperative provider timeout behavior.
+- Bumped `@woho/core` to 0.2.9.
+
 ## 0.8.12
 
 - Hardened OpenAI-compatible chat response handling with bounded streaming body reads.
