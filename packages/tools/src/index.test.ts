@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool, fileReadTool } from "./index.js";
 
 const run = async () => {
@@ -12,6 +15,13 @@ const run = async () => {
 
   const policy = createToolPolicy({ allowedHosts: ["example.com"] });
   assert.equal(policy.timeoutMs, 10_000);
+
+  const root = await mkdtemp(join(tmpdir(), "woho-tools-"));
+  const safeFile = join(root, "safe.txt");
+  await writeFile(safeFile, "hello", "utf8");
+  assert.deepEqual(await fileReadTool({ allowedDirectories: [root] }).execute({ path: safeFile }), { path: safeFile, text: "hello" });
+  await assert.rejects(() => fileReadTool().execute({ path: safeFile }), /No allowed directories/);
+  await rm(root, { recursive: true, force: true });
   console.log("tools runtime tests passed");
 };
 
