@@ -67,8 +67,11 @@ const run = async () => {
   await queueStore.add({ id: "ok2", role: "user", content: "ok2" });
   assert.deepEqual((await queueStore.list()).map((m) => m.id), ["ok2"]);
 
-  const ranked = await searchMemory(sessionStore, "typescript python", { limit: 5 });
-  assert.equal(ranked[0]?.message.id, "m2");
+  const rankedStore = createInMemoryStore();
+  await rankedStore.add({ id: "r1", role: "user", content: "TypeScript and Python" });
+  await rankedStore.add({ id: "r2", role: "user", content: "TypeScript only" });
+  const ranked = await searchMemory(rankedStore, "typescript python", { limit: 5 });
+  assert.equal(ranked[0]?.message.id, "r1");
   assert.equal(ranked[0]?.score, 2);
   const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
   assert.equal(summary.role, "system");
