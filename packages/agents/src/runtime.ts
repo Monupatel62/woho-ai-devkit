@@ -37,6 +37,10 @@ export class AgentRuntime {
       instructions: item.instructions,
       tools: item.tools,
       maxSteps: item.maxSteps,
+      id: item.id,
+      role: item.role,
+      capabilities: item.capabilities,
+      permissions: item.permissions,
     }));
     this.registry.register(definition, ({ ai }) => creator(ai, definition));
     return this;
