@@ -1,10 +1,24 @@
 import type { AIConfig, AIRequest, AIResponse, AIStreamChunk } from "./types.js";
-import { AIError, TimeoutError } from "./errors.js";\nimport { validateAIInput } from "./validation.js";
+import { AIError, TimeoutError } from "./errors.js";
+import { validateAIInput } from "./validation.js";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason ?? new Error("Aborted"));
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error("Aborted"));
+    }, { once: true });
+  });
 
 function validate(request: AIRequest) {
-  if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");\n  try { validateAIInput(request.messages); } catch (error) { throw new AIError(error instanceof Error ? error.message : String(error), "INVALID_REQUEST_ERROR"); }
+  if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");
+  try {
+    validateAIInput(request.messages);
+  } catch (error) {
+    throw new AIError(error instanceof Error ? error.message : String(error), "INVALID_REQUEST_ERROR");
+  }
 }
 
 function mergeSignals(external: AbortSignal | undefined, timeoutMs: number) {
@@ -32,6 +46,9 @@ export class AIClient {
     this.timeoutMs = config.timeoutMs ?? 30_000;
     this.retries = config.retries ?? 2;
     this.retryDelayMs = config.retryDelayMs ?? 250;
+    if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new AIError("timeoutMs must be a positive integer", "INVALID_CONFIG");
+    if (!Number.isInteger(this.retries) || this.retries < 0) throw new AIError("retries must be a non-negative integer", "INVALID_CONFIG");
+    if (!Number.isInteger(this.retryDelayMs) || this.retryDelayMs < 0) throw new AIError("retryDelayMs must be a non-negative integer", "INVALID_CONFIG");
   }
 
   async chat(request: AIRequest): Promise<AIResponse> {
@@ -46,17 +63,28 @@ export class AIClient {
         const retryable = normalized instanceof AIError ? normalized.retryable : false;
         if (!retryable || attempt >= this.retries) throw normalized;
         attempt += 1;
-        await sleep(this.retryDelayMs * 2 ** (attempt - 1));
+        await sleep(this.retryDelayMs * 2 ** (attempt - 1), request.signal);
       } finally {
         merged.cleanup();
       }
     }
   }
 
-  stream(request: AIRequest): AsyncIterable<AIStreamChunk> {
+  async *stream(request: AIRequest): AsyncIterable<AIStreamChunk> {
     validate(request);
     if (!this.provider.stream) throw new AIError("Provider does not support streaming", "STREAMING_NOT_SUPPORTED");
-    return this.provider.stream(request);
+    const merged = mergeSignals(request.signal, this.timeoutMs);
+    try {
+      for await (const chunk of this.provider.stream({ ...request, signal: merged.signal })) {
+        if (merged.signal.aborted) {
+          if (request.signal?.aborted) throw request.signal.reason ?? new Error("Aborted");
+          throw new TimeoutError();
+        }
+        yield chunk;
+      }
+    } finally {
+      merged.cleanup();
+    }
   }
 }
 
