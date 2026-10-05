@@ -85,6 +85,7 @@ function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?:
   let used = 0;
   for (let i = items.length - 1; i >= 0; i -= 1) {
     const item = items[i];
+    if (!item) continue;
     const cost = item.content.length + 1;
     if (selected.length > 0 && used + cost > maxChars) break;
     if (selected.length === 0 && cost > maxChars) {
@@ -158,8 +159,10 @@ export class Agent {
         const summary = await this.memorySummarizer.summarize(history, { maxCharacters: this.maxContextChars ?? 4000 });
         if (summary.trim()) history = [{ role: "system", content: summary } as MemoryMessage];
       }
-      messages.push(...limitContext(history, this.maxContextMessages, this.maxContextChars).map(({ role, content, name, toolCallId, toolCalls }) => ({
-        role, content, ...(name ? { name } : {}), ...(toolCallId ? { toolCallId } : {}), ...(toolCalls ? { toolCalls } : {}),
+      messages.push(...limitContext(history, this.maxContextMessages, this.maxContextChars).map(({ role, content, metadata }) => ({
+        role, content, ...(metadata?.name && typeof metadata.name === "string" ? { name: metadata.name } : {}),
+        ...(metadata?.toolCallId && typeof metadata.toolCallId === "string" ? { toolCallId: metadata.toolCallId } : {}),
+        ...(Array.isArray(metadata?.toolCalls) ? { toolCalls: metadata.toolCalls as AIToolCall[] } : {}),
       })));
     }
     const userMessage: AIMessage = { role: "user", content: input };
