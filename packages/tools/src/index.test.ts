@@ -3,6 +3,7 @@ import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { commandTool } from "./command.js";
 
 const run = async () => {
   assert.deepEqual(await calculatorTool().execute({ expression: "6 * 7" }), { expression: "6 * 7", result: 42 });
@@ -71,6 +72,12 @@ const run = async () => {
   await assert.rejects(() => boundedTavily.search("woho"), /size limit/);
   assert.throws(() => createBraveSearchProvider({ apiKey: " " }), /apiKey is required/);
 
+  const command = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], timeoutMs: 2_000, maxOutputBytes: 10_000 });
+  const commandResult = await command.execute({ command: process.execPath, args: ["-e", "process.stdout.write('woho-command-ok')"], cwd: process.cwd() }) as { stdout: string };
+  assert.equal(commandResult.stdout, "woho-command-ok");
+  await assert.rejects(() => command.execute({ command: "sh", args: ["-c", "echo no"] }), /not allowed/);
+  const untrusted = commandTool({ allowedCommands: ["node"] });
+  await assert.rejects(() => untrusted.execute({ command: "node", args: ["-e", "console.log('x')"], cwd: process.cwd() }), /cwd is required/);
   await rm(root, { recursive: true, force: true });
   console.log("tools runtime tests passed");
 };
