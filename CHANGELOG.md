@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.5
+
+- Added runtime tool input validation for object schemas.
+- Added duplicate-safe ToolRegistry with definitions export.
+- Added validation and registry tests.
+
 ## 0.4.4
 
 - Added Brave Search and Tavily Search provider adapters.
