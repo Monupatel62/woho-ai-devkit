@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createAI, createMockProvider, RateLimitError, TimeoutError } from "./index.js";
+import { createAI, createMockProvider, createModelRouter, RateLimitError, TimeoutError } from "./index.js";
 
 const requestEvents: string[] = [];
 const ai = createAI({
@@ -143,3 +143,6 @@ const cleanupIterator = cleanupStream.stream({ messages: [{ role: "user", conten
 await assert.rejects(() => cleanupIterator.next(), (error) => error instanceof TimeoutError);
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.equal(iteratorReturned, true);
+
+const router = createModelRouter({ routes: [{ provider: createMockProvider({ response: "routed" }), models: ["router-test"] }] });
+assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "user", content: "route" }], model: "router-test" })).text, "routed");
