@@ -26,6 +26,7 @@ export interface AgentTask {
   readonly metadata?: Record<string, unknown>;
   readonly signal?: AbortSignal;
   readonly retry?: AgentRetryPolicy;
+  readonly approval?: AgentApprovalHandler;
 }
 
 export class AgentRuntime {
@@ -82,7 +83,7 @@ export class AgentRuntime {
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
-          const result = await agent.run(task.input, { signal: context.signal });
+          const result = await agent.run(task.input, { signal: context.signal, runId, onEvent: this.onEvent, approval: task.approval });
           await this.store?.update(runId, { status: "succeeded", attempts: attempt, completedAt: Date.now(), updatedAt: Date.now() });
           await this.emit({
             type: "run.completed",
