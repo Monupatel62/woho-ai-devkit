@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.10
+
+- Added configurable agent tool execution timeouts.
+- Hardened MCP client lifecycle with closed-state checks and concurrent initialization deduplication.
+- Added runtime tests for agent tool timeout and MCP client closure.
+- Bumped `@woho/agents` to 0.3.11 and `@woho/mcp` to 0.6.10.
+
 ## 0.8.9
 
 - Audited workspace package metadata and fixed missing runtime package declarations.
