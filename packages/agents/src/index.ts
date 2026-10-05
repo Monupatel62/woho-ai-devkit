@@ -26,6 +26,7 @@ export interface AgentOptions {
   maxContextChars?: number;
   memorySummarizer?: MemorySummarizer;
   memorySummaryThreshold?: number;
+  maxToolResultChars?: number;
 }
 
 export interface AgentRunResult {
@@ -48,13 +49,15 @@ function parseArguments(value: string): unknown {
   }
 }
 
-function serializeToolResult(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
+function serializeToolResult(value: unknown, maxChars: number): string {
+  let text: string;
+  if (typeof value === "string") text = value;
+  else {
+    try { text = JSON.stringify(value); }
+    catch { text = String(value); }
   }
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + "\n[tool result truncated]";
 }
 
 function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
@@ -88,6 +91,7 @@ export class Agent {
   private readonly maxContextChars?: number;
   private readonly memorySummarizer?: MemorySummarizer;
   private readonly memorySummaryThreshold?: number;
+  private readonly maxToolResultChars: number;
 
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
@@ -101,12 +105,19 @@ export class Agent {
     this.maxContextChars = options.maxContextChars;
     this.memorySummarizer = options.memorySummarizer;
     this.memorySummaryThreshold = options.memorySummaryThreshold ?? 50;
+    this.maxToolResultChars = options.maxToolResultChars ?? 50_000;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
     if (!options.name.trim()) throw new AIError("Agent name is required", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.maxSteps) || this.maxSteps < 1) throw new AIError("maxSteps must be a positive integer", "INVALID_AGENT_CONFIG");
     if (this.maxContextMessages !== undefined && (!Number.isInteger(this.maxContextMessages) || this.maxContextMessages < 1)) throw new AIError("maxContextMessages must be a positive integer", "INVALID_AGENT_CONFIG");
     if (this.maxContextChars !== undefined && (!Number.isInteger(this.maxContextChars) || this.maxContextChars < 1)) throw new AIError("maxContextChars must be a positive integer", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.memorySummaryThreshold) || this.memorySummaryThreshold < 1) throw new AIError("memorySummaryThreshold must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (!Number.isInteger(this.maxToolResultChars) || this.maxToolResultChars < 1) throw new AIError("maxToolResultChars must be a positive integer", "INVALID_AGENT_CONFIG");
+    for (const tool of this.tools) {
+      if (!tool.name.trim()) throw new AIError("Tool name is required", "INVALID_AGENT_CONFIG");
+      if (!tool.description.trim()) throw new AIError("Tool description is required: " + tool.name, "INVALID_AGENT_CONFIG");
+    }
+    if (new Set(this.tools.map((tool) => tool.name)).size !== this.tools.length) throw new AIError("Duplicate tool name", "INVALID_AGENT_CONFIG");
   }
 
   async run(input: string): Promise<AgentRunResult> {
@@ -156,7 +167,7 @@ export class Agent {
         if (!tool) {
           const error = { error: "Unknown tool: " + call.name };
           toolResults[call.id] = error;
-          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(error), toolCallId: call.id, name: call.name };
+          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(error, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
           continue;
@@ -165,13 +176,13 @@ export class Agent {
         try {
           const result = await tool.execute(parseArguments(call.arguments));
           toolResults[call.id] = result;
-          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result), toolCallId: call.id, name: call.name };
+          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         } catch (error) {
           const failure = { error: error instanceof Error ? error.message : String(error) };
           toolResults[call.id] = failure;
-          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure), toolCallId: call.id, name: call.name };
+          const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         }
