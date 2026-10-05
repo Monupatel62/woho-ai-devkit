@@ -84,6 +84,9 @@ export class MCPClient {
     this.protocolVersion = options.protocolVersion ?? "2025-06-18";
     this.maxResponseBytes = options.security?.maxResponseBytes ?? 4 * 1024 * 1024;
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
+    if (options.security?.allowedMethods) {
+      if (!Array.isArray(options.security.allowedMethods) || options.security.allowedMethods.some((method) => typeof method !== "string" || !method.trim())) throw new Error("allowedMethods must contain non-empty strings");
+    }
     this.allowedMethods = options.security?.allowedMethods ? new Set(options.security.allowedMethods) : undefined;
   }
   async initialize(): Promise<unknown> {
