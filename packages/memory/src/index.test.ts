@@ -44,8 +44,12 @@ const run = async () => {
 
   await fileStore.add({ id: "c", role: "user", content: "three", timestamp: 3 });
   assert.deepEqual((await fileStore.list()).map((m) => m.id), ["pb", "c"]);
+  await assert.rejects(() => fileStore.list({ before: Number.NaN }), /finite number/);
   await fileStore.clear();
   assert.equal((await fileStore.list()).length, 0);
+  await import("node:fs/promises").then(({ writeFile }) => writeFile(join(dir, "invalid.json"), JSON.stringify([{ id: "", role: "user", content: "bad" }])));
+  const invalidStore = createJsonFileStore({ filePath: join(dir, "invalid.json") });
+  await assert.rejects(() => invalidStore.list(), /invalid message/);
 
   const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
   assert.equal(summary.role, "system");
