@@ -76,7 +76,7 @@ pnpm test
 
 ## Status
 
-Core, agents, tools, memory and MCP foundations are implemented. The project is continuing through production hardening before the first public npm release.
+Core, agents, tools, memory and MCP foundations are implemented. The project is continuing through final production hardening before the first public npm release. npm package metadata and tarball boundaries are now prepared for release validation.
 
 ## License
 
