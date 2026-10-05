@@ -1,6 +1,6 @@
 # Stage 4 — Reusable Tools
 
-Stage 4 now has reusable tools plus a formal policy helper.
+Stage 4 now includes reusable tools, formal policy enforcement, runtime tests, and a provider-neutral search interface.
 
 ## Built-ins
 - calculator
@@ -8,14 +8,13 @@ Stage 4 now has reusable tools plus a formal policy helper.
 - text_length
 - http_get
 - file_read
+- search (configured provider only)
 
-## Policy
-Use `createToolPolicy()` to create a normalized policy. Network and filesystem tools receive the policy at construction time and enforce it at execution time.
+## Search security model
 
-The model cannot grant itself access. Empty allowlists deny access.
+The search tool does not choose or call an external vendor by itself. Applications inject a SearchProvider, so API keys, domains, quotas, logging, and provider-specific permissions remain under application control.
 
-## Runtime verification
-The package includes runtime assertions for deterministic tools and security boundaries. The package test command now performs typecheck, build, and the runtime security test.
+Queries and result counts are bounded before the provider is called. The model cannot replace the provider or expand the configured limits.
 
 ## Next
-Wire runtime tests into CI, add stronger argument validation, and add opt-in search tooling with explicit provider boundaries.
+Add official search-provider adapters separately, then add stronger schema validation and optional write tools behind explicit policies.
