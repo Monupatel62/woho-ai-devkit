@@ -54,6 +54,27 @@ function mapError(status: number, body: string): Error {
   return new NetworkError(body || "Provider returned HTTP " + status);
 }
 
+async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) throw new NetworkError("Provider returned no response body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 function normalizeToolCalls(message: { tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } | undefined): AIToolCall[] {
   const calls = message?.tool_calls ?? [];
   return calls
@@ -115,7 +136,12 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       if (!response.ok) throw mapError(response.status, await response.text());
       const contentLength = response.headers.get("content-length");
       if (contentLength && Number(contentLength) > maxResponseBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
-      const data = (await response.json()) as ProviderResponse;
+      let body: string;
+      try { body = await readBodyWithLimit(response, maxResponseBytes); }
+      catch (error) { if (error instanceof NetworkError) throw error; throw new NetworkError("Failed to read provider response", error); }
+      let data: ProviderResponse;
+      try { data = JSON.parse(body) as ProviderResponse; }
+      catch (error) { throw new NetworkError("Malformed provider JSON response", error); }
       const choice = data.choices?.[0];
       const toolCalls = normalizeToolCalls(choice?.message);
       return {
