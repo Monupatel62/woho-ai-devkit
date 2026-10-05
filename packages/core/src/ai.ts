@@ -1,10 +1,10 @@
 import type { AIConfig, AIRequest, AIResponse, AIStreamChunk } from "./types.js";
-import { AIError, TimeoutError } from "./errors.js";
+import { AIError, TimeoutError } from "./errors.js";\nimport { validateAIInput } from "./validation.js";
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function validate(request: AIRequest) {
-  if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");
+  if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");\n  try { validateAIInput(request.messages); } catch (error) { throw new AIError(error instanceof Error ? error.message : String(error), "INVALID_REQUEST_ERROR"); }
 }
 
 function mergeSignals(external: AbortSignal | undefined, timeoutMs: number) {
