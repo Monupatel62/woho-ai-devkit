@@ -15,6 +15,7 @@ import {
 export interface OpenAIProviderOptions {
   apiKey: string;
   baseUrl?: string;
+  maxResponseBytes?: number;
   defaultModel?: string;
   organization?: string;
 }
@@ -66,7 +67,10 @@ function normalizeToolCalls(message: { tool_calls?: Array<{ id?: string; functio
 
 export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider {
   const baseUrl = (options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
-  if (!options.apiKey) throw new AuthenticationError("An API key is required");
+  if (!options.apiKey.trim()) throw new AuthenticationError("An API key is required");
+  if (!/^https:\/\//i.test(baseUrl) && !/^http:\/\/localhost(?::\\d+)?(?:\/|$)/i.test(baseUrl)) throw new InvalidRequestError("baseUrl must use HTTPS (localhost is allowed for development)");
+  const maxResponseBytes = options.maxResponseBytes ?? 4 * 1024 * 1024;
+  if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) throw new InvalidRequestError("maxResponseBytes must be a positive integer");
 
   const requestBody = (request: AIRequest, stream = false) => ({
     model: request.model ?? options.defaultModel ?? "gpt-4o-mini",
@@ -109,7 +113,8 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
         throw new NetworkError("Network request failed", error);
       }
       if (!response.ok) throw mapError(response.status, await response.text());
-
+      const contentLength = response.headers.get("content-length");
+      if (contentLength && Number(contentLength) > maxResponseBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
       const data = (await response.json()) as ProviderResponse;
       const choice = data.choices?.[0];
       const toolCalls = normalizeToolCalls(choice?.message);
@@ -141,7 +146,10 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       if (!response.ok) throw mapError(response.status, await response.text());
       if (!response.body) throw new NetworkError("Provider returned no response body");
 
+      const contentLength = response.headers.get("content-length");
+      if (contentLength && Number(contentLength) > maxResponseBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
       const reader = response.body.getReader();
+      let receivedBytes = 0;
       const decoder = new TextDecoder();
       let buffer = "";
       const processLine = (line: string): AIStreamChunk | undefined => {
@@ -161,6 +169,11 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
+        receivedBytes += value.byteLength;
+        if (receivedBytes > maxResponseBytes) {
+          await reader.cancel();
+          throw new NetworkError("Provider stream exceeds maxResponseBytes");
+        }
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
