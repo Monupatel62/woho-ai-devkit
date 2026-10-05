@@ -10,12 +10,15 @@ export interface AgentRetryPolicy {
   readonly backoff?: number;
 }
 
+export type AgentVerifier = (result: AgentRunResult, task: AgentTask) => boolean | string | Promise<boolean | string>;
+
 export interface AgentRuntimeOptions {
   readonly maxConcurrency?: number;
   readonly onEvent?: (event: ExecutionEvent) => void | Promise<void>;
   readonly retry?: AgentRetryPolicy;
   readonly approval?: AgentApprovalHandler;
   readonly store?: ExecutionStore;
+  readonly verify?: AgentVerifier;
 }
 
 export interface AgentTask {
@@ -27,6 +30,7 @@ export interface AgentTask {
   readonly signal?: AbortSignal;
   readonly retry?: AgentRetryPolicy;
   readonly approval?: AgentApprovalHandler;
+  readonly verify?: AgentVerifier;
 }
 
 export class AgentRuntime {
@@ -35,6 +39,7 @@ export class AgentRuntime {
   private readonly onEvent?: AgentRuntimeOptions["onEvent"];
   private readonly defaultRetry: Required<AgentRetryPolicy>;
   private readonly store?: ExecutionStore;
+  private readonly verify?: AgentVerifier;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -44,6 +49,7 @@ export class AgentRuntime {
     this.onEvent = options.onEvent;
     this.defaultRetry = this.validateRetry(options.retry ?? {});
     this.store = options.store;
+    this.verify = options.verify;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
   }
 
@@ -84,6 +90,14 @@ export class AgentRuntime {
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
           const result = await agent.run(task.input, { signal: context.signal, runId, onEvent: this.onEvent, approval: task.approval });
+          const verification = task.verify ?? this.verify;
+          if (verification) {
+            const verdict = await verification(result, task);
+            if (verdict !== true) {
+              throw new Error(typeof verdict === "string" ? verdict : "Agent result verification failed");
+            }
+            await this.emit({ type: "run.progress", runId, timestamp: Date.now(), data: { agent: task.agent, phase: "verified", attempt } });
+          }
           await this.store?.update(runId, { status: "succeeded", attempts: attempt, completedAt: Date.now(), updatedAt: Date.now() });
           await this.emit({
             type: "run.completed",
