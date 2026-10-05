@@ -15,6 +15,8 @@ const run = async () => {
   await store.clear();
   assert.equal((await store.list()).length, 0);
   assert.throws(() => createInMemoryStore({ maxMessages: 0 }), /positive integer/);
+  await assert.rejects(() => store.list({ before: Number.NaN }), /finite number/);
+  await assert.rejects(() => store.list({ sessionId: " " }), /sessionId cannot be empty/);
 
   const sessionStore = createInMemoryStore();
   const conversation = createConversation({ sessionId: "s1", store: sessionStore });
@@ -50,6 +52,8 @@ const run = async () => {
   assert.ok(summary.content.includes("hello world"));
   const aiSummary = await summarizeMemoryWith({ summarize: async () => "AI summary" }, [{ id: "s", role: "user", content: "hello" }], { maxCharacters: 50 });
   assert.equal(aiSummary.content, "AI summary");
+  await assert.rejects(() => summarizeMemoryWith({ summarize: async () => "x" }, [], { maxCharacters: 0 }), /positive integer/);
+  assert.throws(() => summarizeMemory([{ id: "s", role: "user", content: "x" }], { maxCharacters: 0 }), /positive integer/);
   assert.throws(() => createConversation({ sessionId: "", store: createInMemoryStore() }), /sessionId/);
   await rm(dir, { recursive: true, force: true });
   console.log("memory runtime tests passed");
