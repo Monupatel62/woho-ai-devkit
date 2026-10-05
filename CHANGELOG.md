@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.2
+
+- Hardened search/tool policies with strict integer limits and directory validation.
+- Added MCP allowed-method input validation.
+
 ## 0.8.1
 
 - Refreshed README for the current SDK surface and development workflow.
