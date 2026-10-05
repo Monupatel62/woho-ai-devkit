@@ -2,6 +2,11 @@
 
 ## 0.8.0
 
+- Enabled runtime testing for the OpenAI-compatible provider package.
+- Added MCP timeout, oversized-response, and non-serializable-response coverage.
+
+## 0.8.0
+
 - Added runtime coverage for the OpenAI-compatible provider.
 - Enabled provider typecheck/build/runtime tests in package validation.
 - Corrected MCP default client version metadata to 0.6.6.
