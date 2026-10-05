@@ -62,7 +62,7 @@ Plan steps may derive their input from completed results:
 
 ### Execution history and retries
 
-`AgentRuntime` can persist run state and retry transient agent failures. `InMemoryExecutionStore` provides a local store and can be replaced with a database-backed implementation.
+`AgentRuntime` can persist run state and retry transient agent failures. `InMemoryExecutionStore` provides a local store. `FileExecutionStore` adds durable JSON-file persistence with atomic replacement, bounded record size, and process-local serialized writes; it can be replaced with a database-backed implementation.
 
 ```ts
 import { AgentRuntime, InMemoryExecutionStore } from "@woho/agents";
