@@ -31,10 +31,16 @@ export interface AIRequest {
   signal?: AbortSignal;
 }
 
+export interface AICost {
+  readonly currency: string;
+  readonly amount: number;
+}
+
 export interface AIUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cost?: AICost;
 }
 
 export type FinishReason = "stop" | "length" | "tool_call" | "content_filter" | "unknown";
