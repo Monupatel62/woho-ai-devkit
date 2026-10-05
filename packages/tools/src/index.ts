@@ -1,4 +1,7 @@
 import type { AgentTool } from "@woho/agents";
+import { validateToolInput } from "./validation.js";
+export { ToolRegistry, createToolRegistry } from "./registry.js";
+export { validateToolInput } from "./validation.js";
 import { assertAllowedHost, createToolPolicy, type ToolPolicy } from "./policy.js";
 export { createSearchProvider, searchTool, type SearchProvider, type SearchResult, type SearchToolPolicy } from "./search.js";
 export { createBraveSearchProvider, createTavilySearchProvider, type SearchProviderOptions } from "./search-providers.js";
@@ -17,6 +20,7 @@ export function calculatorTool(): AgentTool {
     parameters: { type: "object", properties: { expression: { type: "string" } }, required: ["expression"], additionalProperties: false },
     async execute(input) {
       const value = requireObject(input).expression;
+      validateToolInput({ type: "object", properties: { expression: { type: "string" } }, required: ["expression"], additionalProperties: false }, input);
       if (typeof value !== "string" || value.trim().length === 0 || value.length > 200) throw new Error("Invalid expression");
       if (!/^[0-9+\-*/().%\s]+$/.test(value)) throw new Error("Only basic arithmetic is allowed");
       const result = Function('"use strict"; return (' + value.replace(/%/g, "/100") + ')')();
@@ -32,6 +36,7 @@ export function jsonTool(): AgentTool {
     description: "Parse JSON text and return the parsed value.",
     parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false },
     async execute(input) {
+      validateToolInput({ type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false }, input);
       const text = requireObject(input).text;
       if (typeof text !== "string" || text.length > 100_000) throw new Error("Invalid or oversized JSON input");
       return JSON.parse(text);
@@ -45,6 +50,7 @@ export function textLengthTool(): AgentTool {
     description: "Return the character length of text.",
     parameters: { type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false },
     async execute(input) {
+      validateToolInput({ type: "object", properties: { text: { type: "string" } }, required: ["text"], additionalProperties: false }, input);
       const text = requireObject(input).text;
       if (typeof text !== "string") throw new Error("text is required");
       return { length: text.length };
