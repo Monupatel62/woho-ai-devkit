@@ -79,6 +79,30 @@ const run = async () => {
   const untrusted = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()] });
   await assert.rejects(() => untrusted.execute({ command: "node", args: ["-e", "console.log('x')"] }), /cwd is required/);
   await rm(root, { recursive: true, force: true });
+
+  const workspaceRoot = await mkdtemp(join(tmpdir(), "woho-workspace-"));
+  const workspace = (await import("./workspace.js")).workspaceTool({ root: workspaceRoot, allowWrite: true, allowDelete: true, allowMove: true, maxFileBytes: 10_000 });
+  assert.deepEqual(await workspace.execute({ operation: "write", path: "src/hello.txt", content: "hello" }), { path: "src/hello.txt", bytes: 5 });
+  assert.deepEqual(await workspace.execute({ operation: "read", path: "src/hello.txt" }), { path: "src/hello.txt", content: "hello" });
+  const listing = await workspace.execute({ operation: "list", path: "src" }) as { entries: Array<{ name: string }> };
+  assert.equal(listing.entries[0]?.name, "hello.txt");
+  await assert.rejects(() => workspace.execute({ operation: "read", path: "../escape.txt" }), /Parent traversal/);
+  await assert.rejects(() => workspace.execute({ operation: "write", path: "/tmp/escape.txt", content: "x" }), /Absolute paths/);
+  assert.deepEqual(await workspace.execute({ operation: "move", path: "src/hello.txt", destination: "hello.txt" }), { from: "src/hello.txt", to: "hello.txt", moved: true });
+  assert.deepEqual(await workspace.execute({ operation: "delete", path: "hello.txt" }), { path: "hello.txt", deleted: true });
+  await rm(workspaceRoot, { recursive: true, force: true });
+
+  const gitRoot = await mkdtemp(join(tmpdir(), "woho-git-"));
+  (await import("node:child_process")).execFileSync("git", ["init"], { cwd: gitRoot, stdio: "ignore" });
+  await writeFile(join(gitRoot, "README.md"), "woho\n", "utf8");
+  const git = (await import("./git.js")).gitTool({ root: gitRoot, allowWrite: true });
+  const status = await git.execute({ operation: "status" }) as { stdout: string };
+  assert.match(status.stdout, /README/);
+  await git.execute({ operation: "add", paths: ["README.md"] });
+  await git.execute({ operation: "commit", message: "test: workspace git" });
+  const branch = await git.execute({ operation: "branch" }) as { stdout: string };
+  assert.ok(branch.stdout.trim().length > 0);
+  await rm(gitRoot, { recursive: true, force: true });
   console.log("tools runtime tests passed");
 };
 
