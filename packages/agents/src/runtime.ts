@@ -82,6 +82,7 @@ export class AgentRuntime {
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
           const result = await agent.run(task.input, { signal: context.signal });
+          await this.store?.update(runId, { status: "succeeded", attempts: attempt, completedAt: Date.now(), updatedAt: Date.now() });
           await this.emit({
             type: "run.completed",
             runId,
@@ -93,6 +94,7 @@ export class AgentRuntime {
           if (task.signal?.aborted) throw error;
           if (attempt >= retry.maxAttempts) throw error;
           const delay = retry.delayMs * Math.pow(retry.backoff, attempt - 1);
+          await this.store?.update(runId, { status: "waiting", attempts: attempt, updatedAt: Date.now() });
           await this.emit({
             type: "run.waiting",
             runId,
