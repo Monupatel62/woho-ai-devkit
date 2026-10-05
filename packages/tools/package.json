@@ -1,6 +1,6 @@
 {
   "name": "@woho/tools",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Safe, reusable tools for WoHo AI DevKit agents.",
   "license": "Apache-2.0",
   "type": "module",
@@ -8,5 +8,6 @@
   "types": "dist/index.d.ts",
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "dependencies": { "@woho/agents": "workspace:*" },
+  "devDependencies": { "@types/node": "^22.0.0" },
   "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "tsc -p tsconfig.json --noEmit" }
 }
