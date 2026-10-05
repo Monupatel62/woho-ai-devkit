@@ -1,6 +1,6 @@
 # Stage 4 — Reusable Tools
 
-Stage 4 now includes reusable tools, formal policy enforcement, runtime tests, and a provider-neutral search interface.
+Stage 4 now includes reusable tools, formal policy enforcement, runtime tests, and a provider-neutral search interface plus official Brave and Tavily adapters.
 
 ## Built-ins
 - calculator
@@ -16,5 +16,8 @@ The search tool does not choose or call an external vendor by itself. Applicatio
 
 Queries and result counts are bounded before the provider is called. The model cannot replace the provider or expand the configured limits.
 
-## Next
-Add official search-provider adapters separately, then add stronger schema validation and optional write tools behind explicit policies.
+## Provider adapters
+- `createBraveSearchProvider({ apiKey })` uses the Brave Web Search API.
+- `createTavilySearchProvider({ apiKey })` uses the Tavily Search API.
+- API keys are application-supplied and never model-controlled.
+- Both adapters enforce bounded result counts and request timeouts.
