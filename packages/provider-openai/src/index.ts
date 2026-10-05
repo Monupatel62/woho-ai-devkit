@@ -46,7 +46,7 @@ const toMessages = (messages: AIMessage[]) =>
     } : {}),
   }));
 
-function mapError(status: number, body: string): Error {
+async function readErrorBody(response: Response, maxBytes: number): Promise<string> {\n  try { return await readBodyWithLimit(response, maxBytes); }\n  catch { return "Provider error response could not be read safely"; }\n}\n\nfunction mapError(status: number, body: string): Error {
   if (status === 401) return new AuthenticationError("Invalid provider API key");
   if (status === 429) return new RateLimitError("Provider rate limit exceeded");
   if (status === 404) return new ModelNotFoundError("Model was not found");
@@ -133,7 +133,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       } catch (error) {
         throw new NetworkError("Network request failed", error);
       }
-      if (!response.ok) throw mapError(response.status, await response.text());
+      if (!response.ok) throw mapError(response.status, await readErrorBody(response, maxResponseBytes));
       const contentLength = response.headers.get("content-length");
       if (contentLength && Number(contentLength) > maxResponseBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
       let body: string;
