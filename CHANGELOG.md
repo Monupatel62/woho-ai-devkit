@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.27
+
+- Added model routing with model-aware provider selection and retryable-provider fallback.
+- Added execution history storage with run status, attempts, lifecycle events, and in-memory persistence.
+- Added runtime retry policies with exponential backoff and cancellation-aware waiting.
+- Added human approval hooks for permission-gated agent actions.
+- Added context-aware multi-agent plan steps that can consume completed stage results.
+- Added tool execution lifecycle events for observable agent runs.
+- Added provider-neutral semantic memory search through pluggable embeddings.
+- Added regression coverage for the new execution, routing, memory, planning, and approval foundations.
+- Bumped all six public packages for the coordinated release.
+
 ## 0.8.26
 
 - Added dependency-aware multi-agent execution plans with DAG validation.
