@@ -66,6 +66,11 @@ jobs:
       - run: pnpm build
       - run: pnpm pack:check
 
+      - name: Validate npm publish manifests
+        run: |
+          set -euo pipefail
+          pnpm -r --filter './packages/*' publish --dry-run --access public --provenance --no-git-checks
+
       - name: Check publish status
         run: |
           set -euo pipefail
