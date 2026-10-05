@@ -9,6 +9,12 @@
 
 # Changelog
 
+## 0.8.21
+
+- Hardened release tarball validation for package metadata, internal dependency rewriting, and development artifacts.
+- Updated GitHub Actions dependencies to current major versions for checkout, setup-node, and pnpm setup.
+- Verified Node 20/22 CI and CodeQL on the hardened workflow path.
+
 ## 0.8.19
 
 - Completed a cross-package runtime hardening audit across provider, agents, tools, and memory.
