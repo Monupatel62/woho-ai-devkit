@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool, fileReadTool, createSearchProvider, searchTool } from "./index.js";
+import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool, fileReadTool, createSearchProvider, searchTool, createBraveSearchProvider, createTavilySearchProvider } from "./index.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -29,6 +29,22 @@ const run = async () => {
   const results = await searchTool({ provider, maxResults: 2 }).execute({ query: "woho", limit: 1 });
   assert.deepEqual(results, [{ title: "woho", url: "https://example.com/1", snippet: "one" }]);
   await assert.rejects(() => searchTool({ provider }).execute({ query: "" }), /query is required/);
+  const mockFetch: typeof fetch = async (input, init) => {
+    const url = String(input);
+    assert.ok(init?.headers);
+    if (url.includes("brave")) {
+      return new Response(JSON.stringify({ web: { results: [{ title: "Brave result", url: "https://example.com", description: "snippet" }] } }), { status: 200 });
+    }
+    assert.equal(url, "https://api.tavily.com/search");
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.query, "woho");
+    return new Response(JSON.stringify({ results: [{ title: "Tavily result", url: "https://example.org", content: "content" }] }), { status: 200 });
+  };
+  const brave = createBraveSearchProvider({ apiKey: "test", fetchImpl: mockFetch });
+  assert.deepEqual(await brave.search("woho", { limit: 1 }), [{ title: "Brave result", url: "https://example.com", snippet: "snippet" }]);
+  const tavily = createTavilySearchProvider({ apiKey: "test", fetchImpl: mockFetch });
+  assert.deepEqual(await tavily.search("woho", { limit: 1 }), [{ title: "Tavily result", url: "https://example.org", snippet: "content" }]);
+  assert.throws(() => createBraveSearchProvider({ apiKey: " " }), /apiKey is required/);
 
   await rm(root, { recursive: true, force: true });
   console.log("tools runtime tests passed");
