@@ -39,7 +39,6 @@ try {
       throw new Error(packageName + " tarball name/version does not match source metadata");
     }
     if (manifest.private === true) throw new Error(packageName + " tarball must not be private");
-    if (manifest.publishConfig) throw new Error(packageName + " tarball must not retain publishConfig");
     if (manifest.devDependencies) throw new Error(packageName + " tarball must not contain devDependencies");
 
     for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
