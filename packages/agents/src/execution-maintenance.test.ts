@@ -63,9 +63,9 @@ const run = async () => {
     () => pruneExecutionHistory(noDeleteStore, { maxRecords: 0 }),
     /does not support history removal/,
   );
-  assert.throws(() => pruneExecutionHistory(store, {}), /requires olderThanMs or maxRecords/);
-  assert.throws(() => recoverStaleExecutions(store, { staleAfterMs: 0 }), /staleAfterMs/);
-  assert.throws(() => recoverStaleExecutions(store, { staleAfterMs: 1, now: -1 }), /now/);
+  await assert.rejects(() => pruneExecutionHistory(store, {}), /requires olderThanMs or maxRecords/);
+  await assert.rejects(() => recoverStaleExecutions(store, { staleAfterMs: 0 }), /staleAfterMs/);
+  await assert.rejects(() => recoverStaleExecutions(store, { staleAfterMs: 1, now: -1 }), /now/);
   console.log("execution maintenance tests passed");
 };
 
