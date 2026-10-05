@@ -42,6 +42,8 @@ const run = async () => {
   assert.throws(() => createMCPClient({ transport, clientName: " " }), /clientName is required/);
   assert.throws(() => createMCPClient({ transport, clientVersion: " " }), /clientVersion is required/);
   assert.throws(() => createMCPClient({ transport, protocolVersion: " " }), /protocolVersion is required/);
+  await assert.rejects(() => createMCPClient({ transport }).getPrompt(" greet "), /surrounding whitespace/);
+  await assert.rejects(() => createMCPClient({ transport }).callTool(" echo "), /surrounding whitespace/);
 
   const client = createMCPClient({
     transport,
