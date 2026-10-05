@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.6
+
+- Added agent context message and character limits.
+- Enforced session filtering in memory stores.
+- Improved session-safe conversation memory handling.
+
 ## 0.5.5
 
 - Added agent `sessionId` support for isolated conversation memory.
