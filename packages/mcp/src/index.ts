@@ -80,7 +80,7 @@ export class MCPClient {
     this.transport = options.transport;
     this.timeoutMs = options.timeoutMs ?? 30000;
     this.clientName = options.clientName ?? "woho-ai-devkit";
-    this.clientVersion = options.clientVersion ?? "0.6.6";
+    this.clientVersion = options.clientVersion ?? "0.6.8";
     this.protocolVersion = options.protocolVersion ?? "2025-06-18";
     this.maxResponseBytes = options.security?.maxResponseBytes ?? 4 * 1024 * 1024;
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
