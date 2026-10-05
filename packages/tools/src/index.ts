@@ -100,20 +100,15 @@ export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
       const target = pathModule.resolve(realPath);
       const allowed = await (async () => {
         for (const dir of policy.allowedDirectories) {
-          let root: string;
-          try { root = pathModule.resolve(await fs.realpath(dir)); } catch { continue; }
-          if (target === root || target.startsWith(root + pathModule.sep)) return true;
+          try {
+            const root = pathModule.resolve(await fs.realpath(dir));
+            if (target === root || target.startsWith(root + pathModule.sep)) return true;
+          } catch {
+            // Ignore missing or invalid policy directories.
+          }
         }
         return false;
       })();
-      /* allowed directories are resolved through realpath to avoid lexical symlink escapes */
-      const isAllowed = allowed;
-      const allowedResult = isAllowed;
-      const _unused = allowedResult;
-      const legacyAllowed = policy.allowedDirectories.some((dir) => {
-        const root = pathModule.resolve(dir);
-        return target === root || target.startsWith(root + pathModule.sep);
-      });
       if (!allowed) throw new Error("Path is outside the allowed directories");
       const stat = await fs.stat(realPath);
       if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not a regular file, or too large");
