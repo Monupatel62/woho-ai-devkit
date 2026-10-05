@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.5
+
+- Hardened agent configuration validation.
+- Added agent runtime coverage for tool execution, memory, limits, and max-step safety.
+- Fixed MCP client security option typing and normalized MCP test sources.
+- Fixed summarizer newline handling.
+- Added session-safe deletion to memory stores and conversation clearing.
+
 ## 0.7.3
 
 - Added runtime coverage for core request and streaming observability hooks.
