@@ -9,12 +9,14 @@ export interface MemoryMessage {
 export interface MemoryQuery {
   limit?: number;
   before?: number;
+  sessionId?: string;
 }
 
 export interface MemoryStore {
   add(message: MemoryMessage): Promise<void>;
   list(query?: MemoryQuery): Promise<MemoryMessage[]>;
   clear(): Promise<void>;
+  delete?(id: string): Promise<void>;
 }
 
 export interface MemoryOptions {
