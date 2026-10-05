@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.5
+
+- Added agent `sessionId` support for isolated conversation memory.
+- Agents now use the session-aware Conversation memory layer when a session is configured.
+- Bumped `@woho/agents` to 0.3.3.
+
 ## 0.5.4
 
 - Added session-aware memory queries.
