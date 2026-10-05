@@ -1,30 +1,32 @@
 # Stage 4 — Reusable Tools
 
-Stage 4 starts the reusable safe-tool layer for WoHo AI DevKit.
+Stage 4 provides reusable tools with explicit security boundaries.
 
-## Included
+## Tools
 
-- calculator: basic arithmetic only; no network or filesystem access
+- calculator: bounded arithmetic only
 - json: bounded JSON parsing
 - text_length: deterministic text utility
-- JSON-schema-like parameter metadata for agent providers
+- http_get: HTTPS-only, explicit host allowlist, redirect disabled, response-size limit and timeout
+- file_read: explicit directory allowlist, realpath containment check and file-size limit
 
-## Safety boundary
+## Security model
 
-Tools execute in application code. The model only requests a named tool and supplies arguments.
+The model cannot expand permissions. The application creates tools with a policy and the tool enforces it at runtime.
 
-Built-in tools intentionally avoid arbitrary shell execution, arbitrary code execution, unrestricted filesystem access, and network access.
-
-Each tool validates its input and applies a bounded input size where appropriate.
-
-## Usage
+Example:
 
 ```ts
-import { calculatorTool, jsonTool } from "@woho/tools";
+import { fileReadTool, httpGetTool } from "@woho/tools";
 
-const tools = [calculatorTool(), jsonTool()];
+const tools = [
+  httpGetTool({ allowedHosts: ["api.example.com"] }),
+  fileReadTool({ allowedDirectories: ["/srv/woho/data"] }),
+];
 ```
+
+No arbitrary shell execution is included. Filesystem writes and unrestricted HTTP are intentionally not enabled by default.
 
 ## Next
 
-Add opt-in HTTP and filesystem tools behind explicit permission policies, plus stronger argument validation and runtime tests.
+Add runtime tests and a formal permission/policy helper so applications can compose multiple tools safely.
