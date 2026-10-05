@@ -26,8 +26,9 @@ function validate(request: AIRequest) {
 
 function mergeSignals(external: AbortSignal | undefined, timeoutMs: number) {
   const controller = new AbortController();
-  const onAbort = () => controller.abort(external?.reason);
-  external?.addEventListener("abort", onAbort, { once: true });
+  const onAbort = () => controller.abort(external?.reason ?? new Error("Aborted"));
+  if (external?.aborted) onAbort();
+  else external?.addEventListener("abort", onAbort, { once: true });
   const timer = setTimeout(() => controller.abort(new TimeoutError()), timeoutMs);
   return { signal: controller.signal, cleanup: () => { clearTimeout(timer); external?.removeEventListener("abort", onAbort); } };
 }
@@ -96,7 +97,8 @@ export class AIClient {
     const merged = mergeSignals(request.signal, this.timeoutMs);
     try {
       const iterator = this.provider.stream({ ...request, signal: merged.signal })[Symbol.asyncIterator]();
-      while (true) {
+      try {
+        while (true) {
         let result: IteratorResult<AIStreamChunk>;
         try {
           result = await nextWithSignal(iterator, merged.signal);
@@ -107,9 +109,12 @@ export class AIClient {
           }
           throw error;
         }
-        if (result.done) break;
-        await this.observability?.onEvent?.({ type: "stream.chunk", chunk: result.value });
-        yield result.value;
+          if (result.done) break;
+          await this.observability?.onEvent?.({ type: "stream.chunk", chunk: result.value });
+          yield result.value;
+        }
+      } finally {
+        await iterator.return?.();
       }
     } finally {
       await this.observability?.onEvent?.({ type: "stream.end", durationMs: Date.now() - started });
