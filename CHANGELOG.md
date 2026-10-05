@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.7
+
+- Hardened AI streaming timeouts so stalled async iterators are interrupted by the client timeout or caller cancellation.
+
 ## 0.7.5
 
 - Hardened MCP stdio request handling and normalized MCP runtime tests.
