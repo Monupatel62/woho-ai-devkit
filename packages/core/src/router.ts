@@ -64,7 +64,7 @@ export class ModelRouter implements AIProvider {
         if (emitted) throw error;
         lastError = error;
         if (!this.fallbackOnError || request.signal?.aborted) throw error;
-        if (error instanceof AIError && !error.retryable) throw error;
+        if (!(error instanceof AIError) || !error.retryable) throw error;
       }
     }
     throw lastError ?? new AIError("No streaming model route available", "STREAMING_NOT_SUPPORTED");
