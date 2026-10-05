@@ -18,7 +18,18 @@ export interface AgentContext {
   step: number;
 }
 
-export interface AgentRunOptions { signal?: AbortSignal; runId?: string; onEvent?: (event: ExecutionEvent) => void | Promise<void>; }
+export interface AgentApprovalRequest {
+  readonly runId?: string;
+  readonly tool: string;
+  readonly capability: string;
+  readonly action: PermissionAction;
+  readonly input: unknown;
+  readonly reason?: string;
+}
+
+export type AgentApprovalHandler = (request: AgentApprovalRequest) => boolean | Promise<boolean>;
+
+export interface AgentRunOptions { signal?: AbortSignal; runId?: string; onEvent?: (event: ExecutionEvent) => void | Promise<void>; approval?: AgentApprovalHandler; }
 
 export interface AgentOptions {
   name: string;
@@ -125,6 +136,7 @@ export class Agent {
   private readonly memorySummaryThreshold: number;
   private readonly maxToolResultChars: number;
   private readonly toolTimeoutMs?: number;
+  private readonly approval?: AgentApprovalHandler;
 
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
@@ -144,6 +156,7 @@ export class Agent {
     this.memorySummaryThreshold = options.memorySummaryThreshold ?? 50;
     this.maxToolResultChars = options.maxToolResultChars ?? 50_000;
     this.toolTimeoutMs = options.toolTimeoutMs;
+    this.approval = options.approval;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
     if (!options.name.trim()) throw new AIError("Agent name is required", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.maxSteps) || this.maxSteps < 1) throw new AIError("maxSteps must be a positive integer", "INVALID_AGENT_CONFIG");
@@ -227,7 +240,12 @@ export class Agent {
               action: tool.action ?? "execute",
             });
             if (!decision.allowed) {
-              throw new AIError(decision.reason ?? "Tool action denied by permission policy", decision.requiresApproval ? "APPROVAL_REQUIRED" : "PERMISSION_DENIED");
+              if (decision.requiresApproval) {
+                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, tool: tool.name, capability: tool.capability, action: tool.action ?? "execute", input: parsed, reason: decision.reason });
+                if (!approved) throw new AIError(decision.reason ?? "Tool action was not approved", "APPROVAL_REQUIRED");
+              } else {
+                throw new AIError(decision.reason ?? "Tool action denied by permission policy", "PERMISSION_DENIED");
+              }
             }
           }
           await runEvent(runOptions, { type: "tool.started", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step } });
