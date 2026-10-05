@@ -16,9 +16,11 @@ function run(command, args, cwd) {
 try {
   const files = await readdir(packageDir);
   const tarballs = new Map();
+  const sourceManifests = new Map();
 
   for (const name of names) {
     const manifest = JSON.parse(await readFile(join(root, "packages", name, "package.json"), "utf8"));
+    sourceManifests.set(manifest.name, manifest);
     const prefix = manifest.name.replace("@", "").replace("/", "-") + "-" + manifest.version;
     const file = files.find((entry) => entry === prefix + ".tgz");
     if (!file) throw new Error("Missing packed tarball: " + prefix + ".tgz");
@@ -27,7 +29,8 @@ try {
 
   // Validate publish rewriting and tarball boundaries before any consumer install.
   for (const [packageName, tarball] of tarballs) {
-    const source = JSON.parse(await readFile(join(root, "packages", packageName.split("/").at(-1), "package.json"), "utf8"));
+    const source = sourceManifests.get(packageName);
+    if (!source) throw new Error("Missing source manifest: " + packageName);
     const check = spawnSync("tar", ["-xOf", tarball, "package/package.json"], { encoding: "utf8" });
     if (check.status !== 0) throw new Error("Could not inspect tarball manifest: " + packageName);
     const manifest = JSON.parse(check.stdout);
@@ -46,9 +49,7 @@ try {
         }
         const sourceRange = source[section]?.[dependency];
         if (sourceRange === "workspace:*") {
-          const target = names
-            .map((name) => JSON.parse(require("node:fs").readFileSync(join(root, "packages", name, "package.json"), "utf8")))
-            .find((candidate) => candidate.name === dependency);
+          const target = [...sourceManifests.values()].find((candidate) => candidate.name === dependency);
           if (!target || range !== target.version) {
             throw new Error(packageName + " must publish internal dependency " + dependency + " at exact version " + (target?.version ?? "unknown") + ", got " + range);
           }
