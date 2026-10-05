@@ -27,7 +27,7 @@
   },
   "homepage": "https://github.com/Monupatel62/woho-ai-devkit/tree/main/packages/mcp",
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^26.6.4"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

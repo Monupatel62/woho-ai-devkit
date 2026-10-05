@@ -32,7 +32,7 @@
     "test": "pnpm typecheck && pnpm build && node dist/index.test.js"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^26.6.4"
   },
   "engines": {
     "node": ">=20"
