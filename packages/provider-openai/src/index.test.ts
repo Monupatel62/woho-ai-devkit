@@ -17,6 +17,9 @@ const run = async () => {
     });
   };
 
+  assert.throws(() => createOpenAIProvider({ apiKey: " ", baseUrl: "https://example.test/v1" }), /API key is required/);
+  assert.throws(() => createOpenAIProvider({ apiKey: "secret", baseUrl: "http://example.test/v1" }), /HTTPS/);
+  assert.throws(() => createOpenAIProvider({ apiKey: "secret", maxResponseBytes: 0 }), /maxResponseBytes/);
   const provider = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", defaultModel: "test-model" });
   const result = await provider.chat({
     messages: [{ role: "user", content: "hi" }],
@@ -34,6 +37,10 @@ const run = async () => {
   globalThis.fetch = async () => jsonResponse({}, 404);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof ModelNotFoundError);
 
+  globalThis.fetch = async () => jsonResponse({ ok: true }, 200);
+  const oversizedChat = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", maxResponseBytes: 10 });
+  await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "x" }] }), /maxResponseBytes/);
+
   globalThis.fetch = async () => jsonResponse({}, 429);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof RateLimitError);
 
@@ -50,6 +57,10 @@ const run = async () => {
   globalThis.fetch = async () => new Response('data: {bad-json}\\n\\n', { status: 200, headers: { "content-type": "text/event-stream" } });
   const malformed = provider.stream!({ messages: [{ role: "user", content: "bad" }] });
   await assert.rejects(async () => { for await (const _ of malformed) { /* expected failure */ } }, /Malformed provider SSE frame/);
+
+  globalThis.fetch = async () => new Response("data: " + JSON.stringify({ choices: [{ delta: { content: "123456789" } }] }) + "\\n\\n", { status: 200, headers: { "content-type": "text/event-stream" } });
+  const oversizedStream = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", maxResponseBytes: 10 });
+  await assert.rejects(async () => { for await (const _ of oversizedStream.stream!({ messages: [{ role: "user", content: "x" }] })) { /* expected */ } }, /maxResponseBytes/);
 
   globalThis.fetch = originalFetch;
   console.log("openai provider runtime tests passed");
