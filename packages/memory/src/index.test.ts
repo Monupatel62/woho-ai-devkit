@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { createInMemoryStore, createJsonFileStore, createConversation } from "./index.js";\nimport { mkdtemp, rm } from "node:fs/promises";\nimport { join } from "node:path";\nimport { tmpdir } from "node:os";
+import { createInMemoryStore, createJsonFileStore, createConversation } from "./index.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 const run = async () => {
   const store = createInMemoryStore({ maxMessages: 2 });
