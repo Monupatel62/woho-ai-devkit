@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.9
+
+- Hardened memory validation for queries and AI summarization limits.
+
 ## 0.7.8
 
 - Hardened agents with tool metadata validation, duplicate tool detection, and bounded serialized tool results.
