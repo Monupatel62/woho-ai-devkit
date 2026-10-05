@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.33
+
+- Added explicit stale-execution recovery for durable agent runtimes after process crashes.
+- Added compare-and-set execution updates to prevent stale recovery from overwriting a newer worker update.
+- Added explicit execution-history retention by age and/or record count; no automatic deletion is performed.
+- Hardened durable execution reads to reject symbolic-link records.
+- Added runtime APIs and regression coverage for recovery, race protection, retention, and maintenance validation.
+- Documented crash recovery and retention controls for durable execution storage.
+- Bumped all six public packages for the coordinated release.
+
+
 ## 0.8.32
 
 - Added durable file-backed execution history with atomic record replacement and bounded persistence size.
