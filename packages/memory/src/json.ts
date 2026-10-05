@@ -62,6 +62,12 @@ export class JsonFileStore implements MemoryStore {
     }
   }
 
+  private enqueueWrite(operation: () => Promise<void>): Promise<void> {
+    const run = this.writeQueue.catch(() => undefined).then(operation);
+    this.writeQueue = run.catch(() => undefined);
+    return run;
+  }
+
   async add(message: MemoryMessage): Promise<void> {
     if (!message || typeof message !== "object") throw new Error("Memory message is required");
     if (typeof message.id !== "string" || !message.id.trim()) throw new Error("Memory message id is required");
@@ -69,13 +75,12 @@ export class JsonFileStore implements MemoryStore {
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
     if (message.metadata !== undefined && (typeof message.metadata !== "object" || message.metadata === null || Array.isArray(message.metadata))) throw new Error("Memory message metadata must be an object");
-    this.writeQueue = this.writeQueue.then(async () => {
+    return this.enqueueWrite(async () => {
       const messages = await this.load();
       messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
       while (messages.length > this.maxMessages) messages.shift();
       await this.persist(messages);
     });
-    return this.writeQueue;
   }
 
   async list(query: MemoryQuery = {}): Promise<MemoryMessage[]> {
@@ -91,16 +96,14 @@ export class JsonFileStore implements MemoryStore {
 
   async delete(id: string): Promise<void> {
     if (!id.trim()) throw new Error("id is required");
-    this.writeQueue = this.writeQueue.then(async () => {
+    return this.enqueueWrite(async () => {
       const messages = await this.load();
       await this.persist(messages.filter((message) => message.id !== id));
     });
-    return this.writeQueue;
   }
 
   async clear(): Promise<void> {
-    this.writeQueue = this.writeQueue.then(() => this.persist([]));
-    return this.writeQueue;
+    return this.enqueueWrite(() => this.persist([]));
   }
 }
 
