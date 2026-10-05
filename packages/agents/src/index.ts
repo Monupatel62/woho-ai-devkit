@@ -48,6 +48,7 @@ export interface AgentOptions {
   memorySummaryThreshold?: number;
   maxToolResultChars?: number;
   toolTimeoutMs?: number;
+  approval?: AgentApprovalHandler;
 }
 
 export interface AgentRunResult {
@@ -99,8 +100,7 @@ function serializeToolResult(value: unknown, maxChars: number): string {
     catch { text = String(value); }
   }
   if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + "
-[tool result truncated]";
+  return text.slice(0, maxChars) + "\n[tool result truncated]";
 }
 
 function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
