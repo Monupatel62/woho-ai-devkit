@@ -1,32 +1,21 @@
 # Stage 4 — Reusable Tools
 
-Stage 4 provides reusable tools with explicit security boundaries.
+Stage 4 now has reusable tools plus a formal policy helper.
 
-## Tools
+## Built-ins
+- calculator
+- json
+- text_length
+- http_get
+- file_read
 
-- calculator: bounded arithmetic only
-- json: bounded JSON parsing
-- text_length: deterministic text utility
-- http_get: HTTPS-only, explicit host allowlist, redirect disabled, response-size limit and timeout
-- file_read: explicit directory allowlist, realpath containment check and file-size limit
+## Policy
+Use `createToolPolicy()` to create a normalized policy. Network and filesystem tools receive the policy at construction time and enforce it at execution time.
 
-## Security model
+The model cannot grant itself access. Empty allowlists deny access.
 
-The model cannot expand permissions. The application creates tools with a policy and the tool enforces it at runtime.
-
-Example:
-
-```ts
-import { fileReadTool, httpGetTool } from "@woho/tools";
-
-const tools = [
-  httpGetTool({ allowedHosts: ["api.example.com"] }),
-  fileReadTool({ allowedDirectories: ["/srv/woho/data"] }),
-];
-```
-
-No arbitrary shell execution is included. Filesystem writes and unrestricted HTTP are intentionally not enabled by default.
+## Runtime verification
+The package includes runtime assertions for deterministic tools and security boundaries. The workspace `test` command currently uses TypeScript checks as its baseline; the runtime test file is included as the next CI execution target.
 
 ## Next
-
-Add runtime tests and a formal permission/policy helper so applications can compose multiple tools safely.
+Wire runtime tests into CI, add stronger argument validation, and add opt-in search tooling with explicit provider boundaries.
