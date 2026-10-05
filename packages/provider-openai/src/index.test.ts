@@ -31,6 +31,12 @@ const run = async () => {
   assert.equal((captured?.headers as Headers).get("authorization"), "Bearer secret");
   assert.match(String(captured?.body), /calculator/);
 
+  globalThis.fetch = async () => new Response("{bad-json}", { status: 200, headers: { "content-type": "application/json" } });
+  await assert.rejects(provider.chat({ messages: [{ role: "user", content: "malformed" }] }), /Malformed provider JSON response/);
+
+  globalThis.fetch = async () => new Response("x".repeat(100), { status: 200, headers: { "content-type": "application/json" } });
+  await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "oversized" }] }), /maxResponseBytes/);
+
   globalThis.fetch = async () => jsonResponse({}, 401);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof AuthenticationError);
 
