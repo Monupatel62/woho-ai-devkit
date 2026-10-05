@@ -9,7 +9,7 @@ export interface MCPResourceContent { uri: string; mimeType?: string; text?: str
 export interface MCPResource { definition: MCPResourceDefinition; read(): Promise<MCPResourceContent[]>; }
 export interface MCPPromptArgument { name: string; description?: string; required?: boolean; }
 export interface MCPPromptDefinition { name: string; description?: string; arguments?: MCPPromptArgument[]; }
-export interface MCPPrompt { definition: MCPPromptDefinition; get(arguments?: Record<string, string>): Promise<unknown>; }
+export interface MCPPrompt { definition: MCPPromptDefinition; get(promptArguments?: Record<string, string>): Promise<unknown>; }
 export interface MCPServerInfo { name: string; version: string; }
 export interface MCPServerOptions { name: string; version: string; tools?: MCPTool[]; resources?: MCPResource[]; prompts?: MCPPrompt[]; }
 export interface MCPTransport { request(method: string, params?: unknown, signal?: AbortSignal): Promise<unknown>; notify?(method: string, params?: unknown): Promise<void>; close?(): Promise<void>; }
@@ -59,7 +59,7 @@ export class MCPServer {
   async getPrompt(name: string, promptArguments?: Record<string, string>): Promise<unknown> {
     const prompt = this.prompts.get(name);
     if (!prompt) throw new Error("Unknown MCP prompt: " + name);
-    return prompt.get(arguments);
+    return prompt.get(promptArguments);
   }
   async callTool(name: string, input: unknown): Promise<unknown> {
     const tool = this.tools.get(name);
@@ -129,7 +129,7 @@ export class MCPClient {
     const value = await this.request("prompts/list") as { prompts?: MCPPromptDefinition[] };
     return Array.isArray(value?.prompts) ? value.prompts : [];
   }
-  async getPrompt(name: string, arguments?: Record<string, string>): Promise<unknown> {
+  async getPrompt(name: string, promptArguments?: Record<string, string>): Promise<unknown> {
     if (!name.trim()) throw new Error("prompt name is required");
     if (name !== name.trim()) throw new Error("prompt name cannot have surrounding whitespace");
     await this.initialize();
