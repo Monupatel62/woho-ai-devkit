@@ -10,7 +10,6 @@ export interface MemoryQuery {
   limit?: number;
   before?: number;
   sessionId?: string;
-  sessionId?: string;
 }
 
 export interface MemoryStore {
@@ -46,13 +45,33 @@ export class InMemoryStore implements MemoryStore {
     const limit = query.limit ?? this.maxMessages;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     let items = query.before === undefined ? [...this.messages] : this.messages.filter((m) => (m.timestamp ?? 0) < query.before!);
-    if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);\n    if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);
+    if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);
     return items.slice(Math.max(0, items.length - limit)).map((m) => ({ ...m, metadata: m.metadata ? { ...m.metadata } : undefined }));
   }
 
   async clear(): Promise<void> {
     this.messages.length = 0;
   }
+}
+
+export interface MemorySummaryOptions {
+  maxCharacters: number;
+  sessionId?: string;
+}
+
+export function summarizeMemory(messages: MemoryMessage[], options: MemorySummaryOptions): MemoryMessage {
+  if (!Number.isInteger(options.maxCharacters) || options.maxCharacters < 1) throw new Error("maxCharacters must be a positive integer");
+  const source = options.sessionId ? messages.filter((m) => m.metadata?.sessionId === options.sessionId) : messages;
+  const lines: string[] = [];
+  let used = 0;
+  for (const message of source) {
+    const line = message.role + ": " + message.content.replace(/\\s+/g, " ").trim();
+    const next = used + line.length + 1;
+    if (next > options.maxCharacters) break;
+    lines.push(line);
+    used = next;
+  }
+  return { id: "summary-" + Date.now(), role: "system", content: lines.join("\\n"), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };
 }
 
 export function createInMemoryStore(options?: MemoryOptions): MemoryStore {
