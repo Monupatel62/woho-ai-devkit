@@ -62,7 +62,7 @@ export interface AIProvider {
   stream?(request: AIRequest): AsyncIterable<AIStreamChunk>;
 }
 
-export interface AIConfig {
+export type AILogEvent =\n  | { type: "request.start"; request: AIRequest; attempt: number }\n  | { type: "request.success"; response: AIResponse; attempt: number; durationMs: number }\n  | { type: "request.error"; error: unknown; attempt: number; durationMs: number }\n  | { type: "stream.start"; request: AIRequest }\n  | { type: "stream.chunk"; chunk: AIStreamChunk }\n  | { type: "stream.end"; durationMs: number };\n\nexport interface AIObservability {\n  onEvent?(event: AILogEvent): void | Promise<void>;\n}\n\nexport interface AIConfig {
   provider: AIProvider;
   timeoutMs?: number;
   retries?: number;
