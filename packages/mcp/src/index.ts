@@ -56,7 +56,7 @@ export class MCPServer {
     this.prompts.set(prompt.definition.name, prompt);
   }
   listPrompts(): MCPPromptDefinition[] { return [...this.prompts.values()].map((prompt) => ({ ...prompt.definition })); }
-  async getPrompt(name: string, arguments?: Record<string, string>): Promise<unknown> {
+  async getPrompt(name: string, promptArguments?: Record<string, string>): Promise<unknown> {
     const prompt = this.prompts.get(name);
     if (!prompt) throw new Error("Unknown MCP prompt: " + name);
     return prompt.get(arguments);
@@ -133,7 +133,7 @@ export class MCPClient {
     if (!name.trim()) throw new Error("prompt name is required");
     if (name !== name.trim()) throw new Error("prompt name cannot have surrounding whitespace");
     await this.initialize();
-    return this.request("prompts/get", { name, ...(arguments ? { arguments } : {}) });
+    return this.request("prompts/get", { name, ...(promptArguments ? { arguments: promptArguments } : {}) });
   }
   async listTools(): Promise<MCPToolDefinition[]> {
     await this.initialize();
