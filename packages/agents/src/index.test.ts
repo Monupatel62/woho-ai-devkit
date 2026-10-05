@@ -147,6 +147,15 @@ const run = async () => {
     { id: "second", agent: "general", input: ({ completed }) => "second after " + completed.first?.text, dependsOn: ["first"] },
   ] });
   assert.equal(contextualPlan.steps.second?.text, "context-ok");
+  let approved = false;
+  const approvalAgent = createAgent(createAI({ provider: createMockProvider({ response: "approved", toolCall: { name: "protected", arguments: "{}" } }) }), {
+    name: "approval",
+    permissions: { check: () => ({ allowed: false, reason: "manual approval", requiresApproval: true }) },
+    tools: [{ name: "protected", description: "Protected", capability: "computer", action: "execute", execute: async () => "allowed" }],
+  });
+  const approvalResult = await approvalAgent.run("run", { runId: "approval-run", approval: async () => { approved = true; return true; } });
+  assert.equal(approved, true);
+  assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
