@@ -1,12 +1,7 @@
 import type { AgentTool } from "@woho/agents";
+import { assertAllowedHost, createToolPolicy, type ToolPolicy } from "./policy.js";
 
-export interface ToolSecurityPolicy {
-  allowedHosts?: string[];
-  allowedDirectories?: string[];
-  maxResponseBytes?: number;
-  maxFileBytes?: number;
-  timeoutMs?: number;
-}
+export type ToolSecurityPolicy = Partial<ToolPolicy>;
 
 function requireObject(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
@@ -55,14 +50,8 @@ export function textLengthTool(): AgentTool {
   };
 }
 
-function hostAllowed(host: string, allowedHosts?: string[]): boolean {
-  if (!allowedHosts?.length) return false;
-  return allowedHosts.some((allowed) => host === allowed || host.endsWith("." + allowed));
-}
-
-export function httpGetTool(policy: ToolSecurityPolicy): AgentTool {
-  const timeoutMs = policy.timeoutMs ?? 10_000;
-  const maxBytes = policy.maxResponseBytes ?? 1_000_000;
+export function httpGetTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
+  const policy = createToolPolicy(inputPolicy);
   return {
     name: "http_get",
     description: "Fetch a URL only when its hostname is explicitly allowed by the application policy.",
@@ -72,16 +61,15 @@ export function httpGetTool(policy: ToolSecurityPolicy): AgentTool {
       if (typeof urlText !== "string") throw new Error("url is required");
       const url = new URL(urlText);
       if (url.protocol !== "https:") throw new Error("Only HTTPS URLs are allowed");
-      if (!hostAllowed(url.hostname, policy.allowedHosts)) throw new Error("Host is not allowed by policy");
-
+      assertAllowedHost(url.hostname, policy.allowedHosts);
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const timer = setTimeout(() => controller.abort(), policy.timeoutMs);
       try {
         const response = await fetch(url, { signal: controller.signal, redirect: "error" });
         const contentLength = Number(response.headers.get("content-length") ?? 0);
-        if (contentLength > maxBytes) throw new Error("Response exceeds size limit");
+        if (contentLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
         const text = await response.text();
-        if (new TextEncoder().encode(text).byteLength > maxBytes) throw new Error("Response exceeds size limit");
+        if (new TextEncoder().encode(text).byteLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
         return { status: response.status, contentType: response.headers.get("content-type"), text };
       } finally {
         clearTimeout(timer);
@@ -90,8 +78,8 @@ export function httpGetTool(policy: ToolSecurityPolicy): AgentTool {
   };
 }
 
-export function fileReadTool(policy: ToolSecurityPolicy): AgentTool {
-  const maxBytes = policy.maxFileBytes ?? 1_000_000;
+export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
+  const policy = createToolPolicy(inputPolicy);
   return {
     name: "file_read",
     description: "Read a UTF-8 text file only inside an explicitly allowed directory.",
@@ -99,21 +87,23 @@ export function fileReadTool(policy: ToolSecurityPolicy): AgentTool {
     async execute(input) {
       const path = requireObject(input).path;
       if (typeof path !== "string") throw new Error("path is required");
-      if (!policy.allowedDirectories?.length) throw new Error("No allowed directories configured");
+      if (!policy.allowedDirectories.length) throw new Error("No allowed directories configured");
       const fs = await import("node:fs/promises");
       const pathModule = await import("node:path");
       const realPath = await fs.realpath(path);
+      const target = pathModule.resolve(realPath);
       const allowed = policy.allowedDirectories.some((dir) => {
         const root = pathModule.resolve(dir);
-        const target = pathModule.resolve(realPath);
         return target === root || target.startsWith(root + pathModule.sep);
       });
       if (!allowed) throw new Error("Path is outside the allowed directories");
       const stat = await fs.stat(realPath);
-      if (!stat.isFile() || stat.size > maxBytes) throw new Error("File is missing, not a regular file, or too large");
+      if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not a regular file, or too large");
       return { path: realPath, text: await fs.readFile(realPath, "utf8") };
     },
   };
 }
 
+export { assertAllowedHost, createToolPolicy, defaultToolPolicy };
+export type { ToolPolicy };
 export const builtInTools = { calculator: calculatorTool, json: jsonTool, textLength: textLengthTool, httpGet: httpGetTool, fileRead: fileReadTool };
