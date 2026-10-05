@@ -26,6 +26,7 @@ export interface AgentDefinition {
   readonly tools?: AgentTool[];
   readonly capabilities?: string[];
   readonly maxSteps?: number;
+  readonly permissions?: import("@woho/core").PermissionPolicy;
 }
 
 export interface AgentFactoryContext {
