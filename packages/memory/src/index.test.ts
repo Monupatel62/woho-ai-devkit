@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createInMemoryStore, createJsonFileStore, createConversation, summarizeMemory, summarizeMemoryWith } from "./index.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { searchMemory } from "./search.js";
 import { tmpdir } from "node:os";
 
 const run = async () => {
@@ -66,6 +67,9 @@ const run = async () => {
   await queueStore.add({ id: "ok2", role: "user", content: "ok2" });
   assert.deepEqual((await queueStore.list()).map((m) => m.id), ["ok2"]);
 
+  const ranked = await searchMemory(sessionStore, "typescript python", { limit: 5 });
+  assert.equal(ranked[0]?.message.id, "m2");
+  assert.equal(ranked[0]?.score, 2);
   const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
   assert.equal(summary.role, "system");
   assert.ok(summary.content.includes("hello world"));
