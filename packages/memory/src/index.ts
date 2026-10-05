@@ -29,9 +29,7 @@ export class InMemoryStore implements MemoryStore {
 
   constructor(options: MemoryOptions = {}) {
     this.maxMessages = options.maxMessages ?? 100;
-    if (!Number.isInteger(this.maxMessages) || this.maxMessages < 1) {
-      throw new Error("maxMessages must be a positive integer");
-    }
+    if (!Number.isInteger(this.maxMessages) || this.maxMessages < 1) throw new Error("maxMessages must be a positive integer");
   }
 
   async add(message: MemoryMessage): Promise<void> {
@@ -47,6 +45,12 @@ export class InMemoryStore implements MemoryStore {
     let items = query.before === undefined ? [...this.messages] : this.messages.filter((m) => (m.timestamp ?? 0) < query.before!);
     if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);
     return items.slice(Math.max(0, items.length - limit)).map((m) => ({ ...m, metadata: m.metadata ? { ...m.metadata } : undefined }));
+  }
+
+  async delete(id: string): Promise<void> {
+    if (!id.trim()) throw new Error("id is required");
+    const index = this.messages.findIndex((message) => message.id === id);
+    if (index >= 0) this.messages.splice(index, 1);
   }
 
   async clear(): Promise<void> {
@@ -76,14 +80,13 @@ export function summarizeMemory(messages: MemoryMessage[], options: MemorySummar
   const lines: string[] = [];
   let used = 0;
   for (const message of source) {
-    const line = message.role + ": " + message.content.replace(/\\s+/g, " ").trim();
+    const line = message.role + ": " + message.content.replace(/\s+/g, " ").trim();
     const next = used + line.length + 1;
     if (next > options.maxCharacters) break;
     lines.push(line);
     used = next;
   }
-  return { id: "summary-" + Date.now(), role: "system", content: lines.join("\
-"), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };
+  return { id: "summary-" + Date.now(), role: "system", content: lines.join("\n"), timestamp: Date.now(), metadata: options.sessionId ? { sessionId: options.sessionId, summary: true } : { summary: true } };
 }
 
 export function createInMemoryStore(options?: MemoryOptions): MemoryStore {
