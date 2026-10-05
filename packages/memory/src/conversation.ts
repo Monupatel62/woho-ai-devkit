@@ -32,9 +32,7 @@ export class Conversation {
   }
 
   async messages(limit = this.maxMessages): Promise<MemoryMessage[]> {
-    return this.store.list({ limit }).then((items) =>
-      items.filter((item) => item.metadata?.sessionId === this.sessionId),
-    );
+    return this.store.list({ limit, sessionId: this.sessionId });
   }
 
   async search(options: MemorySearchOptions): Promise<MemoryMessage[]> {
@@ -42,7 +40,7 @@ export class Conversation {
     if (!query) throw new Error("query is required");
     const limit = options.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
-    const items = await this.store.list();
+    const items = await this.store.list({ sessionId: this.sessionId });
     return items
       .filter((item) => item.metadata?.sessionId === this.sessionId && item.content.toLowerCase().includes(query))
       .slice(-limit);
