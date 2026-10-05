@@ -76,6 +76,32 @@ const runtime = new AgentRuntime({
 
 Runtime events include run lifecycle and tool execution events, making the execution layer observable by a future UI or external telemetry system.
 
+### Crash recovery and retention
+
+A durable store can be inspected after a process restart. `recoverStaleExecutions` marks runs that have stopped advancing as failed, using a compare-and-set update when the store supports it. Recovery is explicit and defaults to the `running` state; approval/waiting states are not automatically failed.
+
+```ts
+import { FileExecutionStore, AgentRuntime } from "@woho/agents";
+
+const runtime = new AgentRuntime({
+  store: new FileExecutionStore({ directory: "./.woho/executions" }),
+});
+
+const recovered = await runtime.recoverStale({ staleAfterMs: 60_000 });
+console.log("recovered:", recovered.map((run) => run.runId));
+```
+
+Execution history is never deleted automatically. Use `pruneExecutionHistory` or `runtime.pruneHistory` with an age and/or count policy when retention cleanup is explicitly desired.
+
+```ts
+await runtime.pruneHistory({
+  olderThanMs: 7 * 24 * 60 * 60 * 1000,
+  status: "succeeded",
+});
+```
+
+Count-based retention keeps the newest `maxRecords` matching the optional status and removes older records. Age and count filters can be combined for a conservative cleanup policy.
+
 ## License
 
 Apache-2.0
