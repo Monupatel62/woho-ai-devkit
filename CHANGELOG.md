@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- Added reusable @woho/tools package.
+- Added safe calculator, JSON, and text-length tools.
+- Added bounded input validation and explicit safety boundaries.
+
+## 0.3.0
+
+- Added composable agents.
+- Added provider tool-call support and multi-step tool execution.
+
 ## 0.2.0
 
 - Added provider-independent AI request and response types.
