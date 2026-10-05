@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createAI, createMockProvider, AIError } from "@woho/core";
 import { createInMemoryStore } from "@woho/memory";
-import { createAgent, AgentRegistry, AgentRuntime } from "./index.js";
+import { createAgent, AgentRegistry, AgentRuntime, runAgentPlan } from "./index.js";
 import { createSpecializedAgent } from "./specialized.js";
 
 const run = async () => {
@@ -120,6 +120,22 @@ const run = async () => {
   ]);
   assert.equal(parallel.length, 2);
   await assert.rejects(() => runtime.run(createAI({ provider: createMockProvider({ response: "x" }) }), { agent: "missing", input: "x" }), /Unknown agent/);
+  const planResult = await runAgentPlan(runtime, createAI({ provider: createMockProvider({ response: "plan-ok" }) }), {
+    steps: [
+      { id: "research", agent: "general", input: "research" },
+      { id: "draft", agent: "general", input: "draft", dependsOn: ["research"] },
+      { id: "review-a", agent: "general", input: "review a", dependsOn: ["draft"] },
+      { id: "review-b", agent: "general", input: "review b", dependsOn: ["draft"] },
+    ],
+  });
+  assert.deepEqual(planResult.order, ["research", "draft", "review-a", "review-b"]);
+  assert.equal(planResult.steps["review-b"]?.text, "plan-ok");
+  await assert.rejects(() => runAgentPlan(runtime, createAI({ provider: createMockProvider({ response: "x" }) }), {
+    steps: [
+      { id: "a", agent: "general", input: "a", dependsOn: ["b"] },
+      { id: "b", agent: "general", input: "b", dependsOn: ["a"] },
+    ],
+  }), /cycle or unknown dependency/);
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
