@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.5
+
+- Hardened agent tool-call parsing: malformed JSON arguments now fail as structured tool errors instead of being passed through as strings.
+- Added basic runtime validation for required and unknown tool parameters.
+- Duplicate tool names are now detected after trimming whitespace.
+- Added runtime coverage for malformed tool arguments.
+- Bumped `@woho/agents` to 0.3.9.
+
 ## 0.8.4
 
 - Hardened AI cancellation so already-aborted requests stop before provider execution.
