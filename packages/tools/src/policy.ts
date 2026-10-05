@@ -22,7 +22,7 @@ function cleanList(values: string[], name: string): string[] {
   if (!Array.isArray(values)) throw new Error(name + " must be an array");
   return values.map((value) => {
     if (typeof value !== "string" || !value.trim()) throw new Error(name + " entries must be non-empty strings");
-    return value.trim().toLowerCase();
+    return value.trim().toLowerCase().replace(/\.$/, "");
   });
 }
 
