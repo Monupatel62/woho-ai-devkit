@@ -35,7 +35,7 @@ export class InMemoryStore implements MemoryStore {
   async add(message: MemoryMessage): Promise<void> {
     if (!message || typeof message !== "object") throw new Error("Memory message is required");
     if (typeof message.id !== "string" || !message.id.trim()) throw new Error("Memory message id is required");
-    if (typeof message.content !== "string" || !message.content.trim()) throw new Error("Memory message content is required");
+    if (typeof message.content !== "string") throw new Error("Memory message content is required");
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
     this.messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
