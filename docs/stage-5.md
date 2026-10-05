@@ -3,6 +3,10 @@
 Stage 5 starts with a provider-neutral memory interface and a bounded in-memory implementation.
 
 ## Included
+- `Conversation` session wrapper
+- bounded message retrieval
+- simple case-insensitive text search
+- session metadata isolation
 - persistent `JsonFileStore` implementation
 - atomic file replacement and serialized writes
 - `MemoryMessage`
