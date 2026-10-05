@@ -144,6 +144,20 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      const processLine = (line: string): AIStreamChunk | undefined => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) return undefined;
+        const payload = trimmed.slice(5).trim();
+        if (payload === "[DONE]") return undefined;
+        const data = JSON.parse(payload) as ProviderResponse;
+        const choice = data.choices?.[0];
+        return {
+          id: data.id,
+          model: data.model,
+          text: choice?.delta?.content ?? "",
+          finishReason: choice?.finish_reason === "length" ? "length" : choice?.finish_reason === "stop" ? "stop" : undefined,
+        };
+      };
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -152,21 +166,21 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) continue;
-          const payload = trimmed.slice(5).trim();
-          if (payload === "[DONE]") return;
+          if (!trimmed) continue;
           try {
-            const data = JSON.parse(payload) as ProviderResponse;
-            const choice = data.choices?.[0];
-            yield {
-              id: data.id,
-              model: data.model,
-              text: choice?.delta?.content ?? "",
-              finishReason: choice?.finish_reason === "length" ? "length" : choice?.finish_reason === "stop" ? "stop" : undefined,
-            };
-          } catch {
-            // Ignore malformed SSE frames.
+            const chunk = processLine(trimmed);
+            if (chunk) yield chunk;
+          } catch (error) {
+            throw new NetworkError("Malformed provider SSE frame", error);
           }
+        }
+      }
+      if (buffer.trim()) {
+        try {
+          const chunk = processLine(buffer);
+          if (chunk) yield chunk;
+        } catch (error) {
+          throw new NetworkError("Malformed provider SSE frame", error);
         }
       }
     },
