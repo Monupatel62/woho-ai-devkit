@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.31
+
+- Added a unified `createProjectTools` factory that binds workspace, Git, and optional allowlisted command execution to one project root.
+- Added regression coverage for the project tool bundle.
+- Bumped all six public packages for the coordinated release.
+
+
 ## 0.8.30
 
 - Added a policy-bounded workspace tool for secure project file inspection and mutation.
