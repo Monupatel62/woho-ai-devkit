@@ -25,6 +25,41 @@ export interface ExecutionStore {
   appendEvent(runId: string, event: ExecutionEvent): void | Promise<void>;
   get(runId: string): ExecutionRecord | undefined | Promise<ExecutionRecord | undefined>;
   list(options?: { status?: ExecutionStatus; limit?: number }): ExecutionRecord[] | Promise<ExecutionRecord[]>;
+  remove?(runId: string): boolean | Promise<boolean>;
+  updateIf?(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean | Promise<boolean>;
+}
+
+export interface RecoverStaleExecutionsOptions {
+  readonly staleAfterMs: number;
+  readonly now?: number;
+  readonly statuses?: readonly ExecutionStatus[];
+}
+
+export interface PruneExecutionHistoryOptions {
+  readonly olderThanMs?: number;
+  readonly maxRecords?: number;
+  readonly now?: number;
+  readonly status?: ExecutionStatus;
+}
+
+function validateTimestamp(value: number | undefined, name: string): void {
+  if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error(name + " must be a non-negative finite number");
+}
+
+function validatePositiveDuration(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 1) throw new Error(name + " must be a positive integer");
+}
+
+function validatePruneOptions(options: PruneExecutionHistoryOptions): void {
+  if (options.olderThanMs === undefined && options.maxRecords === undefined) throw new Error("Execution prune requires olderThanMs or maxRecords");
+  if (options.olderThanMs !== undefined) validatePositiveDuration(options.olderThanMs, "olderThanMs");
+  if (options.maxRecords !== undefined && (!Number.isInteger(options.maxRecords) || options.maxRecords < 0)) throw new Error("maxRecords must be a non-negative integer");
+  validateTimestamp(options.now, "now");
+}
+
+function validateRecoveryOptions(options: RecoverStaleExecutionsOptions): void {
+  validatePositiveDuration(options.staleAfterMs, "staleAfterMs");
+  validateTimestamp(options.now, "now");
 }
 
 function cloneRecord(record: ExecutionRecord): ExecutionRecord {
@@ -77,6 +112,17 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .filter((record) => options.status === undefined || record.status === options.status)
       .sort((a, b) => b.updatedAt - a.updatedAt);
     return records.slice(0, options.limit ?? records.length).map(cloneRecord);
+  }  remove(runId: string): boolean {
+    validateRunId(runId);
+    return this.records.delete(runId);
+  }
+
+  updateIf(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean {
+    validateRunId(runId);
+    const current = this.records.get(runId);
+    if (!current || current.updatedAt !== expectedUpdatedAt) return false;
+    this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
+    return true;
   }
 }
 
@@ -155,6 +201,30 @@ export class FileExecutionStore implements ExecutionStore {
     return records.slice(0, options.limit ?? records.length).map(cloneRecord);
   }
 
+  async remove(runId: string): Promise<boolean> {
+    validateRunId(runId);
+    return this.enqueue(async () => {
+      try {
+        await fs.unlink(this.filePath(runId));
+        return true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw error;
+      }
+    });
+  }
+
+  async updateIf(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): Promise<boolean> {
+    validateRunId(runId);
+    return this.enqueue(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current || current.updatedAt !== expectedUpdatedAt) return false;
+      await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
+      return true;
+    });
+  }
+
   private filePath(runId: string): string {
     return path.join(this.directory, Buffer.from(runId, "utf8").toString("base64url") + ".json");
   }
@@ -165,7 +235,7 @@ export class FileExecutionStore implements ExecutionStore {
 
   private async readRecord(file: string): Promise<ExecutionRecord | undefined> {
     try {
-      const stat = await fs.stat(file);
+      const stat = await fs.lstat(file);
       if (!stat.isFile() || stat.size > this.maxRecordBytes) {
         throw new Error("Execution record is missing, not a regular file, or too large");
       }
@@ -207,4 +277,71 @@ export class FileExecutionStore implements ExecutionStore {
     this.writeQueue = run.then(() => undefined, () => undefined);
     return run;
   }
+}
+
+
+export async function recoverStaleExecutions(
+  store: ExecutionStore,
+  options: RecoverStaleExecutionsOptions,
+): Promise<ExecutionRecord[]> {
+  validateRecoveryOptions(options);
+  const now = options.now ?? Date.now();
+  const statuses = options.statuses ?? (["running"] as const);
+  const cutoff = now - options.staleAfterMs;
+  const recovered: ExecutionRecord[] = [];
+
+  for (const status of statuses) {
+    const candidates = await store.list({ status });
+    for (const candidate of candidates) {
+      if (candidate.updatedAt > cutoff) continue;
+      const patch: Partial<ExecutionRecord> = {
+        status: "failed",
+        error: "Execution became stale without a heartbeat",
+        completedAt: now,
+        updatedAt: now,
+      };
+      let claimed = false;
+      if (store.updateIf) {
+        claimed = await store.updateIf(candidate.runId, candidate.updatedAt, patch);
+      } else {
+        const latest = await store.get(candidate.runId);
+        if (!latest || latest.status !== status || latest.updatedAt !== candidate.updatedAt) continue;
+        await store.update(candidate.runId, patch);
+        claimed = true;
+      }
+      if (!claimed) continue;
+      await store.appendEvent(candidate.runId, {
+        type: "run.failed",
+        runId: candidate.runId,
+        timestamp: now,
+        data: { reason: "stale", staleAfterMs: options.staleAfterMs },
+      });
+      const record = await store.get(candidate.runId);
+      if (record) recovered.push(record);
+    }
+  }
+  return recovered;
+}
+
+export async function pruneExecutionHistory(
+  store: ExecutionStore,
+  options: PruneExecutionHistoryOptions,
+): Promise<ExecutionRecord[]> {
+  validatePruneOptions(options);
+  if (!store.remove) throw new Error("Execution store does not support history removal");
+  const now = options.now ?? Date.now();
+  const records = await store.list({ status: options.status });
+  const cutoff = options.olderThanMs === undefined ? undefined : now - options.olderThanMs;
+  const candidates = records
+    .sort((a, b) => a.updatedAt - b.updatedAt)
+    .filter((record, index) => {
+      const oldEnough = cutoff === undefined || record.updatedAt <= cutoff;
+      const overCount = options.maxRecords === undefined || index >= options.maxRecords;
+      return oldEnough && overCount;
+    });
+  const removed: ExecutionRecord[] = [];
+  for (const record of candidates) {
+    if (await store.remove(record.runId)) removed.push(record);
+  }
+  return removed;
 }
