@@ -21,7 +21,9 @@ const run = async () => {
   assert.throws(() => createToolPolicy({ maxResponseBytes: -1 }), /positive integer/);
   assert.throws(() => createToolPolicy({ allowedHosts: [""] }), /non-empty strings/);
   assert.throws(() => createToolPolicy({ allowedDirectories: [""] }), /non-empty strings/);
-  assert.deepEqual(createToolPolicy({ allowedHosts: ["Example.COM"] }).allowedHosts, ["example.com"]);
+  assert.deepEqual(createToolPolicy({ allowedHosts: ["Example.COM."] }).allowedHosts, ["example.com"]);
+  const unixPathPolicy = createToolPolicy({ allowedDirectories: ["/Tmp/WoHo"] });
+  assert.deepEqual(unixPathPolicy.allowedDirectories, ["/Tmp/WoHo"]);
   await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
 
@@ -62,6 +64,11 @@ const run = async () => {
   assert.deepEqual(await brave.search("woho", { limit: 1 }), [{ title: "Brave result", url: "https://example.com", snippet: "snippet" }]);
   const tavily = createTavilySearchProvider({ apiKey: "test", fetchImpl: mockFetch });
   assert.deepEqual(await tavily.search("woho", { limit: 1 }), [{ title: "Tavily result", url: "https://example.org", snippet: "content" }]);
+  const oversizedFetch: typeof fetch = async () => new Response("x".repeat(100));
+  const boundedBrave = createBraveSearchProvider({ apiKey: "test", maxResponseBytes: 10, fetchImpl: oversizedFetch });
+  await assert.rejects(() => boundedBrave.search("woho"), /size limit/);
+  const boundedTavily = createTavilySearchProvider({ apiKey: "test", maxResponseBytes: 10, fetchImpl: oversizedFetch });
+  await assert.rejects(() => boundedTavily.search("woho"), /size limit/);
   assert.throws(() => createBraveSearchProvider({ apiKey: " " }), /apiKey is required/);
 
   await rm(root, { recursive: true, force: true });
