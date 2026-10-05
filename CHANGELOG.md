@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.8
+
+- Hardened agents with tool metadata validation, duplicate tool detection, and bounded serialized tool results.
+
 ## 0.7.7
 
 - Hardened AI streaming timeouts so stalled async iterators are interrupted by the client timeout or caller cancellation.
