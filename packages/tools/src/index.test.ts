@@ -1,0 +1,21 @@
+import assert from "node:assert/strict";
+import { createToolPolicy, calculatorTool, jsonTool, textLengthTool, httpGetTool, fileReadTool } from "./index.js";
+
+const run = async () => {
+  assert.deepEqual(await calculatorTool().execute({ expression: "6 * 7" }), { expression: "6 * 7", result: 42 });
+  assert.deepEqual(await jsonTool().execute({ text: '{"ok":true}' }), { ok: true });
+  assert.deepEqual(await textLengthTool().execute({ text: "hello" }), { length: 5 });
+
+  assert.throws(() => createToolPolicy({ timeoutMs: 0 }), /positive/);
+  await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
+  await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
+
+  const policy = createToolPolicy({ allowedHosts: ["example.com"] });
+  assert.equal(policy.timeoutMs, 10_000);
+  console.log("tools runtime tests passed");
+};
+
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
