@@ -18,11 +18,11 @@ function positiveInteger(value: number, name: string): void {
   if (!Number.isInteger(value) || value < 1) throw new Error(name + " must be a positive integer");
 }
 
-function cleanList(values: string[], name: string): string[] {
+function cleanList(values: string[], name: string, normalizeHost = false): string[] {
   if (!Array.isArray(values)) throw new Error(name + " must be an array");
   return values.map((value) => {
     if (typeof value !== "string" || !value.trim()) throw new Error(name + " entries must be non-empty strings");
-    return value.trim().toLowerCase().replace(/\.$/, "");
+    const cleaned = value.trim();\n    return normalizeHost ? cleaned.toLowerCase().replace(/\\.+$/, "") : cleaned;
   });
 }
 
@@ -31,7 +31,7 @@ export function createToolPolicy(input: Partial<ToolPolicy> = {}): ToolPolicy {
   if (input.maxFileBytes !== undefined) positiveInteger(input.maxFileBytes, "maxFileBytes");
   if (input.timeoutMs !== undefined) positiveInteger(input.timeoutMs, "timeoutMs");
   return {
-    allowedHosts: cleanList(input.allowedHosts ?? defaultToolPolicy.allowedHosts, "allowedHosts"),
+    allowedHosts: cleanList(input.allowedHosts ?? defaultToolPolicy.allowedHosts, "allowedHosts", true),
     allowedDirectories: cleanList(input.allowedDirectories ?? defaultToolPolicy.allowedDirectories, "allowedDirectories"),
     maxResponseBytes: input.maxResponseBytes ?? defaultToolPolicy.maxResponseBytes,
     maxFileBytes: input.maxFileBytes ?? defaultToolPolicy.maxFileBytes,
