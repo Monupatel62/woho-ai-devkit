@@ -1,12 +1,3 @@
-## 0.8.20
-
-- Hardened npm package release metadata across all six public workspace packages.
-- Added explicit public scoped-package publishing configuration.
-- Restricted package tarballs to built output and package documentation/license files.
-- Added repository/homepage metadata for each package.
-- Added package-level README and Apache-2.0 license files.
-- Marked the workspace root private to prevent accidental root-package publication.
-
 # Changelog
 
 ## 0.8.22
@@ -15,6 +6,15 @@
 - Updated GitHub Actions dependencies to current major versions for checkout, setup-node, and pnpm setup.
 - Replaced abbreviated license placeholders with the full Apache-2.0 license text in the root and publishable packages.
 - Verified Node 20/22 CI and CodeQL on the hardened workflow path.
+
+## 0.8.20
+
+- Hardened npm package release metadata across all six public workspace packages.
+- Added explicit public scoped-package publishing configuration.
+- Restricted package tarballs to built output and package documentation/license files.
+- Added repository/homepage metadata for each package.
+- Added package-level README and Apache-2.0 license files.
+- Marked the workspace root private to prevent accidental root-package publication.
 
 ## 0.8.19
 
