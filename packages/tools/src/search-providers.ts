@@ -13,7 +13,28 @@ export interface SearchProviderOptions {
   fetchImpl?: typeof fetch;
 }
 
-async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {\n  if (!response.body) throw new Error("Search provider returned no response body");\n  const reader = response.body.getReader();\n  const decoder = new TextDecoder();\n  const chunks: string[] = [];\n  let received = 0;\n  try {\n    while (true) {\n      const { value, done } = await reader.read();\n      if (done) break;\n      received += value.byteLength;\n      if (received > maxBytes) throw new Error("Search provider response exceeds size limit");\n      chunks.push(decoder.decode(value, { stream: true }));\n    }\n    chunks.push(decoder.decode());\n    return chunks.join("");\n  } finally {\n    await reader.cancel().catch(() => undefined);\n  }\n}\n\nfunction createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, maxResponseBytes: number) {
+async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) throw new Error("Search provider returned no response body");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      received += value.byteLength;
+      if (received > maxBytes) throw new Error("Search provider response exceeds size limit");
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    chunks.push(decoder.decode());
+    return chunks.join("");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
+function createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, maxResponseBytes: number) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error("timeoutMs must be a positive integer");
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
   const fn = fetchImpl ?? fetch;
