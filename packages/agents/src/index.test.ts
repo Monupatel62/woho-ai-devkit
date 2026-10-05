@@ -142,6 +142,11 @@ const run = async () => {
   const record = executionStore.get(stored.runId);
   assert.equal(record?.status, "succeeded");
   assert.ok((record?.events.length ?? 0) >= 2);
+  const contextualPlan = await runAgentPlan(runtime, createAI({ provider: createMockProvider({ response: "context-ok" }) }), { steps: [
+    { id: "first", agent: "general", input: "first" },
+    { id: "second", agent: "general", input: ({ completed }) => "second after " + completed.first?.text, dependsOn: ["first"] },
+  ] });
+  assert.equal(contextualPlan.steps.second?.text, "context-ok");
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
