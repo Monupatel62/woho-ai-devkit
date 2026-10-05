@@ -98,7 +98,19 @@ export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
       const pathModule = await import("node:path");
       const realPath = await fs.realpath(path);
       const target = pathModule.resolve(realPath);
-      const allowed = policy.allowedDirectories.some((dir) => {
+      const allowed = await (async () => {
+        for (const dir of policy.allowedDirectories) {
+          let root: string;
+          try { root = pathModule.resolve(await fs.realpath(dir)); } catch { continue; }
+          if (target === root || target.startsWith(root + pathModule.sep)) return true;
+        }
+        return false;
+      })();
+      /* allowed directories are resolved through realpath to avoid lexical symlink escapes */
+      const isAllowed = allowed;
+      const allowedResult = isAllowed;
+      const _unused = allowedResult;
+      const legacyAllowed = policy.allowedDirectories.some((dir) => {
         const root = pathModule.resolve(dir);
         return target === root || target.startsWith(root + pathModule.sep);
       });
