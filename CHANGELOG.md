@@ -9,10 +9,11 @@
 
 # Changelog
 
-## 0.8.21
+## 0.8.22
 
 - Hardened release tarball validation for package metadata, internal dependency rewriting, and development artifacts.
 - Updated GitHub Actions dependencies to current major versions for checkout, setup-node, and pnpm setup.
+- Replaced abbreviated license placeholders with the full Apache-2.0 license text in the root and publishable packages.
 - Verified Node 20/22 CI and CodeQL on the hardened workflow path.
 
 ## 0.8.19
