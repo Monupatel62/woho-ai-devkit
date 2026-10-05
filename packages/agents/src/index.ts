@@ -1,10 +1,12 @@
-import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition } from "@woho/core";
+import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition, type PermissionAction, type PermissionPolicy } from "@woho/core";
 import { createConversation, type MemoryStore, type MemoryMessage, type MemorySummarizer } from "@woho/memory";
 import type { MCPClient } from "@woho/mcp";
 
 export interface AgentTool {
   name: string;
   description: string;
+  capability?: string;
+  action?: PermissionAction;
   parameters?: Record<string, unknown>;
   execute(input: unknown): Promise<unknown>;
 }
@@ -102,9 +104,13 @@ function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?:
 
 export class Agent {
   readonly name: string;
+  readonly id?: string;
+  readonly role?: string;
+  readonly capabilities: readonly string[];
   readonly instructions?: string;
   readonly tools: AgentTool[];
   readonly maxSteps: number;
+  private readonly permissions?: PermissionPolicy;
   private readonly ai: AIClient;
   private readonly memory?: MemoryStore;
   private readonly sessionId?: string;
@@ -118,11 +124,15 @@ export class Agent {
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
     this.name = options.name;
+    this.id = options.id;
+    this.role = options.role;
+    this.capabilities = [...(options.capabilities ?? [])];
     this.instructions = options.instructions;
     this.tools = options.tools ?? [];
     this.maxSteps = options.maxSteps ?? 8;
     this.memory = options.memory;
     this.sessionId = options.sessionId;
+    this.permissions = options.permissions;
     this.maxContextMessages = options.maxContextMessages;
     this.maxContextChars = options.maxContextChars;
     this.memorySummarizer = options.memorySummarizer;
@@ -206,6 +216,15 @@ export class Agent {
         try {
           const parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
+          if (tool.capability && this.permissions) {
+            const decision = await this.permissions.check({
+              capability: tool.capability,
+              action: tool.action ?? "execute",
+            });
+            if (!decision.allowed) {
+              throw new AIError(decision.reason ?? "Tool action denied by permission policy", decision.requiresApproval ? "APPROVAL_REQUIRED" : "PERMISSION_DENIED");
+            }
+          }
           let result: unknown;
           if (this.toolTimeoutMs === undefined) {
             result = await tool.execute(parsed);
