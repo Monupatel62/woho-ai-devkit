@@ -21,7 +21,6 @@ const run = async () => {
   assert.throws(() => createToolPolicy({ maxResponseBytes: -1 }), /positive integer/);
   assert.throws(() => createToolPolicy({ allowedHosts: [""] }), /non-empty strings/);
   assert.throws(() => createToolPolicy({ allowedDirectories: [""] }), /non-empty strings/);
-  assert.throws(() => searchTool({ provider, maxResults: 1.5 }), /positive integers/);
   assert.deepEqual(createToolPolicy({ allowedHosts: ["Example.COM"] }).allowedHosts, ["example.com"]);
   await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
@@ -42,6 +41,7 @@ const run = async () => {
     { title: query, url: "https://example.com/1", snippet: "one" },
     { title: "two", url: "https://example.com/2" },
   ].slice(0, options?.limit ?? 10));
+  assert.throws(() => searchTool({ provider, maxResults: 1.5 }), /positive integers/);
   const results = await searchTool({ provider, maxResults: 2 }).execute({ query: "woho", limit: 1 });
   assert.deepEqual(results, [{ title: "woho", url: "https://example.com/1", snippet: "one" }]);
   await assert.rejects(() => searchTool({ provider }).execute({ query: "" }), /query is required/);
