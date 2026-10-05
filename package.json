@@ -13,7 +13,8 @@
     "test": "pnpm -r test",
     "typecheck": "pnpm -r --sort build && pnpm -r typecheck",
     "pack:check": "pnpm -r --filter './packages/*' pack --pack-destination .release-packages",
-    "release:check": "node scripts/check-release-graph.mjs"
+    "release:check": "node scripts/check-release-graph.mjs",
+    "consumer:check": "node scripts/consumer-smoke-check.mjs"
   },
   "keywords": [
     "ai",
