@@ -25,16 +25,42 @@ try {
     tarballs.set(manifest.name, join(packageDir, file));
   }
 
-  // Validate that pnpm rewrites workspace:* dependencies into publishable semver ranges.
+  // Validate publish rewriting and tarball boundaries before any consumer install.
   for (const [packageName, tarball] of tarballs) {
+    const source = JSON.parse(await readFile(join(root, "packages", packageName.split("/").at(-1), "package.json"), "utf8"));
     const check = spawnSync("tar", ["-xOf", tarball, "package/package.json"], { encoding: "utf8" });
     if (check.status !== 0) throw new Error("Could not inspect tarball manifest: " + packageName);
     const manifest = JSON.parse(check.stdout);
+
+    if (manifest.name !== source.name || manifest.version !== source.version) {
+      throw new Error(packageName + " tarball name/version does not match source metadata");
+    }
+    if (manifest.private === true) throw new Error(packageName + " tarball must not be private");
+    if (manifest.publishConfig) throw new Error(packageName + " tarball must not retain publishConfig");
+    if (manifest.devDependencies) throw new Error(packageName + " tarball must not contain devDependencies");
+
     for (const section of ["dependencies", "optionalDependencies", "peerDependencies"]) {
       for (const [dependency, range] of Object.entries(manifest[section] ?? {})) {
-        if (range === "workspace:*") {
-          throw new Error(packageName + " still contains workspace:* for " + dependency);
+        if (range === "workspace:*" || range.startsWith("workspace:")) {
+          throw new Error(packageName + " still contains workspace protocol for " + dependency);
         }
+        const sourceRange = source[section]?.[dependency];
+        if (sourceRange === "workspace:*") {
+          const target = names
+            .map((name) => JSON.parse(require("node:fs").readFileSync(join(root, "packages", name, "package.json"), "utf8")))
+            .find((candidate) => candidate.name === dependency);
+          if (!target || range !== target.version) {
+            throw new Error(packageName + " must publish internal dependency " + dependency + " at exact version " + (target?.version ?? "unknown") + ", got " + range);
+          }
+        }
+      }
+    }
+
+    const listing = spawnSync("tar", ["-tzf", tarball], { encoding: "utf8" });
+    if (listing.status !== 0) throw new Error("Could not list tarball: " + packageName);
+    for (const entry of listing.stdout.split("\n").filter(Boolean)) {
+      if (/package\/(?:src|test|tests|\.github|\.git|\.env|tsconfig|coverage)\b|(?:\.map|\.ts)$/.test(entry)) {
+        throw new Error(packageName + " tarball contains development/source artifact: " + entry);
       }
     }
   }
