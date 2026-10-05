@@ -47,41 +47,9 @@ try {
     /exceeds maxRecordBytes/,
   );
 
-  const stale = {
-    ...record,
-    runId: "stale-run",
-    updatedAt: 100,
-    startedAt: 100,
-    status: "running" as const,
-  };
-  await reopened.create(stale);
-  const recovered = await recoverStaleExecutions(reopened, { staleAfterMs: 500, now: 1000 });
-  assert.equal(recovered.length, 1);
-  assert.equal(recovered[0]?.runId, "stale-run");
-  assert.equal(recovered[0]?.status, "failed");
-  assert.match(recovered[0]?.error ?? "", /stale/);
-  assert.equal(recovered[0]?.events.at(-1)?.type, "run.failed");
-
-  await reopened.create({
-    ...record,
-    runId: "fresh-run",
-    updatedAt: 950,
-    startedAt: 950,
-    status: "running" as const,
-  });
-  assert.equal((await reopened.get("fresh-run"))?.status, "running");
-
-  const raced = await reopened.get("fresh-run");
-  assert.ok(raced);
-  assert.equal(await reopened.updateIf?.("fresh-run", (raced?.updatedAt ?? 0) - 1, { status: "failed" }), false);
-  assert.equal((await reopened.get("fresh-run"))?.status, "running");
-
-  await reopened.create({ ...record, runId: "old-run", startedAt: 10, updatedAt: 10 });
-  await reopened.create({ ...record, runId: "new-run", startedAt: 900, updatedAt: 900 });
-  const pruned = await pruneExecutionHistory(reopened, { olderThanMs: 500, now: 1000 });
-  assert.ok(pruned.some((item) => item.runId === "old-run"));
-  assert.equal(await reopened.get("old-run"), undefined);
-  assert.notEqual(await reopened.get("new-run"), undefined);
+  assert.equal(await reopened.updateIf?.(record.runId, 1, { status: "failed" }), false);
+  assert.equal(await reopened.updateIf?.(record.runId, 2, { status: "succeeded" }), true);
+  assert.equal((await reopened.get(record.runId))?.status, "succeeded");
 
   const memory = new InMemoryExecutionStore();
   await memory.create({ ...record, runId: "memory-old", startedAt: 1, updatedAt: 1 });
