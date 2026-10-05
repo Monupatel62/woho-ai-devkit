@@ -109,7 +109,7 @@ export class Agent {
   private readonly maxContextMessages?: number;
   private readonly maxContextChars?: number;
   private readonly memorySummarizer?: MemorySummarizer;
-  private readonly memorySummaryThreshold?: number;
+  private readonly memorySummaryThreshold: number;
   private readonly maxToolResultChars: number;
   private readonly toolTimeoutMs?: number;
 
