@@ -39,6 +39,7 @@ export class AgentRuntime {
   private readonly onEvent?: AgentRuntimeOptions["onEvent"];
   private readonly defaultRetry: Required<AgentRetryPolicy>;
   private readonly store?: ExecutionStore;
+  private readonly approval?: AgentApprovalHandler;
   private readonly verify?: AgentVerifier;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
@@ -49,6 +50,7 @@ export class AgentRuntime {
     this.onEvent = options.onEvent;
     this.defaultRetry = this.validateRetry(options.retry ?? {});
     this.store = options.store;
+    this.approval = options.approval;
     this.verify = options.verify;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
   }
@@ -89,7 +91,7 @@ export class AgentRuntime {
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
-          const result = await agent.run(task.input, { signal: context.signal, runId, onEvent: this.onEvent, approval: task.approval });
+          const result = await agent.run(task.input, { signal: context.signal, runId, onEvent: this.onEvent, approval: task.approval ?? this.approval });
           const verification = task.verify ?? this.verify;
           if (verification) {
             const verdict = await verification(result, task);
