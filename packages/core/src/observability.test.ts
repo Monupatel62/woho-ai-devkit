@@ -58,6 +58,19 @@ const timedOut = createAI({
 });
 await assert.rejects(timedOut.chat({ messages: [{ role: "user", content: "slow" }] }), (error) => error instanceof TimeoutError);
 
+const nonCooperative = createAI({
+  timeoutMs: 5,
+  retries: 0,
+  provider: {
+    name: "non-cooperative",
+    async chat() {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return { id: "late", text: "late", model: "non-cooperative" };
+    },
+  },
+});
+await assert.rejects(nonCooperative.chat({ messages: [{ role: "user", content: "timeout" }] }), (error) => error instanceof TimeoutError);
+
 console.log("core runtime tests passed");
 
 
