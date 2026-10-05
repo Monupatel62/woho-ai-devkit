@@ -83,7 +83,11 @@ export class Agent {
     this.memorySummarizer = options.memorySummarizer;
     this.memorySummaryThreshold = options.memorySummaryThreshold ?? 50;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
-    if (this.maxSteps < 1) throw new AIError("maxSteps must be at least 1", "INVALID_AGENT_CONFIG");
+    if (!options.name.trim()) throw new AIError("Agent name is required", "INVALID_AGENT_CONFIG");
+    if (!Number.isInteger(this.maxSteps) || this.maxSteps < 1) throw new AIError("maxSteps must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (this.maxContextMessages !== undefined && (!Number.isInteger(this.maxContextMessages) || this.maxContextMessages < 1)) throw new AIError("maxContextMessages must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (this.maxContextChars !== undefined && (!Number.isInteger(this.maxContextChars) || this.maxContextChars < 1)) throw new AIError("maxContextChars must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (!Number.isInteger(this.memorySummaryThreshold) || this.memorySummaryThreshold < 1) throw new AIError("memorySummaryThreshold must be a positive integer", "INVALID_AGENT_CONFIG");
   }
 
   async run(input: string): Promise<AgentRunResult> {
