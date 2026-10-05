@@ -61,7 +61,9 @@ const run = async () => {
   const restricted = createMCPClient({ transport, security: { allowedMethods: ["initialize"] } });
   await assert.rejects(() => restricted.listTools(), /not allowed/);
   await restricted.close();
+  await assert.rejects(() => restricted.listTools(), /client is closed/);
   await client.close();
+  await assert.rejects(() => client.listTools(), /client is closed/);
 
   const slowTransport: MCPTransport = {
     async request() { await new Promise((resolve) => setTimeout(resolve, 30)); return { ok: true }; },
