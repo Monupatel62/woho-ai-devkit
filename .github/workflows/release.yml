@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish all public @woho packages to npm"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+
+      - name: Verify package metadata
+        run: |
+          node -e "for (const p of ['core','provider-openai','agents','tools','memory','mcp']) { const x=require('./packages/'+p+'/package.json'); if (!x.publishConfig || x.publishConfig.access !== 'public') throw new Error(p+' missing public publishConfig'); if (x.private) throw new Error(p+' must not be private'); if (!Array.isArray(x.files) || !x.files.includes('dist')) throw new Error(p+' missing dist in files'); }"
+
+  publish:
+    if: ${{ inputs.publish == true }}
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm build
+
+      - name: Check publish status
+        run: |
+          for p in core provider-openai agents tools memory mcp; do
+            name=$(node -p "require('./packages/$p/package.json').name")
+            version=$(node -p "require('./packages/$p/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already exists on npm; aborting to avoid accidental republish."
+              exit 1
+            fi
+          done
+
+      - name: Publish packages
+        run: pnpm -r --filter './packages/*' publish --access public --no-git-checks
