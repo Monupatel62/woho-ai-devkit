@@ -90,3 +90,43 @@ await assert.rejects(() => pending, /user aborted/);
 await abortIterator.return?.();
 
 console.log("core streaming timeout tests passed");
+
+
+const alreadyAborted = new AbortController();
+alreadyAborted.abort(new Error("already aborted"));
+let chatCalls = 0;
+const preAborted = createAI({
+  provider: {
+    name: "pre-aborted",
+    async chat() { chatCalls += 1; return { id: "x", text: "unexpected", model: "pre-aborted" }; },
+  },
+  timeoutMs: 1000,
+});
+await assert.rejects(() => preAborted.chat({ messages: [{ role: "user", content: "abort" }], signal: alreadyAborted.signal }), /already aborted/);
+assert.equal(chatCalls, 0);
+
+let iteratorReturned = false;
+const cleanupStream = createAI({
+  timeoutMs: 5,
+  provider: {
+    name: "cleanup-stream",
+    async chat() { return { id: "x", text: "", model: "cleanup-stream" }; },
+    stream() {
+      const iterator: AsyncIterator<{ text: string }> = {
+        async next() {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          return { done: false, value: { text: "late" } };
+        },
+        async return() {
+          iteratorReturned = true;
+          return { done: true, value: undefined };
+        },
+      };
+      return { [Symbol.asyncIterator]: () => iterator };
+    },
+  },
+});
+const cleanupIterator = cleanupStream.stream({ messages: [{ role: "user", content: "cleanup" }] })[Symbol.asyncIterator]();
+await assert.rejects(() => cleanupIterator.next(), (error) => error instanceof TimeoutError);
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(iteratorReturned, true);
