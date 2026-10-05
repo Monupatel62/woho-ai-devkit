@@ -167,6 +167,26 @@ const run = async () => {
   assert.equal(approved, true);
   assert.ok(approvalEvents.includes("run.waiting"));
   assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
+  let runtimeApproved = false;
+  const approvalRuntime = new AgentRuntime({
+    approval: async () => { runtimeApproved = true; return true; },
+  }, registry);
+  const approvalRuntimeAgent = createAgent(
+    createAI({ provider: createMockProvider({ response: "runtime-approved", toolCall: { name: "protected-runtime", arguments: "{}" } }) }),
+    {
+      name: "runtime-approval",
+      permissions: { check: () => ({ allowed: false, reason: "runtime approval", requiresApproval: true }) },
+      tools: [{ name: "protected-runtime", description: "Protected", capability: "computer", action: "execute", execute: async () => "approved-by-runtime" }],
+    },
+  );
+  const approvalRuntimeRegistry = new AgentRegistry();
+  approvalRuntimeRegistry.register({ id: "runtime-approval", name: "Runtime Approval", role: "general" }, () => approvalRuntimeAgent);
+  const approvalRuntimeRunner = new AgentRuntime({
+    approval: async () => { runtimeApproved = true; return true; },
+  }, approvalRuntimeRegistry);
+  const runtimeApprovalResult = await approvalRuntimeRunner.run(createAI({ provider: createMockProvider({ response: "runtime-approved", toolCall: { name: "protected-runtime", arguments: "{}" } }) }), { agent: "runtime-approval", input: "approve" });
+  assert.equal(runtimeApproved, true);
+  assert.equal(runtimeApprovalResult.toolResults["mock-call-1"], "approved-by-runtime");
   let verificationAttempts = 0;
   const verificationRuntime = new AgentRuntime({
     retry: { maxAttempts: 2, delayMs: 0 },
