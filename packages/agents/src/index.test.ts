@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createAI, createMockProvider, AIError } from "@woho/core";
 import { createInMemoryStore } from "@woho/memory";
 import { createAgent, AgentRegistry, AgentRuntime } from "./index.js";
+import { createSpecializedAgent } from "./specialized.js";
 
 const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "", maxSteps: 1 }), /Agent name is required/);
@@ -94,6 +95,17 @@ const run = async () => {
   assert.equal(largeResult.text, "done");
   assert.ok((largeResult.messages.at(-2)?.content ?? "").includes("[tool result truncated]"));
 
+  const permissioned = createAgent(createAI({ provider: createMockProvider({ response: "permission-ok" }) }), {
+    name: "permissioned",
+    permissions: { check: () => ({ allowed: false, reason: "needs approval", requiresApproval: true }) },
+    tools: [{ name: "secure", description: "secure", capability: "computer", action: "execute", execute: async () => "secret" }],
+    maxSteps: 2,
+  });
+  const denied = await permissioned.run("run secure");
+  assert.match(String(denied.toolResults["mock-call-1"] && (denied.toolResults["mock-call-1"] as { error: string }).error), /needs approval/);
+  const calling = createSpecializedAgent(createAI({ provider: createMockProvider({ response: "calling-role" }) }), "calling");
+  assert.equal(calling.role, "calling");
+  assert.ok(calling.capabilities.includes("calling"));
   const registry = new AgentRegistry();
   registry.register({ id: "general", name: "General", role: "general" }, ({ ai }) => createAgent(ai, { name: "General" }));
   assert.equal(registry.list()[0]?.role, "general");
