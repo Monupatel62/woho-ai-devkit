@@ -1,6 +1,6 @@
 {
   "name": "woho-ai-devkit",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "private": false,
   "description": "Open-source AI developer toolkit for TypeScript and JavaScript.",
   "license": "Apache-2.0",
