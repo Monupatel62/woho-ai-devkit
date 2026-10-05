@@ -55,20 +55,20 @@ try {
     status: "running" as const,
   };
   await reopened.create(stale);
-  const fresh = {
-    ...record,
-    runId: "fresh-run",
-    updatedAt: 950,
-    startedAt: 950,
-    status: "running" as const,
-  };
-  await reopened.create(fresh);
   const recovered = await recoverStaleExecutions(reopened, { staleAfterMs: 500, now: 1000 });
   assert.equal(recovered.length, 1);
   assert.equal(recovered[0]?.runId, "stale-run");
   assert.equal(recovered[0]?.status, "failed");
   assert.match(recovered[0]?.error ?? "", /stale/);
   assert.equal(recovered[0]?.events.at(-1)?.type, "run.failed");
+
+  await reopened.create({
+    ...record,
+    runId: "fresh-run",
+    updatedAt: 950,
+    startedAt: 950,
+    status: "running" as const,
+  });
   assert.equal((await reopened.get("fresh-run"))?.status, "running");
 
   const raced = await reopened.get("fresh-run");
