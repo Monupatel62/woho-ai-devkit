@@ -3,6 +3,8 @@
 Stage 5 starts with a provider-neutral memory interface and a bounded in-memory implementation.
 
 ## Included
+- persistent `JsonFileStore` implementation
+- atomic file replacement and serialized writes
 - `MemoryMessage`
 - `MemoryQuery`
 - `MemoryStore`
