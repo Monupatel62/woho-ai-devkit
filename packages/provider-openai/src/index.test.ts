@@ -34,9 +34,6 @@ const run = async () => {
   globalThis.fetch = async () => new Response("{bad-json}", { status: 200, headers: { "content-type": "application/json" } });
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "malformed" }] }), /Malformed provider JSON response/);
 
-  globalThis.fetch = async () => new Response("x".repeat(100), { status: 200, headers: { "content-type": "application/json" } });
-  await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "oversized" }] }), /maxResponseBytes/);
-
   globalThis.fetch = async () => jsonResponse({}, 401);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof AuthenticationError);
 
@@ -46,6 +43,9 @@ const run = async () => {
   globalThis.fetch = async () => jsonResponse({ ok: true }, 200);
   const oversizedChat = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", maxResponseBytes: 10 });
   await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "x" }] }), /maxResponseBytes/);
+
+  globalThis.fetch = async () => new Response("x".repeat(100), { status: 500, headers: { "content-type": "text/plain" } });
+  await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "oversized-error" }] }), /Provider error response could not be read safely/);
 
   globalThis.fetch = async () => jsonResponse({}, 429);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof RateLimitError);
