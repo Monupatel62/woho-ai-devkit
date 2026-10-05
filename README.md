@@ -82,7 +82,7 @@ The workspace root is private and the six `@woho/*` packages are the publishable
 
 ## Release
 
-Public npm releases are guarded by GitHub Actions. The release workflow first runs typecheck, build, tests and package metadata validation. Publishing is manual and requires the workflow's `publish` input to be enabled in the configured `npm` environment.
+Public npm releases are guarded by GitHub Actions. Publishing a GitHub Release automatically runs the release workflow, which first runs typecheck, build, tests and package metadata validation before publishing the six public packages through npm Trusted Publishing (OIDC). A manual workflow-dispatch path remains available for controlled emergency or recovery runs.
 
 The workspace root is intentionally private; the six `@woho/*` packages are the publishable packages.
 
