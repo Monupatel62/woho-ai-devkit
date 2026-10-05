@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.3
+
+- Added runtime coverage for core request and streaming observability hooks.
+
 ## 0.7.2
 
 - Added optional core observability hooks for request and streaming lifecycle events.
