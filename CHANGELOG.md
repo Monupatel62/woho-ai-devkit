@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.28
+
+- Added runtime-level approval propagation for permission-gated agent actions.
+- Added immutable in-memory execution event updates.
+- Added model usage and cost aggregation across multi-step agent runs.
+- Persisted execution usage metadata in execution history.
+- Added regression coverage for runtime approval and usage tracking.
+- Bumped all six public packages for the coordinated release.
+
 ## 0.8.27
 
 - Added model routing with model-aware provider selection and retryable-provider fallback.
