@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.3
+
+- Added provider-neutral search tool and SearchProvider abstraction.
+- Added query and result-count limits.
+- Added runtime search-tool policy tests.
+
 ## 0.4.2
 
 - Added formal ToolPolicy and policy normalization.
