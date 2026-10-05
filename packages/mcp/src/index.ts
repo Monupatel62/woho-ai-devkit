@@ -75,6 +75,8 @@ export class MCPClient {
   private readonly maxResponseBytes: number;
   private readonly allowedMethods?: Set<string>;
   private initialized = false;
+  private closed = false;
+  private initialization?: Promise<unknown>;
   constructor(options: MCPClientOptions) {
     if (!Number.isInteger(options.timeoutMs ?? 30000) || (options.timeoutMs ?? 30000) < 1) throw new Error("timeoutMs must be a positive integer");
     this.transport = options.transport;
@@ -90,11 +92,20 @@ export class MCPClient {
     this.allowedMethods = options.security?.allowedMethods ? new Set(options.security.allowedMethods) : undefined;
   }
   async initialize(): Promise<unknown> {
-    if (this.initialized) return undefined;
-    const result = await this.request("initialize", { protocolVersion: this.protocolVersion, capabilities: {}, clientInfo: { name: this.clientName, version: this.clientVersion } });
-    if (this.transport.notify) await this.transport.notify("notifications/initialized");
-    this.initialized = true;
-    return result;
+    if (this.closed) throw new MCPError("MCP client is closed");
+    if (this.initialized) return this.initialization;
+    if (!this.initialization) {
+      this.initialization = (async () => {
+        const result = await this.request("initialize", { protocolVersion: this.protocolVersion, capabilities: {}, clientInfo: { name: this.clientName, version: this.clientVersion } });
+        if (this.transport.notify) await this.transport.notify("notifications/initialized");
+        this.initialized = true;
+        return result;
+      })().catch((error) => {
+        this.initialization = undefined;
+        throw error;
+      });
+    }
+    return this.initialization;
   }
   async listResources(): Promise<MCPResourceDefinition[]> {
     await this.initialize();
@@ -127,8 +138,13 @@ export class MCPClient {
     const result = await this.request("tools/call", { name, arguments: input }) as { content?: unknown; isError?: boolean };
     return { content: result?.content ?? [], isError: result?.isError === true };
   }
-  async close(): Promise<void> { await this.transport.close?.(); }
+  async close(): Promise<void> {
+    if (this.closed) return;
+    this.closed = true;
+    await this.transport.close?.();
+  }
   private async request(method: string, params?: unknown): Promise<unknown> {
+    if (this.closed) throw new MCPError("MCP client is closed", method);
     if (this.allowedMethods && !this.allowedMethods.has(method)) throw new MCPError("MCP method is not allowed: " + method, method);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
