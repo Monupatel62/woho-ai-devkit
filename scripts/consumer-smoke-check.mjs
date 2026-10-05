@@ -66,7 +66,7 @@ try {
       throw new Error(packageName + " tarball does not contain the full Apache-2.0 license text");
     }
     for (const entry of entries) {
-      if (/package\/(?:src|test|tests|\.github|\.git|\.env|tsconfig|coverage)\b|(?:\.map|\.ts)$/.test(entry)) {
+      if (/package\/(?:src|test|tests|\.github|\.git|\.env|tsconfig|coverage)\b|(?:\.map|(?<!\.d)\.tsx?)$/.test(entry)) {
         throw new Error(packageName + " tarball contains development/source artifact: " + entry);
       }
     }
