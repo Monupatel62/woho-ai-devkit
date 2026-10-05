@@ -1,6 +1,6 @@
 import type { AIClient } from "@woho/core";
 import type { AgentRunResult } from "./index.js";
-import type { AgentRuntime, AgentTask } from "./runtime.js";
+import type { AgentRuntime, AgentTask, AgentVerifier } from "./runtime.js";
 
 export interface AgentPlanContext {
   readonly completed: Readonly<Record<string, AgentRunResult & { runId: string }>>;
@@ -13,6 +13,7 @@ export interface AgentPlanStep {
   readonly dependsOn?: readonly string[];
   readonly sessionId?: string;
   readonly metadata?: Record<string, unknown>;
+  readonly verify?: AgentVerifier;
 }
 
 export interface AgentPlan {
@@ -68,6 +69,7 @@ export async function runAgentPlan(
           metadata: step.metadata,
           parentRunId: undefined,
           signal: options.signal,
+          verify: step.verify,
         };
         return [id, await runtime.run(ai, task)] as const;
       }),
