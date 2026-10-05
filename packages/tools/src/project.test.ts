@@ -29,6 +29,15 @@ try {
   }) as { stdout: string };
   assert.equal(commandResult.stdout, "project-ok");
 
+  const controller = new AbortController();
+  const pending = command.execute({
+    command: process.execPath,
+    args: ["-e", "setTimeout(() => {}, 10000)"],
+    cwd: root,
+  }, { signal: controller.signal });
+  setTimeout(() => controller.abort(new Error("test abort")), 50);
+  await assert.rejects(() => pending, /test abort|aborted/i);
+
   console.log("project tool tests passed");
 } finally {
   await rm(root, { recursive: true, force: true });
