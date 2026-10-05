@@ -28,7 +28,7 @@ const run = async () => {
   assert.equal(result.text, "hello");
   assert.equal(result.toolCalls?.[0].name, "calculator");
   assert.equal(result.usage?.totalTokens, 5);
-  assert.equal((captured?.headers as Headers).get("authorization"), "Bearer secret");
+  assert.equal((captured?.headers as Record<string, string>).authorization, "Bearer secret");
   assert.match(String(captured?.body), /calculator/);
 
   globalThis.fetch = async () => new Response("{bad-json}", { status: 200, headers: { "content-type": "application/json" } });
