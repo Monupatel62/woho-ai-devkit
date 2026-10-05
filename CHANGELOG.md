@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.14
+
+- Completed cross-package public API consistency audit for core, provider, agents and MCP.
+- Bounded OpenAI-compatible HTTP error bodies by the configured response limit.
+- Enforced normalized agent and MCP tool names plus required MCP client metadata.
+- Fixed provider runtime-test ordering and expanded integration hardening coverage.
+- Bumped `@woho/provider-openai` to 0.2.6, `@woho/agents` to 0.3.12 and `@woho/mcp` to 0.6.11.
+
 ## 0.8.13
 
 - Hardened core chat timeout/cancellation for providers that do not honor `AbortSignal`.
