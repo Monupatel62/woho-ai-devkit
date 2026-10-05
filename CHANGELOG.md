@@ -1,3 +1,12 @@
+## 0.8.20
+
+- Hardened npm package release metadata across all six public workspace packages.
+- Added explicit public scoped-package publishing configuration.
+- Restricted package tarballs to built output and package documentation/license files.
+- Added repository/homepage metadata for each package.
+- Added package-level README and Apache-2.0 license files.
+- Marked the workspace root private to prevent accidental root-package publication.
+
 # Changelog
 
 ## 0.8.19
