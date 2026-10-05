@@ -3,13 +3,18 @@ import { createConversation, type MemoryStore, type MemoryMessage, type MemorySu
 import type { MCPClient } from "@woho/mcp";
 import type { ExecutionEvent } from "@woho/core";
 
+export interface AgentToolExecutionContext {
+  readonly runId?: string;
+  readonly signal?: AbortSignal;
+}
+
 export interface AgentTool {
   name: string;
   description: string;
   capability?: string;
   action?: PermissionAction;
   parameters?: Record<string, unknown>;
-  execute(input: unknown): Promise<unknown>;
+  execute(input: unknown, context?: AgentToolExecutionContext): Promise<unknown>;
 }
 
 export interface AgentContext {
@@ -253,7 +258,10 @@ export class Agent {
         try {
           const parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
-          if (tool.capability && this.permissions) {
+          if (tool.capability) {
+            if (!this.permissions) {
+              throw new AIError("Tool capability requires a permission policy: " + tool.name, "PERMISSION_POLICY_REQUIRED");
+            }
             const decision = await this.permissions.check({
               capability: tool.capability,
               action: tool.action ?? "execute",
@@ -270,20 +278,24 @@ export class Agent {
           }
           await runEvent(runOptions, { type: "tool.started", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step } });
           let result: unknown;
-          if (this.toolTimeoutMs === undefined) {
-            result = await tool.execute(parsed);
-          } else {
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            try {
-              result = await Promise.race([
-                tool.execute(parsed),
-                new Promise<never>((_, reject) => {
-                  timer = setTimeout(() => reject(new AIError("Tool execution timed out: " + tool.name, "TOOL_TIMEOUT")), this.toolTimeoutMs);
-                }),
-              ]);
-            } finally {
-              if (timer) clearTimeout(timer);
+          const toolController = new AbortController();
+          const abortFromRun = () => toolController.abort(runOptions.signal?.reason);
+          if (runOptions.signal) {
+            if (runOptions.signal.aborted) toolController.abort(runOptions.signal.reason);
+            else runOptions.signal.addEventListener("abort", abortFromRun, { once: true });
+          }
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try {
+            if (this.toolTimeoutMs !== undefined) {
+              timer = setTimeout(() => toolController.abort(new AIError("Tool execution timed out: " + tool.name, "TOOL_TIMEOUT")), this.toolTimeoutMs);
             }
+            result = await tool.execute(parsed, { runId: runOptions.runId, signal: toolController.signal });
+            if (toolController.signal.aborted) {
+              throw toolController.signal.reason ?? new AIError("Tool execution aborted: " + tool.name, "TOOL_ABORTED");
+            }
+          } finally {
+            if (timer) clearTimeout(timer);
+            runOptions.signal?.removeEventListener("abort", abortFromRun);
           }
           toolResults[call.id] = result;
           await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: true } });
