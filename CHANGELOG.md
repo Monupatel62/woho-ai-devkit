@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.15
+
+- Hardened HTTP and search tools with streaming response-size enforcement.
+- Fixed filesystem policy normalization so Unix path casing is preserved.
+- Fixed Tavily search provider response-limit configuration.
+- Added runtime coverage for oversized search responses and filesystem policy casing.
+- Bumped `@woho/tools` to 0.4.9.
+
 ## 0.8.14
 
 - Completed cross-package public API consistency audit for core, provider, agents and MCP.
