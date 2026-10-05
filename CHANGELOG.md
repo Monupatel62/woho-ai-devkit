@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.4
+
+- Added Brave Search and Tavily Search provider adapters.
+- Added provider request timeouts and bounded result counts.
+- Added adapter runtime tests with mocked fetch.
+
 ## 0.4.3
 
 - Added provider-neutral search tool and SearchProvider abstraction.
