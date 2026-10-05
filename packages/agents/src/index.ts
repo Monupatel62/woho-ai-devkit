@@ -45,7 +45,24 @@ function parseArguments(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
   } catch {
-    return value;
+    throw new AIError("Tool call arguments are not valid JSON", "INVALID_TOOL_ARGUMENTS");
+  }
+}
+
+function validateToolParameters(tool: AgentTool, input: unknown): void {
+  const schema = tool.parameters;
+  if (!schema) return;
+  if (schema.type && schema.type !== "object") throw new AIError("Tool parameters must use an object schema: " + tool.name, "INVALID_TOOL_CONFIG");
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new AIError("Tool input must be an object: " + tool.name, "INVALID_TOOL_ARGUMENTS");
+  const value = input as Record<string, unknown>;
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  for (const key of required) {
+    if (typeof key !== "string" || !(key in value)) throw new AIError("Missing required tool parameter: " + String(key), "INVALID_TOOL_ARGUMENTS");
+  }
+  if (schema.additionalProperties === false && schema.properties && typeof schema.properties === "object" && !Array.isArray(schema.properties)) {
+    for (const key of Object.keys(value)) {
+      if (!(key in (schema.properties as Record<string, unknown>))) throw new AIError("Unknown tool parameter: " + key, "INVALID_TOOL_ARGUMENTS");
+    }
   }
 }
 
@@ -117,7 +134,8 @@ export class Agent {
       if (!tool.name.trim()) throw new AIError("Tool name is required", "INVALID_AGENT_CONFIG");
       if (!tool.description.trim()) throw new AIError("Tool description is required: " + tool.name, "INVALID_AGENT_CONFIG");
     }
-    if (new Set(this.tools.map((tool) => tool.name)).size !== this.tools.length) throw new AIError("Duplicate tool name", "INVALID_AGENT_CONFIG");
+    const names = this.tools.map((tool) => tool.name.trim());
+    if (new Set(names).size !== names.length) throw new AIError("Duplicate tool name", "INVALID_AGENT_CONFIG");
   }
 
   async run(input: string): Promise<AgentRunResult> {
@@ -174,7 +192,9 @@ export class Agent {
         }
 
         try {
-          const result = await tool.execute(parseArguments(call.arguments));
+          const parsed = parseArguments(call.arguments);
+          validateToolParameters(tool, parsed);
+          const result = await tool.execute(parsed);
           toolResults[call.id] = result;
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
