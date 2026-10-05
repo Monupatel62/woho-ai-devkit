@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { AIError, type AIClient, type ExecutionContext, type ExecutionEvent } from "@woho/core";
 import { Agent, type AgentApprovalHandler, type AgentRunResult } from "./index.js";
 import { AgentRegistry, type AgentDefinition } from "./definition.js";
-import type { ExecutionStore } from "./execution-store.js";
+import {
+  recoverStaleExecutions,
+  pruneExecutionHistory,
+  type ExecutionStore,
+  type PruneExecutionHistoryOptions,
+  type RecoverStaleExecutionsOptions,
+  type ExecutionRecord,
+} from "./execution-store.js";
 
 export interface AgentRetryPolicy {
   readonly maxAttempts?: number;
@@ -143,6 +150,22 @@ export class AgentRuntime {
 
   async runParallel(ai: AIClient, tasks: AgentTask[]): Promise<Array<AgentRunResult & { runId: string }>> {
     return Promise.all(tasks.map((task) => this.run(ai, task)));
+  }
+
+  /**
+   * Mark executions that stopped advancing as failed after a process crash.
+   */
+  async recoverStale(options: RecoverStaleExecutionsOptions): Promise<ExecutionRecord[]> {
+    if (!this.store) throw new Error("Execution store is required for stale-run recovery");
+    return recoverStaleExecutions(this.store, options);
+  }
+
+  /**
+   * Apply explicit execution-history retention. No automatic deletion occurs.
+   */
+  async pruneHistory(options: PruneExecutionHistoryOptions): Promise<ExecutionRecord[]> {
+    if (!this.store) throw new Error("Execution store is required for history pruning");
+    return pruneExecutionHistory(this.store, options);
   }
 
   private validateRetry(policy: AgentRetryPolicy): Required<AgentRetryPolicy> {
