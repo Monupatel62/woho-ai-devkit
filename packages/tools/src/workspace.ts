@@ -1,0 +1,174 @@
+import type { AgentTool } from "@woho/agents";
+import { createToolPolicy, type ToolPolicy } from "./policy.js";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+
+export interface WorkspaceToolPolicy extends Partial<ToolPolicy> {
+  root: string;
+  allowDelete?: boolean;
+  allowMove?: boolean;
+  allowWrite?: boolean;
+  maxEntries?: number;
+}
+
+export interface WorkspaceEntry {
+  name: string;
+  type: "file" | "directory" | "symlink";
+  size?: number;
+}
+
+function positiveInteger(value: number, name: string): void {
+  if (!Number.isInteger(value) || value < 1) throw new Error(name + " must be a positive integer");
+}
+
+async function realRoot(root: string): Promise<string> {
+  const resolved = path.resolve(root);
+  const real = await fs.realpath(resolved);
+  const stat = await fs.stat(real);
+  if (!stat.isDirectory()) throw new Error("Workspace root must be a directory");
+  return real;
+}
+
+function assertRelative(input: string): void {
+  if (!input || typeof input !== "string") throw new Error("path is required");
+  if (path.isAbsolute(input)) throw new Error("Absolute paths are not allowed");
+  const normalized = input.replaceAll("\\", "/");
+  if (normalized.split("/").some((part) => part === "..")) throw new Error("Parent traversal is not allowed");
+}
+
+async function safeExisting(root: string, relative: string): Promise<string> {
+  assertRelative(relative);
+  const target = path.resolve(root, relative);
+  const real = await fs.realpath(target);
+  if (real !== root && !real.startsWith(root + path.sep)) throw new Error("Path escapes the workspace root");
+  return real;
+}
+
+async function safeParent(root: string, relative: string): Promise<{ target: string; parent: string }> {
+  assertRelative(relative);
+  const target = path.resolve(root, relative);
+  const parent = path.dirname(target);
+  const realParent = await fs.realpath(parent);
+  if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
+  return { target, parent: realParent };
+}
+
+function entryType(stat: Awaited<ReturnType<typeof fs.lstat>>): WorkspaceEntry["type"] {
+  if (stat.isDirectory()) return "directory";
+  if (stat.isFile()) return "file";
+  return "symlink";
+}
+
+export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool {
+  const policy = createToolPolicy(inputPolicy);
+  const maxEntries = inputPolicy.maxEntries ?? 500;
+  positiveInteger(maxEntries, "maxEntries");
+  const canWrite = inputPolicy.allowWrite ?? false;
+  const canDelete = inputPolicy.allowDelete ?? false;
+  const canMove = inputPolicy.allowMove ?? false;
+  const capability = "file";
+
+  return {
+    name: "workspace",
+    description: "Safely inspect and modify files inside one fixed workspace root using relative paths.",
+    capability,
+    action: canWrite || canDelete || canMove ? "write" : "read",
+    parameters: {
+      type: "object",
+      properties: {
+        operation: { type: "string", enum: ["list", "read", "write", "mkdir", "delete", "move"] },
+        path: { type: "string" },
+        content: { type: "string" },
+        destination: { type: "string" },
+        recursive: { type: "boolean" }
+      },
+      required: ["operation"],
+      additionalProperties: false
+    },
+    async execute(input, context) {
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
+      const value = input as Record<string, unknown>;
+      const operation = value.operation;
+      if (typeof operation !== "string") throw new Error("operation is required");
+      const root = await realRoot(policy.allowedDirectories[0] ?? inputPolicy.root);
+      const relative = value.path;
+      if (operation !== "list" && typeof relative !== "string") throw new Error("path is required");
+
+      if (operation === "list") {
+        const target = typeof relative === "string" ? await safeExisting(root, relative) : root;
+        const stat = await fs.stat(target);
+        if (!stat.isDirectory()) throw new Error("list target must be a directory");
+        const names = await fs.readdir(target, { withFileTypes: true });
+        if (names.length > maxEntries) throw new Error("Directory contains too many entries");
+        return { path: typeof relative === "string" ? relative : ".", entries: await Promise.all(names.map(async (entry) => {
+          const full = path.join(target, entry.name);
+          const info = await fs.lstat(full);
+          return { name: entry.name, type: entryType(info), size: info.isFile() ? info.size : undefined };
+        })) };
+      }
+
+      if (operation === "read") {
+        const target = await safeExisting(root, relative as string);
+        const stat = await fs.stat(target);
+        if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
+        return { path: relative, content: await fs.readFile(target, "utf8") };
+      }
+
+      if (operation === "write") {
+        if (!canWrite) throw new Error("Workspace write is disabled by policy");
+        if (typeof value.content !== "string") throw new Error("content is required");
+        if (Buffer.byteLength(value.content, "utf8") > policy.maxFileBytes) throw new Error("Content exceeds maxFileBytes");
+        const { target, parent } = await safeParent(root, relative as string);
+        await fs.mkdir(parent, { recursive: true });
+        try {
+          const existing = await fs.lstat(target);
+          if (existing.isSymbolicLink()) throw new Error("Refusing to write through a symlink");
+          if (existing.isDirectory()) throw new Error("Cannot write a directory");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+        await fs.writeFile(target, value.content, { encoding: "utf8", mode: 0o600 });
+        return { path: relative, bytes: Buffer.byteLength(value.content, "utf8") };
+      }
+
+      if (operation === "mkdir") {
+        if (!canWrite) throw new Error("Workspace write is disabled by policy");
+        const { target } = await safeParent(root, relative as string);
+        await fs.mkdir(target, { recursive: true, mode: 0o700 });
+        await safeExisting(root, relative as string);
+        return { path: relative, created: true };
+      }
+
+      if (operation === "delete") {
+        if (!canDelete) throw new Error("Workspace delete is disabled by policy");
+        const target = await safeExisting(root, relative as string);
+        if (target === root) throw new Error("Workspace root cannot be deleted");
+        const recursive = value.recursive === true;
+        const stat = await fs.lstat(target);
+        if (stat.isDirectory() && !recursive) throw new Error("Directory deletion requires recursive=true");
+        await fs.rm(target, { recursive, force: false });
+        return { path: relative, deleted: true };
+      }
+
+      if (operation === "move") {
+        if (!canMove) throw new Error("Workspace move is disabled by policy");
+        if (typeof value.destination !== "string") throw new Error("destination is required");
+        const source = await safeExisting(root, relative as string);
+        const { target: destination, parent } = await safeParent(root, value.destination);
+        await fs.mkdir(parent, { recursive: true });
+        try {
+          const existing = await fs.lstat(destination);
+          if (existing.isSymbolicLink()) throw new Error("Refusing to replace a symlink");
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+        await fs.rename(source, destination);
+        return { from: relative, to: value.destination, moved: true };
+      }
+
+      throw new Error("Unsupported workspace operation");
+    }
+  };
+}
+
+export { createWorkspaceTool as workspaceTool };
