@@ -10,6 +10,7 @@ export interface MemoryQuery {
   limit?: number;
   before?: number;
   sessionId?: string;
+  sessionId?: string;
 }
 
 export interface MemoryStore {
@@ -44,7 +45,8 @@ export class InMemoryStore implements MemoryStore {
   async list(query: MemoryQuery = {}): Promise<MemoryMessage[]> {
     const limit = query.limit ?? this.maxMessages;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
-    let items = query.before === undefined ? [...this.messages] : this.messages.filter((m) => (m.timestamp ?? 0) < query.before!);\n    if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);
+    let items = query.before === undefined ? [...this.messages] : this.messages.filter((m) => (m.timestamp ?? 0) < query.before!);
+    if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);\n    if (query.sessionId !== undefined) items = items.filter((m) => m.metadata?.sessionId === query.sessionId);
     return items.slice(Math.max(0, items.length - limit)).map((m) => ({ ...m, metadata: m.metadata ? { ...m.metadata } : undefined }));
   }
 
