@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.12
+
+- Hardened OpenAI-compatible chat response handling with bounded streaming body reads.
+- Malformed provider JSON responses now return standardized `NetworkError` failures.
+- Added runtime coverage for body limits without `content-length` and malformed JSON.
+- Bumped `@woho/provider-openai` to 0.2.5.
+
 ## 0.8.11
 
 - Hardened memory message validation for roles and timestamps.
