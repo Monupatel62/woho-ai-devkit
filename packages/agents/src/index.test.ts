@@ -11,6 +11,7 @@ const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxToolResultChars: 0 }), /maxToolResultChars must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "dup", description: "a", execute: async () => 1 }, { name: "dup", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "x", description: "", execute: async () => 1 }] }), /Tool description is required/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "same", description: "a", execute: async () => 1 }, { name: "same", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
 
   const store = createInMemoryStore();
   const ai = createAI({
@@ -46,6 +47,14 @@ const run = async () => {
     maxContextChars: 10,
   });
   assert.equal((await limited.run("hello")).text, "ok");
+
+  const malformed = createAgent(createAI({
+    provider: {
+      name: "malformed",
+      async chat() { return { id: "bad", text: "", model: "malformed", finishReason: "tool_call", toolCalls: [{ id: "bad-1", name: "echo", arguments: "{" }] }; },
+    },
+  }), { name: "malformed-agent", maxSteps: 1, tools: [{ name: "echo", description: "Echo", execute: async () => "ok" }] });
+  await assert.rejects(malformed.run("bad args"), (error) => error instanceof AIError && error.code === "AGENT_MAX_STEPS");
 
   const failing = createAgent(createAI({
     provider: {
