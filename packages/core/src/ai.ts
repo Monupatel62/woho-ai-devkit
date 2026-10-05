@@ -5,11 +5,16 @@ import { validateAIInput } from "./validation.js";
 const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     if (signal?.aborted) return reject(signal.reason ?? new Error("Aborted"));
-    const timer = setTimeout(resolve, ms);
+    let timer: ReturnType<typeof setTimeout>;
     const onAbort = () => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       reject(signal?.reason ?? new Error("Aborted"));
     };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 
