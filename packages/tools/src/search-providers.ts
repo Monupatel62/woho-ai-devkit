@@ -13,7 +13,7 @@ export interface SearchProviderOptions {
   fetchImpl?: typeof fetch;
 }
 
-function createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, maxResponseBytes: number) {
+async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {\n  if (!response.body) throw new Error("Search provider returned no response body");\n  const reader = response.body.getReader();\n  const decoder = new TextDecoder();\n  const chunks: string[] = [];\n  let received = 0;\n  try {\n    while (true) {\n      const { value, done } = await reader.read();\n      if (done) break;\n      received += value.byteLength;\n      if (received > maxBytes) throw new Error("Search provider response exceeds size limit");\n      chunks.push(decoder.decode(value, { stream: true }));\n    }\n    chunks.push(decoder.decode());\n    return chunks.join("");\n  } finally {\n    await reader.cancel().catch(() => undefined);\n  }\n}\n\nfunction createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, maxResponseBytes: number) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error("timeoutMs must be a positive integer");
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
   const fn = fetchImpl ?? fetch;
@@ -25,7 +25,7 @@ function createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, max
       const response = await fn(input, { ...init, signal });
       const length = Number(response.headers.get("content-length") ?? 0);
       if (length > maxResponseBytes) throw new Error("Search provider response exceeds size limit");
-      return response;
+      return { response, maxResponseBytes };
     } finally {
       clearTimeout(timer);
     }
@@ -52,12 +52,12 @@ export function createBraveSearchProvider(options: SearchProviderOptions): Searc
       const url = new URL("https://api.search.brave.com/res/v1/web/search");
       url.searchParams.set("q", query);
       url.searchParams.set("count", String(count));
-      const response = await request(url, {
+      const { response, maxResponseBytes } = await request(url, {
         headers: { Accept: "application/json", "X-Subscription-Token": options.apiKey },
         signal: searchOptions?.signal,
       });
       if (!response.ok) throw new Error(`Brave Search request failed: ${response.status}`);
-      const body = await response.json() as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
+      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes)) as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
       return (body.web?.results ?? [])
         .filter((item): item is { title: string; url: string; description?: string } => typeof item.title === "string" && typeof item.url === "string")
         .slice(0, count)
@@ -68,19 +68,19 @@ export function createBraveSearchProvider(options: SearchProviderOptions): Searc
 
 export function createTavilySearchProvider(options: SearchProviderOptions): SearchProvider {
   requireApiKey(options.apiKey);
-  const request = createFetch(options.fetchImpl, options.timeoutMs ?? 10_000);
+  const request = createFetch(options.fetchImpl, options.timeoutMs ?? 10_000, options.maxResponseBytes ?? 2_000_000);
   return {
     async search(query, searchOptions) {
       if (!query.trim()) throw new Error("query is required");
       const maxResults = clampLimit(searchOptions?.limit, 20);
-      const response = await request("https://api.tavily.com/search", {
+      const { response, maxResponseBytes } = await request("https://api.tavily.com/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: options.apiKey, query, max_results: maxResults }),
         signal: searchOptions?.signal,
       });
       if (!response.ok) throw new Error(`Tavily Search request failed: ${response.status}`);
-      const body = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> };
+      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes)) as { results?: Array<{ title?: string; url?: string; content?: string }> };
       return (body.results ?? [])
         .filter((item): item is { title: string; url: string; content?: string } => typeof item.title === "string" && typeof item.url === "string")
         .slice(0, maxResults)
