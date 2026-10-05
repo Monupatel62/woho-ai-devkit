@@ -55,7 +55,7 @@ export class JsonFileStore implements MemoryStore {
     const limit = query.limit ?? this.maxMessages;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const messages = await this.load();
-    const filtered = query.before === undefined ? messages : messages.filter((m) => (m.timestamp ?? 0) < query.before!);
+    const filtered = (query.before === undefined ? messages : messages.filter((m) => (m.timestamp ?? 0) < query.before!)).filter((m) => query.sessionId === undefined || m.metadata?.sessionId === query.sessionId);
     return filtered.slice(Math.max(0, filtered.length - limit)).map((m) => ({ ...m, metadata: m.metadata ? { ...m.metadata } : undefined }));
   }
 
