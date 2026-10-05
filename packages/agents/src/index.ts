@@ -57,6 +57,25 @@ function serializeToolResult(value: unknown): string {
   }
 }
 
+function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
+  let items = maxMessages === undefined ? [...history] : history.slice(-maxMessages);
+  if (maxChars === undefined) return items;
+  const selected: MemoryMessage[] = [];
+  let used = 0;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    const cost = item.content.length + 1;
+    if (selected.length > 0 && used + cost > maxChars) break;
+    if (selected.length === 0 && cost > maxChars) {
+      selected.unshift({ ...item, content: item.content.slice(-maxChars) });
+      break;
+    }
+    selected.unshift(item);
+    used += cost;
+  }
+  return selected;
+}
+
 export class Agent {
   readonly name: string;
   readonly instructions?: string;
@@ -105,7 +124,7 @@ export class Agent {
         const summary = await this.memorySummarizer.summarize(history, { maxCharacters: this.maxContextChars ?? 4000 });
         if (summary.trim()) history = [{ role: "system", content: summary } as MemoryMessage];
       }
-      messages.push(...history.map(({ role, content, name, toolCallId, toolCalls }) => ({
+      messages.push(...limitContext(history, this.maxContextMessages, this.maxContextChars).map(({ role, content, name, toolCallId, toolCalls }) => ({
         role, content, ...(name ? { name } : {}), ...(toolCallId ? { toolCallId } : {}), ...(toolCalls ? { toolCalls } : {}),
       })));
     }
