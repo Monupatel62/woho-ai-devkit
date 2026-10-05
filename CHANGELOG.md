@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.9
+
+- Audited workspace package metadata and fixed missing runtime package declarations.
+- Added Node type dependency metadata for the MCP package.
+- Aligned the search tool JSON schema with its positive-integer runtime limit.
+- Bumped `@woho/agents` to 0.3.10, `@woho/tools` to 0.4.8, and `@woho/mcp` to 0.6.9.
+
 ## 0.8.8
 
 - Hardened HTTP/file tool boundaries against credential-bearing URLs and oversized file reads.
