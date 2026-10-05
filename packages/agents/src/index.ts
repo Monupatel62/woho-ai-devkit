@@ -1,4 +1,4 @@
-import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition, type PermissionAction, type PermissionPolicy } from "@woho/core";
+import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition, type AIUsage, type PermissionAction, type PermissionPolicy } from "@woho/core";
 import { createConversation, type MemoryStore, type MemoryMessage, type MemorySummarizer } from "@woho/memory";
 import type { MCPClient } from "@woho/mcp";
 import type { ExecutionEvent } from "@woho/core";
@@ -56,6 +56,7 @@ export interface AgentRunResult {
   steps: number;
   messages: AIMessage[];
   toolResults: Record<string, unknown>;
+  usage?: AIUsage;
 }
 
 function toolDefinitions(tools: AgentTool[]): AIToolDefinition[] {
@@ -185,6 +186,7 @@ export class Agent {
 
     const messages: AIMessage[] = [];
     const toolResults: Record<string, unknown> = {};
+    let usage: AIUsage | undefined;
     const toolsByName = new Map(this.tools.map((tool) => [tool.name, tool]));
 
     if (this.instructions) messages.push({ role: "system", content: this.instructions });
@@ -212,6 +214,18 @@ export class Agent {
         signal: runOptions.signal,
       });
 
+      if (response.usage) {
+        usage = usage
+          ? {
+              inputTokens: usage.inputTokens + response.usage.inputTokens,
+              outputTokens: usage.outputTokens + response.usage.outputTokens,
+              totalTokens: usage.totalTokens + response.usage.totalTokens,
+              cost: usage.cost && response.usage.cost && usage.cost.currency === response.usage.cost.currency
+                ? { currency: usage.cost.currency, amount: usage.cost.amount + response.usage.cost.amount }
+                : response.usage.cost ?? usage.cost,
+            }
+          : { ...response.usage, cost: response.usage.cost ? { ...response.usage.cost } : undefined };
+      }
       const calls = response.toolCalls ?? [];
       const assistantMessage: AIMessage = {
         role: "assistant",
@@ -222,7 +236,7 @@ export class Agent {
       if (conversation) await conversation.add({ id: `assistant-${Date.now()}-${step}`, ...assistantMessage, timestamp: Date.now() });
 
       if (!calls.length) {
-        return { text: response.text, steps: step, messages, toolResults };
+        return { text: response.text, steps: step, messages, toolResults, ...(usage ? { usage } : {}) };
       }
 
       for (const call of calls) {
