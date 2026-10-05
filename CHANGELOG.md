@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.2
+
+- Added persistent JSON-file memory storage.
+- Added atomic temp-file replacement and serialized writes.
+- Added runtime persistence tests.
+
 ## 0.5.1
 
 - Integrated optional `MemoryStore` into agents.
