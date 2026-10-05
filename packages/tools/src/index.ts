@@ -4,6 +4,7 @@ export { ToolRegistry, createToolRegistry } from "./registry.js";
 export { commandTool, type CommandToolPolicy } from "./command.js";
 export { gitTool, type GitToolPolicy } from "./git.js";
 export { workspaceTool, createWorkspaceTool, type WorkspaceToolPolicy, type WorkspaceEntry } from "./workspace.js";
+export { createProjectTools, type ProjectToolsPolicy } from "./project.js";
 export { validateToolInput } from "./validation.js";
 import { assertAllowedHost, createToolPolicy, type ToolPolicy } from "./policy.js";
 export { createSearchProvider, searchTool, type SearchProvider, type SearchResult, type SearchToolPolicy } from "./search.js";
@@ -127,9 +128,7 @@ export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
           try {
             const root = pathModule.resolve(await fs.realpath(dir));
             if (target === root || target.startsWith(root + pathModule.sep)) return true;
-          } catch {
-            // Ignore missing or invalid policy directories.
-          }
+          } catch {}
         }
         return false;
       })();
