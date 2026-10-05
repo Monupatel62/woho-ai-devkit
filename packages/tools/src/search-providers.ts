@@ -9,18 +9,23 @@ export interface SearchResult {
 export interface SearchProviderOptions {
   apiKey: string;
   timeoutMs?: number;
+  maxResponseBytes?: number;
   fetchImpl?: typeof fetch;
 }
 
-function createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number) {
-  if (timeoutMs <= 0) throw new Error("timeoutMs must be positive");
+function createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, maxResponseBytes: number) {
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error("timeoutMs must be a positive integer");
+  if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
   const fn = fetchImpl ?? fetch;
   return async (input: Parameters<typeof fetch>[0], init: RequestInit = {}) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const signal = init.signal ? AbortSignal.any([controller.signal, init.signal]) : controller.signal;
     try {
-      return await fn(input, { ...init, signal });
+      const response = await fn(input, { ...init, signal });
+      const length = Number(response.headers.get("content-length") ?? 0);
+      if (length > maxResponseBytes) throw new Error("Search provider response exceeds size limit");
+      return response;
     } finally {
       clearTimeout(timer);
     }
@@ -39,7 +44,7 @@ function clampLimit(limit: number | undefined, max: number) {
 
 export function createBraveSearchProvider(options: SearchProviderOptions): SearchProvider {
   requireApiKey(options.apiKey);
-  const request = createFetch(options.fetchImpl, options.timeoutMs ?? 10_000);
+  const request = createFetch(options.fetchImpl, options.timeoutMs ?? 10_000, options.maxResponseBytes ?? 2_000_000);
   return {
     async search(query, searchOptions) {
       if (!query.trim()) throw new Error("query is required");
