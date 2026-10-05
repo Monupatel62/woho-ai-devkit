@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.26
+
+- Added dependency-aware multi-agent execution plans with DAG validation.
+- Added parallel execution of independent plan stages through the bounded agent runtime.
+- Added regression coverage for ordered execution, fan-out stages, and cycle detection.
+- Bumped all six public packages for the coordinated release.
+
 ## 0.8.25
 
 - Added provider-neutral execution capabilities and permission policies to the core foundation.
