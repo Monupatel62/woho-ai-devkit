@@ -280,6 +280,7 @@ export async function createMCPAgentTools(client: MCPClient): Promise<AgentTool[
 export { createAISummarizer, type AISummarizerOptions } from "./summarizer.js";
 export * from "./definition.js";
 export * from "./runtime.js";
+export * from "./specialized.js";
 
 export function createAgent(ai: AIClient, options: AgentOptions): Agent {
   return new Agent(ai, options);
