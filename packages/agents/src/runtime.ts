@@ -71,7 +71,9 @@ export class AgentRuntime {
       signal: task.signal,
       metadata: task.metadata ?? {},
     };
-    await this.emit({ type: "run.started", runId, timestamp: Date.now(), data: { agent: task.agent, sessionId: task.sessionId } });
+    const startedAt = Date.now();
+    await this.store?.create({ runId, agent: task.agent, parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
+    await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
 
     try {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
