@@ -84,7 +84,7 @@ export class MCPClient {
     this.transport = options.transport;
     this.timeoutMs = options.timeoutMs ?? 30000;
     this.clientName = options.clientName ?? "woho-ai-devkit";
-    this.clientVersion = options.clientVersion ?? "0.6.11";
+    this.clientVersion = options.clientVersion ?? "0.6.12";
     this.protocolVersion = options.protocolVersion ?? "2025-06-18";
     if (!this.clientName.trim()) throw new Error("clientName is required");
     if (!this.clientVersion.trim()) throw new Error("clientVersion is required");
@@ -102,7 +102,9 @@ export class MCPClient {
     if (!this.initialization) {
       this.initialization = (async () => {
         const result = await this.request("initialize", { protocolVersion: this.protocolVersion, capabilities: {}, clientInfo: { name: this.clientName, version: this.clientVersion } });
+        if (this.closed) throw new MCPError("MCP client is closed");
         if (this.transport.notify) await this.transport.notify("notifications/initialized");
+        if (this.closed) throw new MCPError("MCP client is closed");
         this.initialized = true;
         return result;
       })().catch((error) => {
@@ -129,6 +131,7 @@ export class MCPClient {
   }
   async getPrompt(name: string, arguments?: Record<string, string>): Promise<unknown> {
     if (!name.trim()) throw new Error("prompt name is required");
+    if (name !== name.trim()) throw new Error("prompt name cannot have surrounding whitespace");
     await this.initialize();
     return this.request("prompts/get", { name, ...(arguments ? { arguments } : {}) });
   }
@@ -139,6 +142,7 @@ export class MCPClient {
   }
   async callTool(name: string, input: unknown = {}): Promise<MCPCallResult> {
     if (!name.trim()) throw new Error("tool name is required");
+    if (name !== name.trim()) throw new Error("tool name cannot have surrounding whitespace");
     await this.initialize();
     const result = await this.request("tools/call", { name, arguments: input }) as { content?: unknown; isError?: boolean };
     return { content: result?.content ?? [], isError: result?.isError === true };
@@ -149,6 +153,7 @@ export class MCPClient {
     await this.transport.close?.();
   }
   private async request(method: string, params?: unknown): Promise<unknown> {
+    if (!method.trim()) throw new MCPError("MCP method is required");
     if (this.closed) throw new MCPError("MCP client is closed", method);
     if (this.allowedMethods && !this.allowedMethods.has(method)) throw new MCPError("MCP method is not allowed: " + method, method);
     const controller = new AbortController();
