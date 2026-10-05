@@ -16,6 +16,7 @@ Stage 5 starts with a provider-neutral memory interface and a bounded in-memory 
 - configurable message limit
 - bounded list queries
 - clear operation
+- bounded memory summarization helper
 - runtime tests
 
 The store is intentionally persistence-neutral. A database/vector adapter can be added later without coupling agents to a storage vendor.
