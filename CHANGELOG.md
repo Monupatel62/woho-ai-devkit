@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.17
+
+- Hardened MCP stdio framing with byte-bounded streaming stdout parsing instead of unbounded line buffering.
+- Added stdio write-error propagation, JSON-RPC response validation, and cleanup-safe request timers.
+- Added runtime coverage for malformed JSON-RPC responses and oversized unterminated stdio frames.
+- Bumped `@woho/mcp` to 0.6.12.
+
 ## 0.8.16
 
 - Hardened JSON memory persistence with pre-write file-size enforcement.
