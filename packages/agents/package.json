@@ -1,6 +1,6 @@
 {
   "name": "@woho/agents",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "Composable AI agents for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
