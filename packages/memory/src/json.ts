@@ -20,11 +20,19 @@ export class JsonFileStore implements MemoryStore {
   }
 
   private async load(): Promise<MemoryMessage[]> {
+    const validate = (value: unknown): MemoryMessage[] => {
+      if (!Array.isArray(value)) throw new Error("Memory file must contain an array");
+      for (const message of value) {
+        if (!message || typeof message !== "object" || typeof (message as MemoryMessage).id !== "string" || !(message as MemoryMessage).id.trim() || typeof (message as MemoryMessage).content !== "string" || !(message as MemoryMessage).content.trim()) {
+          throw new Error("Memory file contains an invalid message");
+        }
+      }
+      return value as MemoryMessage[];
+    };
     try {
       const raw = await readFile(this.filePath, "utf8");
       const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) throw new Error("Memory file must contain an array");
-      return parsed as MemoryMessage[];
+      return validate(parsed);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw error;
@@ -33,7 +41,7 @@ export class JsonFileStore implements MemoryStore {
 
   private async persist(messages: MemoryMessage[]): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
-    const temp = this.filePath + ".tmp";
+    const temp = this.filePath + ".tmp-" + process.pid + "-" + Date.now();
     await writeFile(temp, JSON.stringify(messages), "utf8");
     await rename(temp, this.filePath);
   }
@@ -52,6 +60,8 @@ export class JsonFileStore implements MemoryStore {
 
   async list(query: MemoryQuery = {}): Promise<MemoryMessage[]> {
     await this.writeQueue;
+    if (query.before !== undefined && !Number.isFinite(query.before)) throw new Error("before must be a finite number");
+    if (query.sessionId !== undefined && !query.sessionId.trim()) throw new Error("sessionId cannot be empty");
     const limit = query.limit ?? this.maxMessages;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const messages = await this.load();
