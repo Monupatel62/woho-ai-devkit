@@ -47,6 +47,10 @@ const run = async () => {
   for await (const chunk of provider.stream!({ messages: [{ role: "user", content: "stream" }] })) chunks.push(chunk.text);
   assert.deepEqual(chunks, ["hel", "lo"]);
 
+  globalThis.fetch = async () => new Response('data: {bad-json}\\n\\n', { status: 200, headers: { "content-type": "text/event-stream" } });
+  const malformed = provider.stream!({ messages: [{ role: "user", content: "bad" }] });
+  await assert.rejects(async () => { for await (const _ of malformed) { /* expected failure */ } }, /Malformed provider SSE frame/);
+
   globalThis.fetch = originalFetch;
   console.log("openai provider runtime tests passed");
 };
