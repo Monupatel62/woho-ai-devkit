@@ -1,6 +1,7 @@
 import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition, type PermissionAction, type PermissionPolicy } from "@woho/core";
 import { createConversation, type MemoryStore, type MemoryMessage, type MemorySummarizer } from "@woho/memory";
 import type { MCPClient } from "@woho/mcp";
+import type { ExecutionEvent } from "@woho/core";
 
 export interface AgentTool {
   name: string;
@@ -17,7 +18,7 @@ export interface AgentContext {
   step: number;
 }
 
-export interface AgentRunOptions { signal?: AbortSignal; }
+export interface AgentRunOptions { signal?: AbortSignal; runId?: string; onEvent?: (event: ExecutionEvent) => void | Promise<void>; }
 
 export interface AgentOptions {
   name: string;
@@ -75,7 +76,7 @@ function validateToolParameters(tool: AgentTool, input: unknown): void {
   }
 }
 
-function serializeToolResult(value: unknown, maxChars: number): string {
+async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promise<void> {\n  await options.onEvent?.(event);\n}\n\nfunction serializeToolResult(value: unknown, maxChars: number): string {
   let text: string;
   if (typeof value === "string") text = value;
   else {
@@ -229,6 +230,7 @@ export class Agent {
               throw new AIError(decision.reason ?? "Tool action denied by permission policy", decision.requiresApproval ? "APPROVAL_REQUIRED" : "PERMISSION_DENIED");
             }
           }
+          await runEvent(runOptions, { type: "tool.started", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step } });
           let result: unknown;
           if (this.toolTimeoutMs === undefined) {
             result = await tool.execute(parsed);
@@ -246,10 +248,12 @@ export class Agent {
             }
           }
           toolResults[call.id] = result;
+          await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: true } });
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         } catch (error) {
+          await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: false, error: error instanceof Error ? error.message : String(error) } });
           const failure = { error: error instanceof Error ? error.message : String(error) };
           toolResults[call.id] = failure;
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure, this.maxToolResultChars), toolCallId: call.id, name: call.name };
