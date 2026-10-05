@@ -9,6 +9,7 @@ const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxContextMessages: 0 }), /maxContextMessages must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxContextChars: 0 }), /maxContextChars must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxToolResultChars: 0 }), /maxToolResultChars must be a positive integer/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", toolTimeoutMs: 0 }), /toolTimeoutMs must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "dup", description: "a", execute: async () => 1 }, { name: "dup", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "x", description: "", execute: async () => 1 }] }), /Tool description is required/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "same", description: "a", execute: async () => 1 }, { name: "same", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
@@ -65,6 +66,19 @@ const run = async () => {
     },
   }), { name: "loop", maxSteps: 1 });
   await assert.rejects(failing.run("loop"), (error) => error instanceof AIError && error.code === "AGENT_MAX_STEPS");
+
+  const timeoutTool = createAgent(createAI({
+    provider: {
+      name: "timeout-tool",
+      async chat(request) {
+        if (request.messages.at(-1)?.role === "tool") return { id: "done", text: "done", model: "timeout-tool" };
+        return { id: "call", text: "", model: "timeout-tool", finishReason: "tool_call", toolCalls: [{ id: "slow-1", name: "slow", arguments: "{}" }] };
+      },
+    },
+  }), { name: "timeout-agent", maxToolResultChars: 100, toolTimeoutMs: 5, tools: [{ name: "slow", description: "Slow", execute: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return "late"; } }] });
+  const timeoutResult = await timeoutTool.run("run");
+  assert.equal(timeoutResult.text, "done");
+  assert.match(String(timeoutResult.toolResults["slow-1"] && (timeoutResult.toolResults["slow-1"] as { error: string }).error), /timed out/);
 
   const limitedTool = createAgent(createAI({
     provider: {
