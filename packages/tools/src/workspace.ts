@@ -47,10 +47,19 @@ async function safeExisting(root: string, relative: string): Promise<string> {
 async function safeParent(root: string, relative: string): Promise<{ target: string; parent: string }> {
   assertRelative(relative);
   const target = path.resolve(root, relative);
-  const parent = path.dirname(target);
-  const realParent = await fs.realpath(parent);
-  if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
-  return { target, parent: realParent };
+  let parent = path.dirname(target);
+  while (true) {
+    try {
+      const realParent = await fs.realpath(parent);
+      if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
+      return { target, parent: realParent };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const next = path.dirname(parent);
+      if (next === parent) throw new Error("Workspace parent does not exist");
+      parent = next;
+    }
+  }
 }
 
 function entryType(stat: Awaited<ReturnType<typeof fs.lstat>>): WorkspaceEntry["type"] {
