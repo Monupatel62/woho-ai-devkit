@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.8
+
+- Added pluggable AI memory summarization.
+- Added automatic agent memory compaction when a configured threshold is reached.
+- Added `createAISummarizer` adapter using the existing AI client.
+- Bumped `@woho/agents` to 0.3.5 and `@woho/memory` to 0.5.7.
+
 ## 0.5.7
 
 - Added bounded, provider-neutral memory summarization.
