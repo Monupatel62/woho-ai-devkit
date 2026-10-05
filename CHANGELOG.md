@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.7
+
+- Added bounded, provider-neutral memory summarization.
+- Added session-aware summary metadata.
+- Bumped `@woho/memory` to 0.5.6.
+
 ## 0.5.6
 
 - Added agent context message and character limits.
