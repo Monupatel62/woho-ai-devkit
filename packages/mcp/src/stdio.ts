@@ -55,7 +55,11 @@ export class MCPStdioTransport implements MCPTransport {
 
     return new Promise((resolve, reject) => {
       let settled = false;
-      const cleanup = () => signal?.removeEventListener("abort", onAbort);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+      };
       const fail = (error: Error) => {
         if (settled) return;
         settled = true;
@@ -73,7 +77,7 @@ export class MCPStdioTransport implements MCPTransport {
       const onAbort = () => fail(new MCPError("MCP request aborted", method));
       if (signal?.aborted) return onAbort();
 
-      const timer = setTimeout(() => fail(new MCPError("MCP request timed out", method)), this.timeoutMs);
+      timer = setTimeout(() => fail(new MCPError("MCP request timed out", method)), this.timeoutMs);
       const resolveWithTimer = (value: unknown) => { clearTimeout(timer); succeed(value); };
       const rejectWithTimer = (error: Error) => { clearTimeout(timer); fail(error); };
       this.pending.set(id, { resolve: resolveWithTimer, reject: rejectWithTimer });
@@ -130,7 +134,10 @@ export class MCPStdioTransport implements MCPTransport {
 
     while (true) {
       const newline = this.stdoutBuffer.indexOf(0x0a);
-      if (newline < 0) return;
+      if (newline < 0) {
+        if (this.stdoutBuffer.length > this.maxMessageBytes) this.rejectAll(new MCPError("MCP response exceeds maxMessageBytes"));
+        return;
+      }
       const line = this.stdoutBuffer.subarray(0, newline);
       this.stdoutBuffer = this.stdoutBuffer.subarray(newline + 1);
       if (line.length > this.maxMessageBytes) {
