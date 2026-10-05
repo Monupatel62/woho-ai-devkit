@@ -65,6 +65,7 @@ jobs:
 
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm build
+      - run: pnpm release:check
       - run: pnpm pack:check
 
       - name: Validate npm publish manifests
