@@ -30,12 +30,16 @@ const run = async () => {
   assert.throws(() => server.registerTool({ definition: { name: "echo" }, execute: async () => null }), /Duplicate/);
   await assert.rejects(() => server.callTool("missing", {}), /Unknown/);
 
-  const client = createMCPClient({ transport, timeoutMs: 1000 });
+  const client = createMCPClient({\n    transport,\n    timeoutMs: 1000,\n    security: { maxResponseBytes: 10000, allowedMethods: ["initialize", "notifications/initialized", "tools/list", "tools/call", "resources/list", "resources/read", "prompts/list", "prompts/get"] },\n  });
   const resources = await client.listResources();\n  assert.equal(resources[0].uri, "memory://hello");\n  assert.deepEqual(await client.readResource("memory://hello"), [{ uri: "memory://hello", text: "hello" }]);\n  const prompts = await client.listPrompts();\n  assert.equal(prompts[0].name, "greet");\n  assert.deepEqual(await client.getPrompt("greet", { name: "Monu" }), { text: "Hello Monu" });\n\n  const tools = await client.listTools();
   assert.deepEqual(tools, [{ name: "echo" }]);
   const result = await client.callTool("echo", { ok: true });
   assert.equal(result.isError, false);
   assert.equal(result.content[0].type, "text");
+
+  const restricted = createMCPClient({ transport, security: { allowedMethods: ["initialize"] } });
+  await assert.rejects(() => restricted.listTools(), /not allowed/);
+  await restricted.close();
   await client.close();
 
   console.log("mcp runtime tests passed");
