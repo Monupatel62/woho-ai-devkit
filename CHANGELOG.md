@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.25
+
+- Added provider-neutral execution capabilities and permission policies to the core foundation.
+- Expanded agents with registries, bounded concurrent runtime execution, run lifecycle events, identities, roles, and permission-gated tools.
+- Added specialized role agents and adapter contracts for calling, communication, computer, browser, coding, research, testing, security, Git, documentation, and data workflows.
+- Added a policy-gated local command tool with allowlisted commands, directory boundaries, timeouts, and bounded output.
+- Added ranked memory search utilities.
+- Hardened MCP client request/tool/resource policies and updated the default protocol revision to 2026-07-28.
+- Added runtime regression coverage across the new capabilities.
+- Bumped all six public packages for the coordinated release.
+
 ## 0.8.24
 
 - Prepared the next coordinated six-package npm release after the successful Trusted Publishing OIDC rollout.
