@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createInMemoryStore, createJsonFileStore, createConversation } from "./index.js";
+import { createInMemoryStore, createJsonFileStore, createConversation, summarizeMemory, summarizeMemoryWith } from "./index.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -33,6 +33,12 @@ const run = async () => {
   assert.equal((await other.messages()).length, 1);
   assert.equal((await conversation.messages()).length, 3);
   assert.equal((await conversation.search({ query: "typescript" })).length, 2);
+  const summary = summarizeMemory(await conversation.messages(), { maxCharacters: 120, sessionId: "s1" });
+  assert.equal(summary.role, "system");
+  assert.equal(summary.metadata?.sessionId, "s1");
+  assert.ok(summary.content.length <= 120);
+  const aiSummary = await summarizeMemoryWith({ summarize: async () => "AI summary" }, await conversation.messages(), { maxCharacters: 50, sessionId: "s1" });
+  assert.equal(aiSummary.content, "AI summary");
   assert.throws(() => createConversation({ sessionId: "", store: createInMemoryStore() }), /sessionId/);
   await rm(dir, { recursive: true, force: true });
   console.log("memory runtime tests passed");
