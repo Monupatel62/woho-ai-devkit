@@ -46,7 +46,12 @@ const toMessages = (messages: AIMessage[]) =>
     } : {}),
   }));
 
-async function readErrorBody(response: Response, maxBytes: number): Promise<string> {\n  try { return await readBodyWithLimit(response, maxBytes); }\n  catch { return "Provider error response could not be read safely"; }\n}\n\nfunction mapError(status: number, body: string): Error {
+async function readErrorBody(response: Response, maxBytes: number): Promise<string> {
+  try { return await readBodyWithLimit(response, maxBytes); }
+  catch { return "Provider error response could not be read safely"; }
+}
+
+function mapError(status: number, body: string): Error {
   if (status === 401) return new AuthenticationError("Invalid provider API key");
   if (status === 429) return new RateLimitError("Provider rate limit exceeded");
   if (status === 404) return new ModelNotFoundError("Model was not found");
@@ -169,7 +174,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       } catch (error) {
         throw new NetworkError("Network request failed", error);
       }
-      if (!response.ok) throw mapError(response.status, await response.text());
+      if (!response.ok) throw mapError(response.status, await readErrorBody(response, maxResponseBytes));
       if (!response.body) throw new NetworkError("Provider returned no response body");
 
       const contentLength = response.headers.get("content-length");
@@ -202,7 +207,8 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           throw new NetworkError("Provider stream exceeds maxResponseBytes");
         }
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
+        const lines = buffer.split("
+");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           const trimmed = line.trim();
