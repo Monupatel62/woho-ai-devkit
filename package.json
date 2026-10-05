@@ -1,16 +1,28 @@
 {
   "name": "woho-ai-devkit",
-  "version": "0.4.0",
+  "version": "0.4.4",
   "private": false,
   "description": "Open-source AI developer toolkit for TypeScript and JavaScript.",
   "license": "Apache-2.0",
   "packageManager": "pnpm@10.17.0",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
-  "keywords": ["ai", "agents", "typescript", "javascript", "developer-tools", "open-source"],
-  "repository": { "type": "git", "url": "https://github.com/Monupatel62/woho-ai-devkit.git" }
+  "keywords": [
+    "ai",
+    "agents",
+    "typescript",
+    "javascript",
+    "developer-tools",
+    "open-source"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Monupatel62/woho-ai-devkit.git"
+  }
 }
