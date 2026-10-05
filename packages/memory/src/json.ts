@@ -5,31 +5,38 @@ import type { MemoryMessage, MemoryQuery, MemoryStore } from "./index.js";
 export interface JsonFileStoreOptions {
   filePath: string;
   maxMessages?: number;
+  maxFileBytes?: number;
 }
 
 export class JsonFileStore implements MemoryStore {
   private readonly filePath: string;
   private readonly maxMessages: number;
+  private readonly maxFileBytes: number;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: JsonFileStoreOptions) {
     if (!options.filePath.trim()) throw new Error("filePath is required");
     this.filePath = options.filePath;
     this.maxMessages = options.maxMessages ?? 1000;
+    this.maxFileBytes = options.maxFileBytes ?? 10 * 1024 * 1024;
     if (!Number.isInteger(this.maxMessages) || this.maxMessages < 1) throw new Error("maxMessages must be a positive integer");
+    if (!Number.isInteger(this.maxFileBytes) || this.maxFileBytes < 1) throw new Error("maxFileBytes must be a positive integer");
   }
 
   private async load(): Promise<MemoryMessage[]> {
     const validate = (value: unknown): MemoryMessage[] => {
       if (!Array.isArray(value)) throw new Error("Memory file must contain an array");
       for (const message of value) {
-        if (!message || typeof message !== "object" || typeof (message as MemoryMessage).id !== "string" || !(message as MemoryMessage).id.trim() || typeof (message as MemoryMessage).content !== "string" || !(message as MemoryMessage).content.trim()) {
+        if (!message || typeof message !== "object" || typeof (message as MemoryMessage).id !== "string" || !(message as MemoryMessage).id.trim() || typeof (message as MemoryMessage).content !== "string" || !(message as MemoryMessage).content.trim() || !["system", "user", "assistant", "tool"].includes((message as MemoryMessage).role) || ((message as MemoryMessage).timestamp !== undefined && !Number.isFinite((message as MemoryMessage).timestamp))) {
           throw new Error("Memory file contains an invalid message");
         }
       }
       return value as MemoryMessage[];
     };
     try {
+      const { stat } = await import("node:fs/promises");
+      const info = await stat(this.filePath);
+      if (!info.isFile() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
       const raw = await readFile(this.filePath, "utf8");
       const parsed: unknown = JSON.parse(raw);
       return validate(parsed);
@@ -47,8 +54,10 @@ export class JsonFileStore implements MemoryStore {
   }
 
   async add(message: MemoryMessage): Promise<void> {
-    if (!message.id.trim()) throw new Error("Memory message id is required");
-    if (!message.content.trim()) throw new Error("Memory message content is required");
+    if (typeof message.id !== "string" || !message.id.trim()) throw new Error("Memory message id is required");
+    if (typeof message.content !== "string" || !message.content.trim()) throw new Error("Memory message content is required");
+    if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
+    if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
     this.writeQueue = this.writeQueue.then(async () => {
       const messages = await this.load();
       messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
