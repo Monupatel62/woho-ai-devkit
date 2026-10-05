@@ -27,6 +27,7 @@ export interface AgentOptions {
   memorySummarizer?: MemorySummarizer;
   memorySummaryThreshold?: number;
   maxToolResultChars?: number;
+  toolTimeoutMs?: number;
 }
 
 export interface AgentRunResult {
@@ -109,6 +110,7 @@ export class Agent {
   private readonly memorySummarizer?: MemorySummarizer;
   private readonly memorySummaryThreshold?: number;
   private readonly maxToolResultChars: number;
+  private readonly toolTimeoutMs?: number;
 
   constructor(ai: AIClient, options: AgentOptions) {
     this.ai = ai;
@@ -123,6 +125,7 @@ export class Agent {
     this.memorySummarizer = options.memorySummarizer;
     this.memorySummaryThreshold = options.memorySummaryThreshold ?? 50;
     this.maxToolResultChars = options.maxToolResultChars ?? 50_000;
+    this.toolTimeoutMs = options.toolTimeoutMs;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
     if (!options.name.trim()) throw new AIError("Agent name is required", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.maxSteps) || this.maxSteps < 1) throw new AIError("maxSteps must be a positive integer", "INVALID_AGENT_CONFIG");
@@ -130,6 +133,7 @@ export class Agent {
     if (this.maxContextChars !== undefined && (!Number.isInteger(this.maxContextChars) || this.maxContextChars < 1)) throw new AIError("maxContextChars must be a positive integer", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.memorySummaryThreshold) || this.memorySummaryThreshold < 1) throw new AIError("memorySummaryThreshold must be a positive integer", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.maxToolResultChars) || this.maxToolResultChars < 1) throw new AIError("maxToolResultChars must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (this.toolTimeoutMs !== undefined && (!Number.isInteger(this.toolTimeoutMs) || this.toolTimeoutMs < 1)) throw new AIError("toolTimeoutMs must be a positive integer", "INVALID_AGENT_CONFIG");
     for (const tool of this.tools) {
       if (!tool.name.trim()) throw new AIError("Tool name is required", "INVALID_AGENT_CONFIG");
       if (!tool.description.trim()) throw new AIError("Tool description is required: " + tool.name, "INVALID_AGENT_CONFIG");
@@ -194,7 +198,22 @@ export class Agent {
         try {
           const parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
-          const result = await tool.execute(parsed);
+          let result: unknown;
+          if (this.toolTimeoutMs === undefined) {
+            result = await tool.execute(parsed);
+          } else {
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+              result = await Promise.race([
+                tool.execute(parsed),
+                new Promise<never>((_, reject) => {
+                  timer = setTimeout(() => reject(new AIError("Tool execution timed out: " + tool.name, "TOOL_TIMEOUT")), this.toolTimeoutMs);
+                }),
+              ]);
+            } finally {
+              if (timer) clearTimeout(timer);
+            }
+          }
           toolResults[call.id] = result;
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
