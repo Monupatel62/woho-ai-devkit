@@ -4,3 +4,4 @@ export * from "./ai.js";
 export * from "./mock.js";
 export * from "./validation.js";
 export * from "./capabilities.js";
+export * from "./router.js";
