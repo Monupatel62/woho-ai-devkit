@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createInMemoryStore, createJsonFileStore, createConversation, summarizeMemory, summarizeMemoryWith } from "./index.js";
+import { createInMemoryStore, createJsonFileStore, createConversation, searchMemorySemantic, summarizeMemory, summarizeMemoryWith } from "./index.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { searchMemory } from "./search.js";
@@ -81,6 +81,16 @@ const run = async () => {
   await assert.rejects(() => summarizeMemoryWith({ summarize: async () => "x" }, [], { maxCharacters: 0 }), /positive integer/);
   assert.throws(() => summarizeMemory([{ id: "s", role: "user", content: "x" }], { maxCharacters: 0 }), /positive integer/);
   assert.throws(() => createConversation({ sessionId: "", store: createInMemoryStore() }), /sessionId/);
+  const semantic = await searchMemorySemantic(
+    [
+      { id: "v1", role: "user", content: "alpha beta" },
+      { id: "v2", role: "user", content: "gamma delta" },
+    ],
+    "alpha",
+    { embed: async (text) => text.includes("alpha") ? [1, 0] : [0, 1] },
+  );
+  assert.equal(semantic[0]?.message.id, "v1");
+  assert.equal(semantic[0]?.score, 1);
   await rm(dir, { recursive: true, force: true });
   console.log("memory runtime tests passed");
 };
