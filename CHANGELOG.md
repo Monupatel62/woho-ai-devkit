@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.16
+
+- Hardened JSON memory persistence with pre-write file-size enforcement.
+- Added safe unique temporary filenames and cleanup on failed writes.
+- Added secure file creation mode and malformed runtime input validation.
+- Added runtime coverage for oversized persistent messages and invalid input.
+- Bumped `@woho/memory` to 0.6.2.
+
 ## 0.8.15
 
 - Hardened HTTP and search tools with streaming response-size enforcement.
