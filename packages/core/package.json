@@ -12,14 +12,29 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
-  "publishConfig": {"access": "public"},
-  "repository": {"type": "git", "url": "https://github.com/Monupatel62/woho-ai-devkit.git", "directory": "packages/core"},
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Monupatel62/woho-ai-devkit.git",
+    "directory": "packages/core"
+  },
   "homepage": "https://github.com/Monupatel62/woho-ai-devkit/tree/main/packages/core",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm typecheck && pnpm build && node dist/observability.test.js"
   },
-  "devDependencies": {"@types/node": "^22.0.0"}
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }
