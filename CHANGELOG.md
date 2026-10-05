@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3
+
+- Added `MCPStdioTransport` for connecting to external MCP server processes over stdin/stdout.
+- Added bounded message sizes, abort handling, process cleanup, and JSON-RPC error propagation.
+
 ## 0.6.2
 
 - Added `createMCPAgentTools` to expose MCP server tools as agent tools.
