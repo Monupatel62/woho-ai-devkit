@@ -207,8 +207,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           throw new NetworkError("Provider stream exceeds maxResponseBytes");
         }
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("
-");
+        const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           const trimmed = line.trim();
