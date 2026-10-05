@@ -13,7 +13,13 @@ export interface MCPPrompt { definition: MCPPromptDefinition; get(promptArgument
 export interface MCPServerInfo { name: string; version: string; }
 export interface MCPServerOptions { name: string; version: string; tools?: MCPTool[]; resources?: MCPResource[]; prompts?: MCPPrompt[]; }
 export interface MCPTransport { request(method: string, params?: unknown, signal?: AbortSignal): Promise<unknown>; notify?(method: string, params?: unknown): Promise<void>; close?(): Promise<void>; }
-export interface MCPClientSecurityOptions { maxResponseBytes?: number; allowedMethods?: string[]; }
+export interface MCPClientSecurityOptions {
+  maxResponseBytes?: number;
+  maxRequestBytes?: number;
+  allowedMethods?: string[];
+  allowedToolNames?: string[];
+  allowedResourceSchemes?: string[];
+}
 export interface MCPClientOptions { transport: MCPTransport; timeoutMs?: number; clientName?: string; clientVersion?: string; protocolVersion?: string; security?: MCPClientSecurityOptions; }
 export interface MCPCallResult { content: unknown; isError: boolean; }
 export class MCPError extends Error { constructor(message: string, public readonly method?: string) { super(message); this.name = "MCPError"; } }
@@ -75,7 +81,10 @@ export class MCPClient {
   private readonly clientVersion: string;
   private readonly protocolVersion: string;
   private readonly maxResponseBytes: number;
+  private readonly maxRequestBytes: number;
   private readonly allowedMethods?: Set<string>;
+  private readonly allowedToolNames?: Set<string>;
+  private readonly allowedResourceSchemes?: Set<string>;
   private initialized = false;
   private closed = false;
   private initialization?: Promise<unknown>;
@@ -90,11 +99,16 @@ export class MCPClient {
     if (!this.clientVersion.trim()) throw new Error("clientVersion is required");
     if (!this.protocolVersion.trim()) throw new Error("protocolVersion is required");
     this.maxResponseBytes = options.security?.maxResponseBytes ?? 4 * 1024 * 1024;
+    this.maxRequestBytes = options.security?.maxRequestBytes ?? 1 * 1024 * 1024;
+    if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
+    if (!Number.isInteger(this.maxRequestBytes) || this.maxRequestBytes < 1) throw new Error("maxRequestBytes must be a positive integer");
     if (!Number.isInteger(this.maxResponseBytes) || this.maxResponseBytes < 1) throw new Error("maxResponseBytes must be a positive integer");
     if (options.security?.allowedMethods) {
       if (!Array.isArray(options.security.allowedMethods) || options.security.allowedMethods.some((method) => typeof method !== "string" || !method.trim())) throw new Error("allowedMethods must contain non-empty strings");
     }
     this.allowedMethods = options.security?.allowedMethods ? new Set(options.security.allowedMethods) : undefined;
+    this.allowedToolNames = options.security?.allowedToolNames ? new Set(options.security.allowedToolNames) : undefined;
+    this.allowedResourceSchemes = options.security?.allowedResourceSchemes ? new Set(options.security.allowedResourceSchemes) : undefined;
   }
   async initialize(): Promise<unknown> {
     if (this.closed) throw new MCPError("MCP client is closed");
@@ -120,6 +134,11 @@ export class MCPClient {
     return Array.isArray(value?.resources) ? value.resources : [];
   }
   async readResource(uri: string): Promise<MCPResourceContent[]> {
+    if (!uri.trim()) throw new Error("resource uri is required");
+    if (this.allowedResourceSchemes) {
+      const scheme = uri.includes(":") ? uri.slice(0, uri.indexOf(":")).toLowerCase() : "";
+      if (!this.allowedResourceSchemes.has(scheme)) throw new MCPError("MCP resource scheme is not allowed: " + scheme, "resources/read");
+    }
     await this.initialize();
     const value = await this.request("resources/read", { uri });
     return Array.isArray((value as { contents?: MCPResourceContent[] })?.contents) ? (value as { contents?: MCPResourceContent[] }).contents! : [];
@@ -142,6 +161,7 @@ export class MCPClient {
   }
   async callTool(name: string, input: unknown = {}): Promise<MCPCallResult> {
     if (!name.trim()) throw new Error("tool name is required");
+    if (this.allowedToolNames && !this.allowedToolNames.has(name)) throw new MCPError("MCP tool is not allowed: " + name, "tools/call");
     if (name !== name.trim()) throw new Error("tool name cannot have surrounding whitespace");
     await this.initialize();
     const result = await this.request("tools/call", { name, arguments: input }) as { content?: unknown; isError?: boolean };
@@ -156,6 +176,9 @@ export class MCPClient {
     if (!method.trim()) throw new MCPError("MCP method is required");
     if (this.closed) throw new MCPError("MCP client is closed", method);
     if (this.allowedMethods && !this.allowedMethods.has(method)) throw new MCPError("MCP method is not allowed: " + method, method);
+    let requestBytes = 0;
+    try { requestBytes = Buffer.byteLength(JSON.stringify(params ?? {}), "utf8"); } catch { throw new MCPError("MCP request is not serializable", method); }
+    if (requestBytes > this.maxRequestBytes) throw new MCPError("MCP request exceeds maxRequestBytes", method);
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
