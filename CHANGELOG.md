@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.2
+
+- Added optional core observability hooks for request and streaming lifecycle events.
+- Added request attempt, duration, error, and stream chunk telemetry callbacks without requiring a logging dependency.
+
 ## 0.7.1
 
 - Hardened core streaming with timeout and cancellation propagation.
