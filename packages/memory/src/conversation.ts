@@ -41,21 +41,19 @@ export class Conversation {
     const limit = options.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1) throw new Error("limit must be a positive integer");
     const items = await this.store.list({ sessionId: this.sessionId });
-    return items
-      .filter((item) => item.metadata?.sessionId === this.sessionId && item.content.toLowerCase().includes(query))
-      .slice(-limit);
+    return items.filter((item) => item.metadata?.sessionId === this.sessionId && item.content.toLowerCase().includes(query)).slice(-limit);
   }
 
   async clear(): Promise<void> {
-    const items = await this.store.list();
-    const sessionItems = items.filter((item) => item.metadata?.sessionId === this.sessionId);
-    for (const item of sessionItems) {
-      // MemoryStore intentionally exposes only whole-store clear; session-specific deletion is added in a later storage contract.
-      // Keep this method conservative and only clear when the store contains this session exclusively.
-      const all = await this.store.list();
-      if (all.length === sessionItems.length) await this.store.clear();
+    const items = await this.store.list({ sessionId: this.sessionId });
+    if (!items.length) return;
+    if (this.store.delete) {
+      for (const item of items) await this.store.delete(item.id);
       return;
     }
+    const all = await this.store.list();
+    if (all.length === items.length) await this.store.clear();
+    else throw new Error("Memory store does not support session-scoped deletion");
   }
 }
 
