@@ -12,6 +12,7 @@ const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", toolTimeoutMs: 0 }), /toolTimeoutMs must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "dup", description: "a", execute: async () => 1 }, { name: "dup", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "x", description: "", execute: async () => 1 }] }), /Tool description is required/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: " echo ", description: "Echo", execute: async () => 1 }] }), /surrounding whitespace/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "same", description: "a", execute: async () => 1 }, { name: "same", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
 
   const store = createInMemoryStore();
