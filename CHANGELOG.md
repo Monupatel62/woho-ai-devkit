@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.29
+
+- Hardened capability-bearing agent tools to require an explicit permission policy.
+- Added abort-signal propagation to tool execution so timeouts and caller cancellation can stop cooperative tools.
+- Hardened runtime queue cancellation to clean up abort listeners and avoid stale waiters.
+- Standardized agent verification failures as structured AI errors.
+- Added regression coverage for permission-policy enforcement and cooperative tool cancellation.
+- Bumped all six public packages for the coordinated release.
+
 ## 0.8.28
 
 - Added runtime-level approval propagation for permission-gated agent actions.
