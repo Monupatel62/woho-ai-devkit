@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1
+
+- Refreshed README for the current SDK surface and development workflow.
+- OpenAI-compatible SSE parsing now fails explicitly on malformed frames instead of silently dropping them.
+
 ## 0.8.0
 
 - Enabled runtime testing for the OpenAI-compatible provider package.
