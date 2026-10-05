@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.11
+
+- Hardened memory message validation for roles and timestamps.
+- Added persistent JSON memory file-size limits and persisted-record validation.
+- Added runtime coverage for invalid memory records and file limits.
+- Bumped `@woho/memory` to 0.6.1.
+
 ## 0.8.10
 
 - Added configurable agent tool execution timeouts.
