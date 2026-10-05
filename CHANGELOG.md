@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.4
+
+- Hardened AI cancellation so already-aborted requests stop before provider execution.
+- Ensured streaming iterators receive cleanup on timeout and cancellation.
+- Added runtime coverage for pre-aborted requests and stream cleanup.
+- Bumped `@woho/core` to 0.2.8.
+
 ## 0.8.3
 
 - Hardened MCP stdio transport with direct request timeouts, stderr backpressure protection, write-error handling, and malformed JSON rejection.
