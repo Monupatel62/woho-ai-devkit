@@ -40,8 +40,11 @@ export class InMemoryExecutionStore implements ExecutionStore {
   appendEvent(runId: string, event: ExecutionEvent): void {
     const current = this.records.get(runId);
     if (!current) return;
-    current.events = [...current.events, event];
-    current.updatedAt = event.timestamp;
+    this.records.set(runId, {
+      ...current,
+      updatedAt: event.timestamp,
+      events: [...current.events, event],
+    });
   }
 
   get(runId: string): ExecutionRecord | undefined {
