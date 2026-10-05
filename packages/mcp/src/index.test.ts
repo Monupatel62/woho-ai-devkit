@@ -36,7 +36,12 @@ const run = async () => {
   assert.deepEqual(server.listTools(), [{ name: "echo" }]);
   assert.deepEqual(await server.callTool("echo", { ok: true }), { ok: true });
   assert.throws(() => server.registerTool({ definition: { name: "echo" }, execute: async () => null }), /Duplicate/);
+  assert.throws(() => server.registerTool({ definition: { name: " echo " }, execute: async () => null }), /surrounding whitespace/);
   await assert.rejects(() => server.callTool("missing", {}), /Unknown/);
+
+  assert.throws(() => createMCPClient({ transport, clientName: " " }), /clientName is required/);
+  assert.throws(() => createMCPClient({ transport, clientVersion: " " }), /clientVersion is required/);
+  assert.throws(() => createMCPClient({ transport, protocolVersion: " " }), /protocolVersion is required/);
 
   const client = createMCPClient({
     transport,
