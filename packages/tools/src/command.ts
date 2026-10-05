@@ -26,7 +26,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
       required: ["command"],
       additionalProperties: false,
     },
-    async execute(input) {
+    async execute(input, context) {
       if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
       const value = input as Record<string, unknown>;
       const command = value.command;
@@ -67,12 +67,16 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
           if (target === "stdout") stdout += text;
           else stderr += text;
         };
+        const abort = () => { killed = true; child.kill(); };
+        context?.signal?.addEventListener("abort", abort, { once: true });
         child.stdout.on("data", (chunk) => append(chunk, "stdout"));
         child.stderr.on("data", (chunk) => append(chunk, "stderr"));
         const timer = setTimeout(() => { killed = true; child.kill(); }, policy.timeoutMs);
-        child.on("error", (error) => { clearTimeout(timer); reject(error); });
+        child.on("error", (error) => { clearTimeout(timer); context?.signal?.removeEventListener("abort", abort); reject(error); });
         child.on("close", (code, signal) => {
           clearTimeout(timer);
+          context?.signal?.removeEventListener("abort", abort);
+          if (killed && context?.signal?.aborted) return reject(context.signal.reason ?? new Error("Command aborted"));
           if (killed && bytes > maxOutputBytes) return reject(new Error("Command output exceeds maxOutputBytes"));
           if (killed) return reject(new Error("Command timed out"));
           resolve({ command, args, cwd, code, signal, stdout, stderr });
