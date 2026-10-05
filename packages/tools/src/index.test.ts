@@ -28,7 +28,7 @@ const run = async () => {
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
 
   const normalizedPolicy = createToolPolicy({ allowedHosts: ["Example.COM."] });
-  assert.deepEqual(normalizedPolicy.allowedHosts, ["example.com."]);
+  assert.deepEqual(normalizedPolicy.allowedHosts, ["example.com"]);
   const policy = createToolPolicy({ allowedHosts: ["example.com"] });
   assert.equal(policy.timeoutMs, 10_000);
   await assert.rejects(() => httpGetTool({ allowedHosts: ["example.com"], maxResponseBytes: 1 }).execute({ url: "https://example.com" }), /size limit|Response/);
