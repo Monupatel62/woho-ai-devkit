@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.23
+
+- Prepared the six public packages for npm Trusted Publishing through GitHub Actions OIDC.
+- Bumped package patch versions for the first end-to-end trusted-publishing release test.
+
 ## 0.8.22
 
 - Hardened release tarball validation for package metadata, internal dependency rewriting, and development artifacts.
