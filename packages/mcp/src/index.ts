@@ -157,18 +157,27 @@ export class MCPClient {
     if (this.closed) throw new MCPError("MCP client is closed", method);
     if (this.allowedMethods && !this.allowedMethods.has(method)) throw new MCPError("MCP method is not allowed: " + method, method);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new MCPError("MCP request timed out: " + method, method));
+      }, this.timeoutMs);
+    });
+    const request = this.transport.request(method, params, controller.signal);
     try {
-      const result = await this.transport.request(method, params, controller.signal);
+      const result = await Promise.race([request, timeout]);
       let bytes = 0;
       try { bytes = Buffer.byteLength(JSON.stringify(result) ?? "", "utf8"); } catch { throw new MCPError("MCP response is not serializable", method); }
       if (bytes > this.maxResponseBytes) throw new MCPError("MCP response exceeds maxResponseBytes", method);
       return result;
     } catch (error) {
-      if (controller.signal.aborted) throw new MCPError("MCP request timed out: " + method, method);
       if (error instanceof MCPError) throw error;
+      if (controller.signal.aborted) throw new MCPError("MCP request timed out: " + method, method);
       throw new MCPError(error instanceof Error ? error.message : String(error), method);
-    } finally { clearTimeout(timer); }
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
 export function createMCPClient(options: MCPClientOptions): MCPClient { return new MCPClient(options); }
