@@ -28,7 +28,7 @@ export class JsonFileStore implements MemoryStore {
     const validate = (value: unknown): MemoryMessage[] => {
       if (!Array.isArray(value)) throw new Error("Memory file must contain an array");
       for (const message of value) {
-        if (!message || typeof message !== "object" || typeof (message as MemoryMessage).id !== "string" || !(message as MemoryMessage).id.trim() || typeof (message as MemoryMessage).content !== "string" || !(message as MemoryMessage).content.trim() || !["system", "user", "assistant", "tool"].includes((message as MemoryMessage).role) || ((message as MemoryMessage).timestamp !== undefined && !Number.isFinite((message as MemoryMessage).timestamp))) {
+        if (!message || typeof message !== "object" || typeof (message as MemoryMessage).id !== "string" || !(message as MemoryMessage).id.trim() || typeof (message as MemoryMessage).content !== "string" || !["system", "user", "assistant", "tool"].includes((message as MemoryMessage).role) || ((message as MemoryMessage).timestamp !== undefined && !Number.isFinite((message as MemoryMessage).timestamp))) {
           throw new Error("Memory file contains an invalid message");
         }
       }
@@ -71,7 +71,7 @@ export class JsonFileStore implements MemoryStore {
   async add(message: MemoryMessage): Promise<void> {
     if (!message || typeof message !== "object") throw new Error("Memory message is required");
     if (typeof message.id !== "string" || !message.id.trim()) throw new Error("Memory message id is required");
-    if (typeof message.content !== "string" || !message.content.trim()) throw new Error("Memory message content is required");
+    if (typeof message.content !== "string") throw new Error("Memory message content is required");
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
     if (message.metadata !== undefined && (typeof message.metadata !== "object" || message.metadata === null || Array.isArray(message.metadata))) throw new Error("Memory message metadata must be an object");
