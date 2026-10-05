@@ -54,6 +54,28 @@ const result = await runAgentPlan(runtime, ai, {
 console.log(result.order);
 ```
 
+Plan steps may derive their input from completed results:
+
+```ts
+{ id: "review", agent: "review", dependsOn: ["research"], input: ({ completed }) => `Review: ${completed.research?.text}` }
+```
+
+### Execution history and retries
+
+`AgentRuntime` can persist run state and retry transient agent failures. `InMemoryExecutionStore` provides a local store and can be replaced with a database-backed implementation.
+
+```ts
+import { AgentRuntime, InMemoryExecutionStore } from "@woho/agents";
+
+const store = new InMemoryExecutionStore();
+const runtime = new AgentRuntime({
+  store,
+  retry: { maxAttempts: 3, delayMs: 250, backoff: 2 },
+});
+```
+
+Runtime events include run lifecycle and tool execution events, making the execution layer observable by a future UI or external telemetry system.
+
 ## License
 
 Apache-2.0
