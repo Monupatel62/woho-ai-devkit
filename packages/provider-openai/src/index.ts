@@ -68,7 +68,7 @@ function normalizeToolCalls(message: { tool_calls?: Array<{ id?: string; functio
 export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider {
   const baseUrl = (options.baseUrl ?? "https://api.openai.com/v1").replace(/\/$/, "");
   if (!options.apiKey.trim()) throw new AuthenticationError("An API key is required");
-  if (!/^https:\/\//i.test(baseUrl) && !/^http:\/\/localhost(?::\\d+)?(?:\/|$)/i.test(baseUrl)) throw new InvalidRequestError("baseUrl must use HTTPS (localhost is allowed for development)");
+  if (!/^https:\/\//i.test(baseUrl) && !/^http:\/\/localhost(?::\d+)?(?:\/|$)/i.test(baseUrl)) throw new InvalidRequestError("baseUrl must use HTTPS (localhost is allowed for development)");
   const maxResponseBytes = options.maxResponseBytes ?? 4 * 1024 * 1024;
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) throw new InvalidRequestError("maxResponseBytes must be a positive integer");
 
@@ -166,7 +166,8 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           finishReason: choice?.finish_reason === "length" ? "length" : choice?.finish_reason === "stop" ? "stop" : undefined,
         };
       };
-      while (true) {
+      try {
+        while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         receivedBytes += value.byteLength;
@@ -188,13 +189,16 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           }
         }
       }
-      if (buffer.trim()) {
+        if (buffer.trim()) {
         try {
           const chunk = processLine(buffer);
           if (chunk) yield chunk;
         } catch (error) {
           throw new NetworkError("Malformed provider SSE frame", error);
         }
+        }
+      } finally {
+        await reader.cancel().catch(() => undefined);
       }
     },
   };
