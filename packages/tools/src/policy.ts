@@ -32,7 +32,7 @@ export function createToolPolicy(input: Partial<ToolPolicy> = {}): ToolPolicy {
   if (input.timeoutMs !== undefined) positiveInteger(input.timeoutMs, "timeoutMs");
   return {
     allowedHosts: cleanList(input.allowedHosts ?? defaultToolPolicy.allowedHosts, "allowedHosts"),
-    allowedDirectories: [...(input.allowedDirectories ?? defaultToolPolicy.allowedDirectories)],
+    allowedDirectories: cleanList(input.allowedDirectories ?? defaultToolPolicy.allowedDirectories, "allowedDirectories"),
     maxResponseBytes: input.maxResponseBytes ?? defaultToolPolicy.maxResponseBytes,
     maxFileBytes: input.maxFileBytes ?? defaultToolPolicy.maxFileBytes,
     timeoutMs: input.timeoutMs ?? defaultToolPolicy.timeoutMs,
