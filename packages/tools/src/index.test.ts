@@ -76,7 +76,7 @@ const run = async () => {
   const commandResult = await command.execute({ command: process.execPath, args: ["-e", "process.stdout.write('woho-command-ok')"], cwd: process.cwd() }) as { stdout: string };
   assert.equal(commandResult.stdout, "woho-command-ok");
   await assert.rejects(() => command.execute({ command: "sh", args: ["-c", "echo no"] }), /not allowed/);
-  const untrusted = commandTool({ allowedCommands: ["node"] });
+  const untrusted = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()] });
   await assert.rejects(() => untrusted.execute({ command: "node", args: ["-e", "console.log('x')"], cwd: process.cwd() }), /cwd is required/);
   await rm(root, { recursive: true, force: true });
   console.log("tools runtime tests passed");
