@@ -158,3 +158,33 @@ try {
 } finally {
   await rm(root, { recursive: true, force: true });
 }
+
+const approvalStore = new InMemoryExecutionStore();
+const approvalRun = {
+  runId: "approval-audit-run",
+  agent: "woho-coding",
+  input: "approve a protected action",
+  metadata: {},
+  status: "running" as const,
+  startedAt: 1,
+  updatedAt: 1,
+  attempts: 1,
+  events: [],
+  approval: {
+    status: "pending" as const,
+    tool: "project_write",
+    capability: "file",
+    action: "write",
+    reason: "Protected project change",
+    requestedAt: 2,
+  },
+};
+approvalStore.create(approvalRun);
+assert.equal(approvalStore.get("approval-audit-run")?.approval?.status, "pending");
+approvalStore.update("approval-audit-run", {
+  approval: { ...approvalRun.approval, status: "approved", decidedAt: 3 },
+});
+assert.equal(approvalStore.get("approval-audit-run")?.approval?.decidedAt, 3);
+assert.throws(() => approvalStore.update("approval-audit-run", {
+  approval: { ...approvalRun.approval, status: "pending", decidedAt: 3 },
+}), /Pending approval cannot have decidedAt/);
