@@ -89,6 +89,11 @@ const run = async () => {
   const commandResult = await command.execute({ command: process.execPath, args: ["-e", "process.stdout.write('woho-command-ok')"], cwd: process.cwd() }) as { stdout: string };
   assert.equal(commandResult.stdout, "woho-command-ok");
   await assert.rejects(() => command.execute({ command: "sh", args: ["-c", "echo no"] }), /not allowed/);
+
+  const boundedCommand = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], maxArgs: 2, maxArgBytes: 10 });
+  await assert.rejects(() => boundedCommand.execute({ command: "node", args: ["-e", "123", "extra"], cwd: process.cwd() }), /maxArgs/);
+  await assert.rejects(() => boundedCommand.execute({ command: "node", args: ["-e", "x".repeat(11)], cwd: process.cwd() }), /maxArgBytes/);
+
   const untrusted = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()] });
   await assert.rejects(() => untrusted.execute({ command: "node", args: ["-e", "console.log('x')"] }), /cwd is required/);
   await rm(root, { recursive: true, force: true });
