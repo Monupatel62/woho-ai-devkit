@@ -34,6 +34,8 @@ export interface AgentRuntimeOptions {
   readonly maxInputBytes?: number;
   /** Maximum UTF-8 byte length of persisted lifecycle error messages. Defaults to 4 KiB. */
   readonly maxErrorMessageBytes?: number;
+  /** Persist approval request/decision state for durable audit. */
+  readonly persistApprovalAudit?: boolean;
 }
 
 export interface AgentResumeOptions {
@@ -68,6 +70,7 @@ export class AgentRuntime {
   private readonly persistInput: boolean;
   private readonly maxInputBytes: number;
   private readonly maxErrorMessageBytes: number;
+  private readonly persistApprovalAudit: boolean;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -83,6 +86,7 @@ export class AgentRuntime {
     this.persistInput = options.persistInput ?? true;
     this.maxInputBytes = options.maxInputBytes ?? 1_048_576;
     this.maxErrorMessageBytes = options.maxErrorMessageBytes ?? 4 * 1024;
+    this.persistApprovalAudit = options.persistApprovalAudit ?? true;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
     if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
@@ -131,13 +135,63 @@ export class AgentRuntime {
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
+          const approvalHandler = task.approval ?? this.approval;
+          const auditedApproval = approvalHandler && this.persistApprovalAudit && this.store
+            ? async (request: Parameters<NonNullable<typeof approvalHandler>>[0]): Promise<boolean> => {
+                const requestedAt = Date.now();
+                const reason = request.reason ? this.sanitizeError(request.reason) : undefined;
+                await this.store?.update(runId, {
+                  approval: {
+                    status: "pending",
+                    tool: request.tool,
+                    capability: request.capability,
+                    action: request.action,
+                    ...(reason ? { reason } : {}),
+                    requestedAt,
+                  },
+                  updatedAt: requestedAt,
+                });
+                try {
+                  const approved = await approvalHandler(request);
+                  const decidedAt = Date.now();
+                  await this.store?.update(runId, {
+                    approval: {
+                      status: approved ? "approved" : "denied",
+                      tool: request.tool,
+                      capability: request.capability,
+                      action: request.action,
+                      ...(reason ? { reason } : {}),
+                      requestedAt,
+                      decidedAt,
+                    },
+                    updatedAt: decidedAt,
+                  });
+                  return approved;
+                } catch (approvalError) {
+                  const decidedAt = Date.now();
+                  await this.store?.update(runId, {
+                    approval: {
+                      status: "denied",
+                      tool: request.tool,
+                      capability: request.capability,
+                      action: request.action,
+                      ...(reason ? { reason } : {}),
+                      requestedAt,
+                      decidedAt,
+                    },
+                    updatedAt: decidedAt,
+                  });
+                  throw approvalError;
+                }
+              }
+            : approvalHandler;
           const result = await agent.run(task.input, {
             signal: context.signal,
             runId,
             onEvent: async (event) => {
               await this.recordAgentEvent(event);
             },
-            approval: task.approval ?? this.approval,
+            approval: auditedApproval,
           });
           const verification = task.verify ?? this.verify;
           if (verification) {
