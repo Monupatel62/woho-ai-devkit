@@ -487,7 +487,8 @@ const run = async () => {
   assert.equal(retryModelCalls, 3);
   const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
   assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
-  assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "tool");
+  assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
+  assert.ok(retryRecord?.checkpoint?.messages.some((message) => message.role === "tool" && message.toolCallId === "retry-tool-1"));
   const secretCheckpointStore = new InMemoryExecutionStore();
   const secretCheckpointRuntime = new AgentRuntime({ store: secretCheckpointStore }, registry);
   const secretCheckpointResult = await secretCheckpointRuntime.run(
