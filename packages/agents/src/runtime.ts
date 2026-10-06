@@ -295,9 +295,21 @@ export class AgentRuntime {
       .replace(/\\bgh[pousr]_[A-Za-z0-9_]{20,}\\b/g, "[REDACTED_TOKEN]")
       .replace(/\\bnpm_[A-Za-z0-9]{20,}\\b/g, "[REDACTED_TOKEN]")
       .replace(/\\bAKIA[0-9A-Z]{16}\\b/g, "[REDACTED_AWS_KEY]");
-    const suffix = redacted.length > this.maxErrorMessageBytes ? "…[truncated]" : "";
-    const limit = Math.max(0, this.maxErrorMessageBytes - suffix.length);
-    return redacted.length > this.maxErrorMessageBytes ? redacted.slice(0, limit) + suffix : redacted;
+    if (Buffer.byteLength(redacted, "utf8") <= this.maxErrorMessageBytes) return redacted;
+    const suffix = "…[truncated]";
+    const suffixBytes = Buffer.byteLength(suffix, "utf8");
+    if (suffixBytes >= this.maxErrorMessageBytes) {
+      return Buffer.from(suffix, "utf8").subarray(0, this.maxErrorMessageBytes).toString("utf8");
+    }
+    let low = 0;
+    let high = redacted.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      const candidate = redacted.slice(0, mid);
+      if (Buffer.byteLength(candidate, "utf8") + suffixBytes <= this.maxErrorMessageBytes) low = mid;
+      else high = mid - 1;
+    }
+    return redacted.slice(0, low) + suffix;
   }
 
   private validateInput(input: string): void {
