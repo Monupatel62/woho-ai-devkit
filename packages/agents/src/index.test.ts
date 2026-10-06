@@ -245,9 +245,16 @@ const run = async () => {
     events: [],
   });
   casRecoveryStore.update("cas-recovery", { updatedAt: 150 });
-  const casRuntime = new AgentRuntime({ store: casRecoveryStore }, registry);
-  const casRecovered = await casRuntime.recoverStale({ staleAfterMs: 50, now: 200 });
-  assert.equal(casRecovered.length, 0);
+  const staleEvent = {
+    type: "run.failed" as const,
+    runId: "cas-recovery",
+    timestamp: 200,
+    data: { reason: "stale", staleAfterMs: 50 },
+  };
+  assert.throws(
+    () => casRecoveryStore.transition("cas-recovery", { status: "failed" }, staleEvent, 100),
+    /Execution changed before transition/,
+  );
   assert.equal(casRecoveryStore.get("cas-recovery")?.status, "running");
   const resumableStore = new InMemoryExecutionStore();
   await resumableStore.create({
