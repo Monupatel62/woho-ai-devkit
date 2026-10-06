@@ -28,6 +28,10 @@ export interface AgentRuntimeOptions {
   readonly verify?: AgentVerifier;
   /** Persist a heartbeat while an execution is actively running. */
   readonly heartbeatIntervalMs?: number;
+  /** Persist task input in execution history so failed runs can be resumed. Defaults to true. */
+  readonly persistInput?: boolean;
+  /** Maximum UTF-8 byte length of task input accepted by the runtime. Defaults to 1 MiB. */
+  readonly maxInputBytes?: number;
 }
 
 export interface AgentResumeOptions {
@@ -59,6 +63,8 @@ export class AgentRuntime {
   private readonly approval?: AgentApprovalHandler;
   private readonly verify?: AgentVerifier;
   private readonly heartbeatIntervalMs: number;
+  private readonly persistInput: boolean;
+  private readonly maxInputBytes: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -71,8 +77,11 @@ export class AgentRuntime {
     this.approval = options.approval;
     this.verify = options.verify;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
+    this.persistInput = options.persistInput ?? true;
+    this.maxInputBytes = options.maxInputBytes ?? 1_048_576;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
+    if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
   }
 
   register(definition: AgentDefinition, factory?: (ai: AIClient, definition: AgentDefinition) => Agent): this {
@@ -92,6 +101,7 @@ export class AgentRuntime {
 
   async run(ai: AIClient, task: AgentTask): Promise<AgentRunResult & { runId: string }> {
     const runId = task.runId ?? randomUUID();
+    this.validateInput(task.input);
     const retry = this.validateRetry(task.retry ?? this.defaultRetry);
     await this.acquire(task.signal);
     const context: ExecutionContext = {
@@ -102,7 +112,7 @@ export class AgentRuntime {
       metadata: task.metadata ?? {},
     };
     const startedAt = Date.now();
-    await this.store?.create({ runId, agent: task.agent, input: task.input, parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
+    await this.store?.create({ runId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
     const heartbeat = this.store
       ? setInterval(() => {
@@ -266,6 +276,13 @@ export class AgentRuntime {
   async pruneHistory(options: PruneExecutionHistoryOptions): Promise<ExecutionRecord[]> {
     if (!this.store) throw new Error("Execution store is required for history pruning");
     return pruneExecutionHistory(this.store, options);
+  }
+
+  private validateInput(input: string): void {
+    if (typeof input !== "string") throw new Error("Agent input must be a string");
+    if (Buffer.byteLength(input, "utf8") > this.maxInputBytes) {
+      throw new Error("Agent input exceeds maxInputBytes");
+    }
   }
 
   private validateRetry(policy: AgentRetryPolicy): Required<AgentRetryPolicy> {
