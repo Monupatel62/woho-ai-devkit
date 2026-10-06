@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { FileExecutionStore } from "./execution-store.js";
+import { FileExecutionStore, InMemoryExecutionStore } from "./execution-store.js";
 
 assert.throws(() => new (FileExecutionStore as typeof FileExecutionStore)({ directory: os.tmpdir(), maxEvents: 0 }), /maxEvents must be a positive integer/);
 
