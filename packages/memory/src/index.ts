@@ -25,7 +25,7 @@ export interface MemoryOptions {
   maxMetadataDepth?: number;
 }
 
-function validateMetadata(metadata: Record<string, unknown> | undefined, maxBytes: number, maxDepth: number): void {
+export function validateMemoryMetadata(metadata: Record<string, unknown> | undefined, maxBytes: number, maxDepth: number): void {
   if (metadata === undefined) return;
   const seen = new WeakSet<object>();
   let bytes = 2;
