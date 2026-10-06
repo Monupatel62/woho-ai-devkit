@@ -4,6 +4,7 @@ import { AgentRuntime, type AgentRuntimeOptions, type AgentTask } from "./runtim
 import { AgentRegistry, type AgentDefinition, type AgentRole } from "./definition.js";
 import { createAgentDelegationTool, type AgentDelegationPolicy } from "./delegation.js";
 import { runAgentPlan, type AgentPlan, type AgentPlanResult } from "./plan.js";
+import { runCodingLoop, type CodingLoopPolicy, type CodingLoopResult } from "./coding-loop.js";
 
 export interface WohoAgentPlatformOptions {
   readonly runtime?: AgentRuntimeOptions;
@@ -16,6 +17,7 @@ export interface WohoAgentPlatformOptions {
   /** Maximum UTF-8 bytes accepted for any planner-generated step input. */
   readonly maxPlanStepInputBytes?: number;
   readonly delegation?: AgentDelegationPolicy;
+  readonly codingLoop?: CodingLoopPolicy;
 }
 
 export interface WohoAgentPlatform {
@@ -25,6 +27,7 @@ export interface WohoAgentPlatform {
   readonly runPlan: (ai: AIClient, plan: AgentPlan, options?: { signal?: AbortSignal }) => Promise<AgentPlanResult>;
   readonly run: (ai: AIClient, goal: string, options?: { signal?: AbortSignal; agent?: string }) => Promise<AgentPlanResult>;
   readonly runAgent: (ai: AIClient, task: AgentTask) => Promise<AgentRunResult & { runId: string }>;
+  readonly runCodingTask: (ai: AIClient, goal: string, options?: { signal?: AbortSignal; verify?: string; runId?: string }) => Promise<CodingLoopResult>;
 }
 
 const ROLES: readonly AgentRole[] = [
@@ -153,6 +156,26 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
     return runPlan(ai, agentPlan, runOptions);
   };
 
-  return { registry, runtime, plan, runPlan, run, runAgent: (ai, task) => runtime.run(ai, task) };
+  const runCodingTask = (
+    ai: AIClient,
+    goal: string,
+    codingOptions: { signal?: AbortSignal; verify?: string; runId?: string } = {},
+  ): Promise<CodingLoopResult> => {
+    const runId = codingOptions.runId ?? `coding-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    return runCodingLoop(
+      ai,
+      (input, runnerOptions) => runtime.run(ai, {
+        agent: agentId("coding"),
+        input,
+        runId: runnerOptions?.runId ?? runId,
+        signal: runnerOptions?.signal,
+      }),
+      { goal, verify: codingOptions.verify },
+      options.codingLoop,
+      { runId, signal: codingOptions.signal },
+    );
+  };
+
+  return { registry, runtime, plan, runPlan, run, runAgent: (ai, task) => runtime.run(ai, task), runCodingTask };
 }
 
