@@ -192,5 +192,22 @@ assert.equal(
 }
 
 {
+  const events: AILogEvent[] = [];
+  const client = createAI({
+    provider: {
+      name: "secret-error-provider",
+      async chat() { throw new Error("provider secret: sk-live-super-secret"); },
+    },
+    retries: 0,
+    observability: { onEvent: (event) => { events.push(event); } },
+  });
+  await assert.rejects(() => client.chat({ messages: [{ role: "user", content: "x" }] }));
+  const event = events.find((item) => item.type === "request.error");
+  assert.equal(event?.type, "request.error");
+  assert.deepEqual(event.error, { name: "Error" });
+  assert.ok(!JSON.stringify(event).includes("sk-live-super-secret"));
+}
+
+{
   assert.throws(() => createAI({ provider: createMockProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
 }
