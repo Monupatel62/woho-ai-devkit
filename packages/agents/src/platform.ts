@@ -63,7 +63,7 @@ function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, maxSte
   const steps = (value as Record<string, unknown>).steps;
   if (!Array.isArray(steps) || steps.length < 1 || steps.length > maxSteps) throw new Error("Planner returned an invalid step count");
   const ids = new Set<string>();
-  const result: AgentPlan["steps"] = [];
+  const result: Array<AgentPlan["steps"][number]> = [];
   for (const raw of steps) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Planner returned an invalid step");
     const item = raw as Record<string, unknown>;
