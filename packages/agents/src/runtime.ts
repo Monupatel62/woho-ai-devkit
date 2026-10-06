@@ -40,6 +40,8 @@ export interface AgentTask {
   readonly agent: string;
   readonly input: string;
   readonly parentRunId?: string;
+  /** Optional caller-supplied run ID; primarily used for idempotent durable resume. */
+  readonly runId?: string;
   readonly sessionId?: string;
   readonly metadata?: Record<string, unknown>;
   readonly signal?: AbortSignal;
@@ -89,7 +91,7 @@ export class AgentRuntime {
   }
 
   async run(ai: AIClient, task: AgentTask): Promise<AgentRunResult & { runId: string }> {
-    const runId = randomUUID();
+    const runId = task.runId ?? randomUUID();
     const retry = this.validateRetry(task.retry ?? this.defaultRetry);
     await this.acquire(task.signal);
     const context: ExecutionContext = {
@@ -104,7 +106,7 @@ export class AgentRuntime {
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
     const heartbeat = this.store
       ? setInterval(() => {
-          void this.store?.update(runId, { updatedAt: Date.now() }).catch(() => undefined);
+          void Promise.resolve(this.store?.update(runId, { updatedAt: Date.now() })).catch(() => undefined);
         }, this.heartbeatIntervalMs)
       : undefined;
 
@@ -189,7 +191,18 @@ export class AgentRuntime {
     if (record.input === undefined) {
       throw new Error("Execution record does not contain input and cannot be resumed: " + runId);
     }
+    if (record.resumeRunId) {
+      throw new Error("Execution resume is already claimed: " + runId);
+    }
+    const resumeRunId = randomUUID();
+    const claimedRunId = this.store.claimResume
+      ? await this.store.claimResume(runId, record.updatedAt, resumeRunId)
+      : await this.claimResumeFallback(runId, record.updatedAt, resumeRunId);
+    if (!claimedRunId) {
+      throw new Error("Execution resume was claimed concurrently: " + runId);
+    }
     return this.run(ai, {
+      runId: claimedRunId,
       agent: record.agent,
       input: record.input,
       parentRunId: record.runId,
@@ -199,6 +212,11 @@ export class AgentRuntime {
       approval: options.approval,
       verify: options.verify,
     });
+  }
+
+  private async claimResumeFallback(runId: string, expectedUpdatedAt: number, resumeRunId: string): Promise<string | undefined> {
+    const claimed = await this.store?.updateIf?.(runId, expectedUpdatedAt, { resumeRunId });
+    return claimed ? resumeRunId : undefined;
   }
 
   async runParallel(ai: AIClient, tasks: AgentTask[]): Promise<Array<AgentRunResult & { runId: string }>> {

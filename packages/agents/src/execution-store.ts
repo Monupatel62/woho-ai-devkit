@@ -8,6 +8,8 @@ export interface ExecutionRecord {
   readonly agent: string;
   /** Original task input; optional for backward compatibility with older records. */
   readonly input?: string;
+  /** Child run ID atomically claimed for a durable resume, when one has been started. */
+  readonly resumeRunId?: string;
   readonly parentRunId?: string;
   readonly sessionId?: string;
   readonly metadata: Readonly<Record<string, unknown>>;
@@ -29,6 +31,8 @@ export interface ExecutionStore {
   list(options?: { status?: ExecutionStatus; limit?: number }): ExecutionRecord[] | Promise<ExecutionRecord[]>;
   remove?(runId: string): boolean | Promise<boolean>;
   updateIf?(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean | Promise<boolean>;
+  /** Atomically claim a single child run for resuming a failed/cancelled execution. */
+  claimResume?(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined | Promise<string | undefined>;
 }
 
 export interface RecoverStaleExecutionsOptions {
@@ -128,6 +132,17 @@ export class InMemoryExecutionStore implements ExecutionStore {
     this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
     return true;
   }
+
+  claimResume(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined {
+    validateRunId(runId);
+    validateRunId(resumeRunId);
+    const current = this.records.get(runId);
+    if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
+    if (current.resumeRunId) return current.resumeRunId;
+    if (current.updatedAt !== expectedUpdatedAt) return undefined;
+    this.records.set(runId, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }));
+    return resumeRunId;
+  }
 }
 
 export interface FileExecutionStoreOptions {
@@ -226,6 +241,20 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
       await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
       return true;
+    });
+  }
+
+  async claimResume(runId: string, expectedUpdatedAt: number, resumeRunId: string): Promise<string | undefined> {
+    validateRunId(runId);
+    validateRunId(resumeRunId);
+    return this.enqueue(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
+      if (current.resumeRunId) return current.resumeRunId;
+      if (current.updatedAt !== expectedUpdatedAt) return undefined;
+      await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }), true);
+      return resumeRunId;
     });
   }
 
