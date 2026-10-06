@@ -39,6 +39,25 @@ const run = async () => {
   assert.throws(() => server.registerTool({ definition: { name: " echo " }, execute: async () => null }), /surrounding whitespace/);
   await assert.rejects(() => server.callTool("missing", {}), /Unknown/);
 
+  const boundedServer = createMCPServer({
+    name: "bounded-server",
+    version: "1.0.0",
+    maxExecutionMs: 5,
+    maxResultBytes: 20,
+    tools: [
+      { definition: { name: "slow" }, execute: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return "late"; } },
+      { definition: { name: "large" }, execute: async () => "x".repeat(100) },
+    ],
+    resources: [{ definition: { uri: "memory://large" }, read: async () => [{ uri: "memory://large", text: "x".repeat(100) }] }],
+    prompts: [{ definition: { name: "slow" }, get: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return "late"; } }],
+  });
+  await assert.rejects(() => boundedServer.callTool("slow", {}), /execution timed out/);
+  await assert.rejects(() => boundedServer.callTool("large", {}), /result exceeds maxResultBytes/);
+  await assert.rejects(() => boundedServer.readResource("memory://large"), /result exceeds maxResultBytes/);
+  await assert.rejects(() => boundedServer.getPrompt("slow"), /execution timed out/);
+  assert.throws(() => createMCPServer({ name: "bad", version: "1", maxExecutionMs: 0 }), /maxExecutionMs/);
+  assert.throws(() => createMCPServer({ name: "bad", version: "1", maxResultBytes: 0 }), /maxResultBytes/);
+
   const secretServer = createMCPServer({
     name: "secret-server",
     version: "1.0.0",
