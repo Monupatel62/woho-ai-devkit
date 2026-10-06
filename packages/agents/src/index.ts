@@ -52,6 +52,10 @@ export interface AgentOptions {
   memorySummarizer?: MemorySummarizer;
   memorySummaryThreshold?: number;
   maxToolResultChars?: number;
+  /** Maximum tool calls accepted from a single model response. Defaults to 32. */
+  maxToolCallsPerStep?: number;
+  /** Maximum UTF-8 byte length of serialized tool-call arguments. Defaults to 256 KiB. */
+  maxToolArgumentBytes?: number;
   toolTimeoutMs?: number;
   approval?: AgentApprovalHandler;
 }
@@ -146,6 +150,8 @@ export class Agent {
   private readonly memorySummarizer?: MemorySummarizer;
   private readonly memorySummaryThreshold: number;
   private readonly maxToolResultChars: number;
+  private readonly maxToolCallsPerStep: number;
+  private readonly maxToolArgumentBytes: number;
   private readonly toolTimeoutMs?: number;
   private readonly approval?: AgentApprovalHandler;
 
@@ -166,6 +172,8 @@ export class Agent {
     this.memorySummarizer = options.memorySummarizer;
     this.memorySummaryThreshold = options.memorySummaryThreshold ?? 50;
     this.maxToolResultChars = options.maxToolResultChars ?? 50_000;
+    this.maxToolCallsPerStep = options.maxToolCallsPerStep ?? 32;
+    this.maxToolArgumentBytes = options.maxToolArgumentBytes ?? 256 * 1024;
     this.toolTimeoutMs = options.toolTimeoutMs;
     this.approval = options.approval;
     if (this.sessionId !== undefined && !this.sessionId.trim()) throw new AIError("sessionId cannot be empty", "INVALID_AGENT_CONFIG");
@@ -175,6 +183,8 @@ export class Agent {
     if (this.maxContextChars !== undefined && (!Number.isInteger(this.maxContextChars) || this.maxContextChars < 1)) throw new AIError("maxContextChars must be a positive integer", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.memorySummaryThreshold) || this.memorySummaryThreshold < 1) throw new AIError("memorySummaryThreshold must be a positive integer", "INVALID_AGENT_CONFIG");
     if (!Number.isInteger(this.maxToolResultChars) || this.maxToolResultChars < 1) throw new AIError("maxToolResultChars must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (!Number.isInteger(this.maxToolCallsPerStep) || this.maxToolCallsPerStep < 1) throw new AIError("maxToolCallsPerStep must be a positive integer", "INVALID_AGENT_CONFIG");
+    if (!Number.isInteger(this.maxToolArgumentBytes) || this.maxToolArgumentBytes < 1) throw new AIError("maxToolArgumentBytes must be a positive integer", "INVALID_AGENT_CONFIG");
     if (this.toolTimeoutMs !== undefined && (!Number.isInteger(this.toolTimeoutMs) || this.toolTimeoutMs < 1)) throw new AIError("toolTimeoutMs must be a positive integer", "INVALID_AGENT_CONFIG");
     for (const tool of this.tools) {
       if (!tool.name.trim()) throw new AIError("Tool name is required", "INVALID_AGENT_CONFIG");
@@ -232,6 +242,14 @@ export class Agent {
           : { ...response.usage, cost: response.usage.cost ? { ...response.usage.cost } : undefined };
       }
       const calls = response.toolCalls ?? [];
+      if (calls.length > this.maxToolCallsPerStep) {
+        throw new AIError("Agent exceeded maxToolCallsPerStep (" + this.maxToolCallsPerStep + ")", "AGENT_TOOL_CALL_LIMIT");
+      }
+      for (const call of calls) {
+        if (typeof call.arguments !== "string" || Buffer.byteLength(call.arguments, "utf8") > this.maxToolArgumentBytes) {
+          throw new AIError("Tool call arguments exceed maxToolArgumentBytes", "TOOL_ARGUMENTS_TOO_LARGE");
+        }
+      }
       const assistantMessage: AIMessage = {
         role: "assistant",
         content: response.text,

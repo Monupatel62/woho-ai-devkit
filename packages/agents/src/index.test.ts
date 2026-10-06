@@ -10,6 +10,8 @@ const run = async () => {
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxContextMessages: 0 }), /maxContextMessages must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxContextChars: 0 }), /maxContextChars must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxToolResultChars: 0 }), /maxToolResultChars must be a positive integer/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxToolCallsPerStep: 0 }), /maxToolCallsPerStep must be a positive integer/);
+  assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", maxToolArgumentBytes: 0 }), /maxToolArgumentBytes must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", toolTimeoutMs: 0 }), /toolTimeoutMs must be a positive integer/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "dup", description: "a", execute: async () => 1 }, { name: "dup", description: "b", execute: async () => 2 }] }), /Duplicate tool name/);
   assert.throws(() => createAgent(createAI({ provider: createMockProvider() }), { name: "x", tools: [{ name: "x", description: "", execute: async () => 1 }] }), /Tool description is required/);
@@ -58,6 +60,30 @@ const run = async () => {
     },
   }), { name: "malformed-agent", maxSteps: 1, tools: [{ name: "echo", description: "Echo", execute: async () => "ok" }] });
   await assert.rejects(malformed.run("bad args"), (error) => error instanceof AIError && error.code === "AGENT_MAX_STEPS");
+
+  const fanout = createAgent(createAI({
+    provider: {
+      name: "fanout",
+      async chat() {
+        return { id: "fanout", text: "", model: "fanout", finishReason: "tool_call", toolCalls: [
+          { id: "one", name: "echo", arguments: "{}" },
+          { id: "two", name: "echo", arguments: "{}" },
+          { id: "three", name: "echo", arguments: "{}" },
+        ] };
+      },
+    },
+  }), { name: "fanout-agent", maxToolCallsPerStep: 2, tools: [{ name: "echo", description: "Echo", execute: async () => "ok" }] });
+  await assert.rejects(fanout.run("too many calls"), (error) => error instanceof AIError && error.code === "AGENT_TOOL_CALL_LIMIT");
+
+  const largeArguments = createAgent(createAI({
+    provider: {
+      name: "large-arguments",
+      async chat() {
+        return { id: "large-arguments", text: "", model: "large-arguments", finishReason: "tool_call", toolCalls: [{ id: "large", name: "echo", arguments: "😀😀" }] };
+      },
+    },
+  }), { name: "large-arguments-agent", maxToolArgumentBytes: 4, tools: [{ name: "echo", description: "Echo", execute: async () => "ok" }] });
+  await assert.rejects(largeArguments.run("large arguments"), (error) => error instanceof AIError && error.code === "TOOL_ARGUMENTS_TOO_LARGE");
 
   const failing = createAgent(createAI({
     provider: {
