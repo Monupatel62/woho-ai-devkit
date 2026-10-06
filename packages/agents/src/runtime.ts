@@ -219,9 +219,18 @@ export class AgentRuntime {
               if (Buffer.byteLength(serialized, "utf8") > this.maxCheckpointBytes) {
                 throw new AIError("Execution checkpoint exceeds maxCheckpointBytes", "CHECKPOINT_TOO_LARGE");
               }
-              await this.store?.update(runId, {
-                checkpoint,
+              if (!Number.isSafeInteger(checkpoint.step) || checkpoint.step < 0 || !Number.isFinite(checkpoint.updatedAt) || checkpoint.updatedAt < 0) {
+                throw new AIError("Execution checkpoint has invalid step or timestamp", "CHECKPOINT_INVALID");
+              }
+              const persistedCheckpoint: AgentExecutionCheckpoint = {
+                step: checkpoint.step,
+                messages: checkpoint.messages.map((message) => ({ ...message })),
+                ...(checkpoint.inFlightToolCallId ? { inFlightToolCallId: checkpoint.inFlightToolCallId } : {}),
                 updatedAt: checkpoint.updatedAt,
+              };
+              await this.store?.update(runId, {
+                checkpoint: persistedCheckpoint,
+                updatedAt: persistedCheckpoint.updatedAt,
               });
             } : undefined,
           });
