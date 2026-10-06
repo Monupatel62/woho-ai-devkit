@@ -15,7 +15,7 @@ function assertUrlAllowed(url: string, allowedHosts?: readonly string[]): void {
   if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Browser only permits HTTP(S) URLs");
   if (!allowedHosts?.length) return;
   const host = parsed.hostname.toLowerCase();
-  if (!allowedHosts.some((allowed) => host === allowed.toLowerCase() || host.endsWith(\`.\${allowed.toLowerCase()}\`))) throw new Error("Browser host is not allowed");
+  if (!allowedHosts.some((allowed) => host === allowed.toLowerCase() || host.endsWith(`.${allowed.toLowerCase()}`))) throw new Error("Browser host is not allowed");
 }
 function boundPage(page: BrowserPage, maxTextChars: number): BrowserPage { return { ...page, text: page.text?.slice(0, maxTextChars) }; }
 
