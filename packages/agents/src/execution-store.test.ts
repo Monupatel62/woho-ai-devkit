@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { FileExecutionStore } from "./execution-store.js";
 
+assert.throws(() => new (FileExecutionStore as typeof FileExecutionStore)({ directory: os.tmpdir(), maxEvents: 0 }), /maxEvents must be a positive integer/);
+
 const root = await mkdtemp(path.join(os.tmpdir(), "woho-execution-store-"));
 try {
   const store = new FileExecutionStore({ directory: root });
@@ -30,6 +32,24 @@ try {
   };
   await store.appendEvent(record.runId, event);
   await store.update(record.runId, { status: "succeeded", completedAt: 2, updatedAt: 2 });
+
+  const boundedRecordSeed = { ...record, runId: "bounded-file" };
+  const bounded = new FileExecutionStore({ directory: root, maxEvents: 2 });
+  await bounded.create(boundedRecordSeed);
+  await bounded.appendEvent(boundedRecordSeed.runId, { type: "tool.started", runId: boundedRecordSeed.runId, timestamp: 3, data: { step: 1 } });
+  await bounded.appendEvent(boundedRecordSeed.runId, { type: "tool.completed", runId: boundedRecordSeed.runId, timestamp: 4, data: { step: 1 } });
+  await bounded.appendEvent(boundedRecordSeed.runId, { type: "tool.started", runId: boundedRecordSeed.runId, timestamp: 5, data: { step: 2 } });
+  const boundedRecord = await bounded.get(boundedRecordSeed.runId);
+  assert.equal(boundedRecord?.events.length, 2);
+  assert.deepEqual(boundedRecord?.events.map((item) => item.timestamp), [4, 5]);
+
+  const inMemoryBounded = new (await import("./execution-store.js")).InMemoryExecutionStore({ maxEvents: 2 });
+  const inMemorySeed = { ...record, runId: "bounded-memory" };
+  await inMemoryBounded.create(inMemorySeed);
+  await inMemoryBounded.appendEvent(inMemorySeed.runId, { type: "tool.started", runId: inMemorySeed.runId, timestamp: 3, data: { step: 1 } });
+  await inMemoryBounded.appendEvent(inMemorySeed.runId, { type: "tool.completed", runId: inMemorySeed.runId, timestamp: 4, data: { step: 1 } });
+  await inMemoryBounded.appendEvent(inMemorySeed.runId, { type: "tool.started", runId: inMemorySeed.runId, timestamp: 5, data: { step: 2 } });
+  assert.deepEqual(inMemoryBounded.get(inMemorySeed.runId)?.events.map((item) => item.timestamp), [4, 5]);
 
   const writerA = new FileExecutionStore({ directory: root });
   const writerB = new FileExecutionStore({ directory: root });
