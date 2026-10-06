@@ -75,8 +75,64 @@ function cloneRecord(record: ExecutionRecord): ExecutionRecord {
 }
 
 function validateRunId(runId: string): void {
-  if (!runId.trim()) throw new Error("Execution runId is required");
+  if (typeof runId !== "string" || !runId.trim()) throw new Error("Execution runId is required");
   if (runId.length > 200) throw new Error("Execution runId is too long");
+}
+
+const EXECUTION_EVENT_TYPES: readonly ExecutionEvent["type"][] = [
+  "run.started",
+  "run.waiting",
+  "run.completed",
+  "run.failed",
+  "run.cancelled",
+  "tool.started",
+  "tool.completed",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function validateExecutionEvent(event: ExecutionEvent, expectedRunId?: string): void {
+  if (!isRecord(event)) throw new Error("Invalid execution event");
+  if (typeof event.runId !== "string" || !event.runId.trim()) throw new Error("Invalid execution event runId");
+  if (expectedRunId !== undefined && event.runId !== expectedRunId) {
+    throw new Error("Execution event runId does not match execution record");
+  }
+  if (typeof event.type !== "string" || !EXECUTION_EVENT_TYPES.includes(event.type as ExecutionEvent["type"])) {
+    throw new Error("Invalid execution event type");
+  }
+  validateTimestamp(event.timestamp, "Execution event timestamp");
+  if (event.data !== undefined && !isRecord(event.data)) throw new Error("Invalid execution event data");
+}
+
+function validateExecutionStatus(status: unknown): asserts status is ExecutionStatus {
+  if (typeof status !== "string" || !Object.prototype.hasOwnProperty.call(EXECUTION_TRANSITIONS, status)) {
+    throw new Error("Invalid execution status: " + String(status));
+  }
+}
+
+function validateExecutionRecord(record: ExecutionRecord): void {
+  if (!isRecord(record)) throw new Error("Invalid execution record");
+  validateRunId(record.runId);
+  if (typeof record.agent !== "string" || !record.agent.trim()) throw new Error("Invalid execution agent");
+  if (record.input !== undefined && typeof record.input !== "string") throw new Error("Invalid execution input");
+  if (record.resumeRunId !== undefined) validateRunId(record.resumeRunId);
+  if (record.parentRunId !== undefined) validateRunId(record.parentRunId);
+  if (record.sessionId !== undefined && typeof record.sessionId !== "string") throw new Error("Invalid execution sessionId");
+  if (!isRecord(record.metadata)) throw new Error("Invalid execution metadata");
+  validateExecutionStatus(record.status);
+  validateTimestamp(record.startedAt, "Execution startedAt");
+  validateTimestamp(record.updatedAt, "Execution updatedAt");
+  if (record.updatedAt < record.startedAt) throw new Error("Execution updatedAt cannot be before startedAt");
+  validateTimestamp(record.completedAt, "Execution completedAt");
+  if (record.completedAt !== undefined && record.completedAt < record.startedAt) {
+    throw new Error("Execution completedAt cannot be before startedAt");
+  }
+  if (!Number.isInteger(record.attempts) || record.attempts < 0) throw new Error("Execution attempts must be a non-negative integer");
+  if (record.error !== undefined && typeof record.error !== "string") throw new Error("Invalid execution error");
+  if (!Array.isArray(record.events)) throw new Error("Invalid execution events");
+  for (const event of record.events) validateExecutionEvent(event, record.runId);
 }
 
 const EXECUTION_TRANSITIONS: Readonly<Record<ExecutionStatus, readonly ExecutionStatus[]>> = {
@@ -93,6 +149,7 @@ export function isValidExecutionTransition(from: ExecutionStatus, to: ExecutionS
 }
 
 function validateExecutionTransition(current: ExecutionRecord, next: ExecutionStatus | undefined): void {
+  validateExecutionStatus(current.status);
   if (next === undefined || next === current.status) return;
   if (!isValidExecutionTransition(current.status, next)) {
     throw new Error("Invalid execution status transition: " + current.status + " -> " + next);
@@ -120,7 +177,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   }
 
   create(record: ExecutionRecord): void {
-    validateRunId(record.runId);
+    validateExecutionRecord(record);
     if (this.records.has(record.runId)) throw new Error("Execution already exists: " + record.runId);
     this.records.set(record.runId, cloneRecord(record));
   }
@@ -130,13 +187,16 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
     validateExecutionTransition(current, patch.status);
-    this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
+    const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
   }
 
   appendEvent(runId: string, event: ExecutionEvent): void {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) return;
+    validateExecutionEvent(event, runId);
     this.records.set(runId, this.withAppendedEvent(current, event));
   }
 
@@ -146,12 +206,15 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (!current) throw new Error("Execution not found: " + runId);
     if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
     validateExecutionTransition(current, patch.status);
-    this.records.set(runId, cloneRecord({
+    validateExecutionEvent(event, runId);
+    const next = {
       ...current,
       ...patch,
       updatedAt: event.timestamp,
       events: this.withAppendedEvent(current, event).events,
-    }));
+    };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
   }
 
   private withAppendedEvent(record: ExecutionRecord, event: ExecutionEvent): ExecutionRecord {
@@ -184,7 +247,9 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const current = this.records.get(runId);
     if (!current || current.updatedAt !== expectedUpdatedAt) return false;
     try { validateExecutionTransition(current, patch.status); } catch { return false; }
-    this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
+    const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+    try { validateExecutionRecord(next); } catch { return false; }
+    this.records.set(runId, cloneRecord(next));
     return true;
   }
 
@@ -250,6 +315,7 @@ export class FileExecutionStore implements ExecutionStore {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
+      validateExecutionRecord(record);
       await this.writeRecord(target, cloneRecord(record), false);
     }));
   }
@@ -261,7 +327,9 @@ export class FileExecutionStore implements ExecutionStore {
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
       validateExecutionTransition(current, patch.status);
-      await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
+      const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+      validateExecutionRecord(next);
+      await this.writeRecord(target, cloneRecord(next), true);
     }));
   }
 
@@ -271,6 +339,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) return;
+      validateExecutionEvent(event, runId);
       await this.writeRecord(target, this.withAppendedEvent(current, event), true);
     }));
   }
@@ -283,12 +352,15 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current) throw new Error("Execution not found: " + runId);
       if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
       validateExecutionTransition(current, patch.status);
-      await this.writeRecord(target, {
+      validateExecutionEvent(event, runId);
+      const next = {
         ...current,
         ...patch,
         updatedAt: event.timestamp,
         events: this.withAppendedEvent(current, event).events,
-      }, true);
+      };
+      validateExecutionRecord(next);
+      await this.writeRecord(target, next, true);
     }));
   }
 
@@ -333,7 +405,9 @@ export class FileExecutionStore implements ExecutionStore {
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
       try { validateExecutionTransition(current, patch.status); } catch { return false; }
-      await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
+      const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+      try { validateExecutionRecord(next); } catch { return false; }
+      await this.writeRecord(target, cloneRecord(next), true);
       return true;
     }));
   }
@@ -418,8 +492,7 @@ export class FileExecutionStore implements ExecutionStore {
         throw new Error("Execution record is missing, not a regular file, or too large");
       }
       const parsed = JSON.parse(await fs.readFile(file, "utf8")) as ExecutionRecord;
-      validateRunId(parsed.runId);
-      if (!Array.isArray(parsed.events) || typeof parsed.status !== "string") throw new Error("Invalid execution record");
+      validateExecutionRecord(parsed);
       return cloneRecord(parsed);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
