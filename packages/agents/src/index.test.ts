@@ -399,6 +399,32 @@ const run = async () => {
   assert.equal(checkpointChild?.projectId, "checkpoint-project");
   assert.equal(checkpointChild?.sessionId, "checkpoint-session");
   assert.equal(checkpointChild?.metadata.source, "checkpoint-test");
+  assert.equal(checkpointChild?.checkpoint?.step, 2);
+  assert.equal(checkpointChild?.checkpoint?.inFlightToolCallId, undefined);
+  assert.equal(checkpointChild?.checkpoint?.messages.at(-1)?.role, "assistant");
+
+  const failedResumeCheckpointStore = new InMemoryExecutionStore();
+  const failedResumeCheckpointRuntime = new AgentRuntime({ store: failedResumeCheckpointStore }, registry);
+  const failedResumeResult = await failedResumeCheckpointRuntime.run(
+    createAI({ provider: { name: "resume-checkpoint-failure", async chat() { throw new Error("fail-before-next-checkpoint"); } } }),
+    {
+      agent: "general",
+      input: "resume checkpoint safely",
+      runId: "resume-checkpoint-initial-persist",
+      checkpoint: {
+        step: 1,
+        messages: [
+          { role: "user", content: "resume checkpoint safely" },
+          { role: "assistant", content: "safe boundary" },
+        ],
+        updatedAt: 1,
+      },
+    },
+  ).catch(() => undefined);
+  assert.equal(failedResumeResult, undefined);
+  const failedResumeCheckpoint = failedResumeCheckpointStore.get("resume-checkpoint-initial-persist")?.checkpoint;
+  assert.equal(failedResumeCheckpoint?.step, 1);
+  assert.equal(failedResumeCheckpoint?.messages.at(-1)?.content, "safe boundary");
 
   const ambiguousCheckpointStore = new InMemoryExecutionStore();
   await ambiguousCheckpointStore.create({
