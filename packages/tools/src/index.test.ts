@@ -141,6 +141,12 @@ const run = async () => {
   const workspace = (await import("./workspace.js")).workspaceTool({ root: workspaceRoot, allowWrite: true, allowDelete: true, allowMove: true, maxFileBytes: 10_000 });
   assert.deepEqual(await workspace.execute({ operation: "write", path: "src/hello.txt", content: "hello" }), { path: "src/hello.txt", bytes: 5 });
   assert.deepEqual(await workspace.execute({ operation: "read", path: "src/hello.txt" }), { path: "src/hello.txt", content: "hello" });
+  assert.deepEqual(await workspace.execute({ operation: "edit", path: "src/hello.txt", oldText: "hello", newText: "hello woho" }), { path: "src/hello.txt", bytes: 11, changed: true });
+  assert.deepEqual(await workspace.execute({ operation: "read", path: "src/hello.txt" }), { path: "src/hello.txt", content: "hello woho" });
+  await workspace.execute({ operation: "write", path: "src/repeated.txt", content: "x\nx\n" });
+  await assert.rejects(() => workspace.execute({ operation: "edit", path: "src/repeated.txt", oldText: "x", newText: "y" }), /occurs multiple times/);
+  assert.deepEqual(await workspace.execute({ operation: "edit", path: "src/repeated.txt", oldText: "x", newText: "y", replaceAll: true }), { path: "src/repeated.txt", bytes: 4, changed: true });
+  await assert.rejects(() => workspace.execute({ operation: "edit", path: "src/repeated.txt", oldText: "missing", newText: "y" }), /not found/);
   const listing = await workspace.execute({ operation: "list", path: "src" }) as { entries: Array<{ name: string }> };
   assert.equal(listing.entries[0]?.name, "hello.txt");
   await assert.rejects(() => workspace.execute({ operation: "read", path: "../escape.txt" }), /Parent traversal/);
