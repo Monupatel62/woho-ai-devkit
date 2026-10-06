@@ -17,6 +17,14 @@ export interface ExecutionApprovalRecord {
   readonly decidedAt?: number;
 }
 
+export interface ExecutionCheckpoint {
+  readonly step: number;
+  readonly messages: readonly import("@woho/core").AIMessage[];
+  /** Tool call whose side effect may have started before the last checkpoint. */
+  readonly inFlightToolCallId?: string;
+  readonly updatedAt: number;
+}
+
 export interface ExecutionRecord {
   readonly runId: string;
   /** Stable project scope for execution history and authorization boundaries. */
@@ -31,6 +39,8 @@ export interface ExecutionRecord {
   readonly metadata: Readonly<Record<string, unknown>>;
   /** Latest approval decision associated with this execution. */
   readonly approval?: ExecutionApprovalRecord;
+  /** Last safe conversation checkpoint for crash recovery. */
+  readonly checkpoint?: ExecutionCheckpoint;
   status: ExecutionStatus;
   startedAt: number;
   updatedAt: number;
@@ -97,7 +107,12 @@ function validateRecoveryOptions(options: RecoverStaleExecutionsOptions): void {
 }
 
 function cloneRecord(record: ExecutionRecord): ExecutionRecord {
-  return { ...record, metadata: { ...record.metadata }, events: [...record.events] };
+  return {
+    ...record,
+    metadata: { ...record.metadata },
+    events: [...record.events],
+    ...(record.checkpoint ? { checkpoint: { ...record.checkpoint, messages: [...record.checkpoint.messages] } } : {}),
+  };
 }
 
 function validateApprovalId(approvalId: string): void {
@@ -159,6 +174,16 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   if (record.parentRunId !== undefined) validateRunId(record.parentRunId);
   if (record.sessionId !== undefined && typeof record.sessionId !== "string") throw new Error("Invalid execution sessionId");
   if (!isRecord(record.metadata)) throw new Error("Invalid execution metadata");
+  if (record.checkpoint !== undefined) {
+    if (!isRecord(record.checkpoint)) throw new Error("Invalid execution checkpoint");
+    if (!Number.isInteger(record.checkpoint.step) || record.checkpoint.step < 1) throw new Error("Invalid execution checkpoint step");
+    if (!Array.isArray(record.checkpoint.messages)) throw new Error("Invalid execution checkpoint messages");
+    if (record.checkpoint.inFlightToolCallId !== undefined && (typeof record.checkpoint.inFlightToolCallId !== "string" || !record.checkpoint.inFlightToolCallId.trim())) {
+      throw new Error("Invalid execution checkpoint inFlightToolCallId");
+    }
+    validateRequiredTimestamp(record.checkpoint.updatedAt, "Execution checkpoint updatedAt");
+    if (record.checkpoint.updatedAt > record.updatedAt) throw new Error("Execution checkpoint cannot be newer than execution record");
+  }
   if (record.approval !== undefined) {
     if (!isRecord(record.approval)) throw new Error("Invalid execution approval");
     validateApprovalId(record.approval.approvalId);
