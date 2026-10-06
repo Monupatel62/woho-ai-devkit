@@ -185,6 +185,8 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
 export interface FileExecutionStoreOptions {
   readonly directory: string;
+  /** Maximum number of lifecycle events retained per execution. Defaults to 1000. */
+  readonly maxEvents?: number;
   readonly maxRecordBytes?: number;
   /** Maximum time to wait for the cross-process store lock. */
   readonly lockTimeoutMs?: number;
@@ -196,6 +198,7 @@ export interface FileExecutionStoreOptions {
 
 export class FileExecutionStore implements ExecutionStore {
   private readonly directory: string;
+  private readonly maxEvents: number;
   private readonly maxRecordBytes: number;
   private writeQueue: Promise<void> = Promise.resolve();
   private readonly lockTimeoutMs: number;
@@ -205,10 +208,12 @@ export class FileExecutionStore implements ExecutionStore {
   constructor(options: FileExecutionStoreOptions) {
     if (!options.directory.trim()) throw new Error("Execution store directory is required");
     this.directory = path.resolve(options.directory);
+    this.maxEvents = options.maxEvents ?? 1_000;
     this.maxRecordBytes = options.maxRecordBytes ?? 5_000_000;
     this.lockTimeoutMs = options.lockTimeoutMs ?? 10_000;
     this.lockRetryMs = options.lockRetryMs ?? 25;
     this.lockStaleMs = options.lockStaleMs ?? 30_000;
+    if (!Number.isInteger(this.maxEvents) || this.maxEvents < 1) throw new Error("maxEvents must be a positive integer");
     if (!Number.isInteger(this.maxRecordBytes) || this.maxRecordBytes < 1) {
       throw new Error("maxRecordBytes must be a positive integer");
     }
@@ -249,7 +254,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) return;
-      await this.writeRecord(target, { ...current, updatedAt: event.timestamp, events: [...current.events, event] }, true);
+      await this.writeRecord(target, this.withAppendedEvent(current, event), true);
     }));
   }
 
@@ -265,7 +270,7 @@ export class FileExecutionStore implements ExecutionStore {
         ...current,
         ...patch,
         updatedAt: event.timestamp,
-        events: [...current.events, event],
+        events: this.withAppendedEvent(current, event).events,
       }, true);
     }));
   }
@@ -373,6 +378,12 @@ export class FileExecutionStore implements ExecutionStore {
         await new Promise((resolve) => setTimeout(resolve, this.lockRetryMs));
       }
     }
+  }
+
+  private withAppendedEvent(record: ExecutionRecord, event: ExecutionEvent): ExecutionRecord {
+    const events = [...record.events, event];
+    if (events.length > this.maxEvents) events.splice(0, events.length - this.maxEvents);
+    return { ...record, updatedAt: event.timestamp, events };
   }
 
   private filePath(runId: string): string {
