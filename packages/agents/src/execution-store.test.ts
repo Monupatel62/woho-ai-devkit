@@ -217,7 +217,7 @@ await checkpointStore.create({
 });
 assert.equal(checkpointStore.get("checkpoint-run")?.checkpoint?.step, 2);
 assert.equal(checkpointStore.get("checkpoint-run")?.checkpoint?.messages.length, 1);
-await assert.rejects(
+assert.throws(
   () => checkpointStore.create({
     runId: "checkpoint-invalid",
     agent: "general",
@@ -231,7 +231,7 @@ await assert.rejects(
   }),
   /cannot be newer than execution record/,
 );
-await assert.rejects(
+assert.throws(
   () => checkpointStore.create({
     runId: "checkpoint-inflight-invalid",
     agent: "general",
