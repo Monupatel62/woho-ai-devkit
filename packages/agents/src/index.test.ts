@@ -408,14 +408,18 @@ const run = async () => {
   ] });
   assert.equal(contextualPlan.steps.second?.text, "context-ok");
   let approved = false;
+  let approvalCallId = "";
+  let approvalId = "";
   const approvalEvents: string[] = [];
   const approvalAgent = createAgent(createAI({ provider: createMockProvider({ response: "approved", toolCall: { name: "protected", arguments: "{}" } }) }), {
     name: "approval",
     permissions: { check: () => ({ allowed: false, reason: "manual approval", requiresApproval: true }) },
     tools: [{ name: "protected", description: "Protected", capability: "computer", action: "execute", execute: async () => "allowed" }],
   });
-  const approvalResult = await approvalAgent.run("run", { runId: "approval-run", onEvent: (event) => { approvalEvents.push(event.type); }, approval: async () => { approved = true; return true; } });
+  const approvalResult = await approvalAgent.run("run", { runId: "approval-run", onEvent: (event) => { approvalEvents.push(event.type); }, approval: async (request) => { approved = true; approvalCallId = request.callId; approvalId = request.approvalId ?? ""; return true; } });
   assert.equal(approved, true);
+  assert.equal(approvalCallId, "mock-call-1");
+  assert.match(approvalId, /^[0-9a-f-]{36}$/);
   assert.ok(approvalEvents.includes("run.waiting"));
   assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
   let runtimeApproved = false;
@@ -438,6 +442,51 @@ const run = async () => {
   const runtimeApprovalResult = await approvalRuntimeRunner.run(createAI({ provider: createMockProvider({ response: "runtime-approved", toolCall: { name: "protected-runtime", arguments: "{}" } }) }), { agent: "runtime-approval", input: "approve" });
   assert.equal(runtimeApproved, true);
   assert.equal(runtimeApprovalResult.toolResults["mock-call-1"], "approved-by-runtime");
+  const durableApprovalStore = new InMemoryExecutionStore();
+  const durableApprovalRegistry = new AgentRegistry();
+  durableApprovalRegistry.register({ id: "durable-approval", name: "Durable Approval", role: "general" }, ({ ai }) => createAgent(ai, {
+    name: "durable-approval",
+    permissions: { check: () => ({ allowed: false, reason: "owner approval required", requiresApproval: true }) },
+    tools: [{
+      name: "protected-durable",
+      description: "Protected durable action",
+      capability: "computer",
+      action: "execute",
+      execute: async () => "durable-approved",
+    }],
+    maxSteps: 3,
+  }));
+  const durableApprovalRuntime = new AgentRuntime({ store: durableApprovalStore, approvalPollIntervalMs: 10 }, durableApprovalRegistry);
+  const durableAI = createAI({
+    provider: {
+      name: "durable-approval",
+      async chat(request) {
+        if (request.messages.at(-1)?.role === "tool") return { id: "durable-done", text: "durable-complete", model: "durable-approval" };
+        return { id: "durable-call", text: "", model: "durable-approval", finishReason: "tool_call", toolCalls: [{ id: "durable-call-1", name: "protected-durable", arguments: "{}" }] };
+      },
+    },
+  });
+  const durableRunPromise = durableApprovalRuntime.run(durableAI, {
+    agent: "durable-approval",
+    input: "run protected durable action",
+    projectId: "approval-project",
+  });
+  let pendingApprovals: Awaited<ReturnType<typeof durableApprovalRuntime.listPendingApprovals>> = [];
+  for (let attempt = 0; attempt < 100 && pendingApprovals.length === 0; attempt += 1) {
+    pendingApprovals = await durableApprovalRuntime.listPendingApprovals({ projectId: "approval-project" });
+    if (pendingApprovals.length === 0) await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  assert.equal(pendingApprovals.length, 1);
+  assert.equal(pendingApprovals[0]?.callId, "durable-call-1");
+  assert.equal(pendingApprovals[0]?.tool, "protected-durable");
+  const pending = pendingApprovals[0]!;
+  assert.equal(await durableApprovalRuntime.resolveApproval(pending.runId, pending.approvalId, true, "owner approved"), true);
+  const durableRun = await durableRunPromise;
+  assert.equal(durableRun.text, "durable-complete");
+  assert.equal(durableApprovalStore.get(durableRun.runId)?.approval?.status, "approved");
+  assert.equal(durableApprovalStore.get(durableRun.runId)?.status, "succeeded");
+  assert.equal(await durableApprovalRuntime.resolveApproval(pending.runId, pending.approvalId, true), false);
+
   const toolErrorEvents: import("@woho/core").ExecutionEvent[] = [];
   const secretErrorAgent = createAgent(
     createAI({ provider: createMockProvider({ response: "tool-failed", toolCall: { name: "secret-tool", arguments: "{}" } }) }),
