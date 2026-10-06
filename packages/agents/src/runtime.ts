@@ -106,7 +106,7 @@ export class AgentRuntime {
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
     const heartbeat = this.store
       ? setInterval(() => {
-          void this.store?.update(runId, { updatedAt: Date.now() }).catch(() => undefined);
+          void Promise.resolve(this.store?.update(runId, { updatedAt: Date.now() })).catch(() => undefined);
         }, this.heartbeatIntervalMs)
       : undefined;
 
