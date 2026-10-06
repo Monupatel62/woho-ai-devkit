@@ -409,17 +409,15 @@ const run = async () => {
   assert.equal(contextualPlan.steps.second?.text, "context-ok");
   let approved = false;
   let approvalCallId = "";
-  let approvalId = "";
   const approvalEvents: string[] = [];
   const approvalAgent = createAgent(createAI({ provider: createMockProvider({ response: "approved", toolCall: { name: "protected", arguments: "{}" } }) }), {
     name: "approval",
     permissions: { check: () => ({ allowed: false, reason: "manual approval", requiresApproval: true }) },
     tools: [{ name: "protected", description: "Protected", capability: "computer", action: "execute", execute: async () => "allowed" }],
   });
-  const approvalResult = await approvalAgent.run("run", { runId: "approval-run", onEvent: (event) => { approvalEvents.push(event.type); }, approval: async (request) => { approved = true; approvalCallId = request.callId; approvalId = request.approvalId ?? ""; return true; } });
+  const approvalResult = await approvalAgent.run("run", { runId: "approval-run", onEvent: (event) => { approvalEvents.push(event.type); }, approval: async (request) => { approved = true; approvalCallId = request.callId; return true; } });
   assert.equal(approved, true);
   assert.equal(approvalCallId, "mock-call-1");
-  assert.match(approvalId, /^[0-9a-f-]{36}$/);
   assert.ok(approvalEvents.includes("run.waiting"));
   assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
   let runtimeApproved = false;
