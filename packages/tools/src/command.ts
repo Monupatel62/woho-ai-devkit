@@ -7,6 +7,8 @@ export interface CommandToolPolicy extends Partial<ToolPolicy> {
   maxOutputBytes?: number;
   maxArgs?: number;
   maxArgBytes?: number;
+  environment?: Record<string, string>;
+  inheritEnvironment?: boolean;
 }
 
 function basename(command: string): string {
@@ -20,6 +22,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
   const maxOutputBytes = inputPolicy.maxOutputBytes ?? 1_000_000;
   const maxArgs = inputPolicy.maxArgs ?? 128;
   const maxArgBytes = inputPolicy.maxArgBytes ?? 256 * 1024;
+  const inheritEnvironment = inputPolicy.inheritEnvironment ?? false;
   if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 1) throw new Error("maxOutputBytes must be a positive integer");
   if (!Number.isInteger(maxArgs) || maxArgs < 1) throw new Error("maxArgs must be a positive integer");
   if (!Number.isInteger(maxArgBytes) || maxArgBytes < 1) throw new Error("maxArgBytes must be a positive integer");
@@ -64,7 +67,13 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
         if (!ok) throw new Error("cwd is outside the allowed directories");
       }
       return new Promise((resolve, reject) => {
-        const child = spawn(command, args as string[], { cwd, shell: false, windowsHide: true });
+        const safeEnvironment: Record<string, string> = {
+          PATH: process.env.PATH ?? "",
+          ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+          ...(inputPolicy.environment ?? {}),
+          ...(inheritEnvironment ? process.env : {}),
+        };
+        const child = spawn(command, args as string[], { cwd, shell: false, windowsHide: true, env: safeEnvironment });
         let stdout = "";
         let stderr = "";
         let bytes = 0;
