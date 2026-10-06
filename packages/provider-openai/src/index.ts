@@ -139,8 +139,8 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     name: "openai",
     async chat(request: AIRequest): Promise<AIResponse> {
       let response: Response;
+      const body = serializeRequest(requestBody(request));
       try {
-        const body = serializeRequest(requestBody(request));
         response = await fetch(baseUrl + "/chat/completions", {
           method: "POST",
           headers: headers(),
@@ -176,8 +176,8 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     },
     async *stream(request: AIRequest): AsyncIterable<AIStreamChunk> {
       let response: Response;
+      const body = serializeRequest(requestBody(request, true));
       try {
-        const body = serializeRequest(requestBody(request, true));
         response = await fetch(baseUrl + "/chat/completions", {
           method: "POST",
           headers: headers(),
