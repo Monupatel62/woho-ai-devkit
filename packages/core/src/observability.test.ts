@@ -293,3 +293,7 @@ await assert.rejects(
 );
 
 console.log("core request resource-bound tests passed");
+
+
+
+console.log("core request parameter-bound tests passed");
