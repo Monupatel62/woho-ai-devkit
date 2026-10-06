@@ -4,6 +4,7 @@ export interface ToolPolicy {
   maxResponseBytes: number;
   maxFileBytes: number;
   timeoutMs: number;
+  allowPrivateAddresses: boolean;
 }
 
 export const defaultToolPolicy: ToolPolicy = {
@@ -12,6 +13,7 @@ export const defaultToolPolicy: ToolPolicy = {
   maxResponseBytes: 1_000_000,
   maxFileBytes: 1_000_000,
   timeoutMs: 10_000,
+  allowPrivateAddresses: false,
 };
 
 function positiveInteger(value: number, name: string): void {
@@ -31,12 +33,14 @@ export function createToolPolicy(input: Partial<ToolPolicy> = {}): ToolPolicy {
   if (input.maxResponseBytes !== undefined) positiveInteger(input.maxResponseBytes, "maxResponseBytes");
   if (input.maxFileBytes !== undefined) positiveInteger(input.maxFileBytes, "maxFileBytes");
   if (input.timeoutMs !== undefined) positiveInteger(input.timeoutMs, "timeoutMs");
+  if (input.allowPrivateAddresses !== undefined && typeof input.allowPrivateAddresses !== "boolean") throw new Error("allowPrivateAddresses must be a boolean");
   return {
     allowedHosts: cleanList(input.allowedHosts ?? defaultToolPolicy.allowedHosts, "allowedHosts", true),
     allowedDirectories: cleanList(input.allowedDirectories ?? defaultToolPolicy.allowedDirectories, "allowedDirectories"),
     maxResponseBytes: input.maxResponseBytes ?? defaultToolPolicy.maxResponseBytes,
     maxFileBytes: input.maxFileBytes ?? defaultToolPolicy.maxFileBytes,
     timeoutMs: input.timeoutMs ?? defaultToolPolicy.timeoutMs,
+    allowPrivateAddresses: input.allowPrivateAddresses ?? defaultToolPolicy.allowPrivateAddresses,
   };
 }
 
