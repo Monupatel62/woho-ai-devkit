@@ -29,6 +29,12 @@ try {
   }) as { stdout: string };
   assert.equal(commandResult.stdout, "project-ok");
 
+  const failingGit = tools.find((tool) => tool.name === "git")!;
+  await assert.rejects(
+    () => failingGit.execute({ operation: "show" }),
+    (error: unknown) => error instanceof Error && error.message === "Git operation failed",
+  );
+
   const controller = new AbortController();
   const pending = command.execute({
     command: process.execPath,
