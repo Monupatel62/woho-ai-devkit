@@ -9,6 +9,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm build && node dist/index.test.js"
   },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
   "dependencies": {
     "@woho/agents": "workspace:*",
     "@woho/core": "workspace:*",
