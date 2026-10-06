@@ -241,7 +241,7 @@ assert.throws(
     updatedAt: 20,
     attempts: 1,
     events: [],
-    checkpoint: { step: 0, messages: [], updatedAt: 20 },
+    checkpoint: { step: -1, messages: [], updatedAt: 20 },
   }),
   /checkpoint step/,
 );
