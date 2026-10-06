@@ -227,7 +227,27 @@ const run = async () => {
   const recoveredRuns = await maintenanceRuntime.recoverStale({ staleAfterMs: 50, now: 200 });
   assert.equal(recoveredRuns.length, 1);
   assert.equal(recoveredRuns[0]?.status, "failed");
-  assert.equal((recoverStore.get("stale-runtime-run")?.events.length ?? 0), 1);
+  const recoveredRecord = recoverStore.get("stale-runtime-run");
+  assert.equal(recoveredRecord?.updatedAt, 200);
+  assert.equal(recoveredRecord?.completedAt, 200);
+  assert.equal(recoveredRecord?.events.length, 1);
+  assert.equal(recoveredRecord?.events[0]?.type, "run.failed");
+  assert.equal(recoveredRecord?.events[0]?.timestamp, 200);
+  const casRecoveryStore = new InMemoryExecutionStore();
+  await casRecoveryStore.create({
+    runId: "cas-recovery",
+    agent: "general",
+    metadata: {},
+    status: "running",
+    startedAt: 100,
+    updatedAt: 100,
+    attempts: 1,
+    events: [],
+  });
+  casRecoveryStore.update("cas-recovery", { updatedAt: 150 });
+  const casRecovered = await recoverStaleExecutions(casRecoveryStore, { staleAfterMs: 50, now: 200 });
+  assert.equal(casRecovered.length, 0);
+  assert.equal(casRecoveryStore.get("cas-recovery")?.status, "running");
   const resumableStore = new InMemoryExecutionStore();
   await resumableStore.create({
     runId: "failed-resumable",
