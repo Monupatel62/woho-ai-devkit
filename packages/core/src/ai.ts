@@ -78,14 +78,17 @@ export class AIClient {
   private readonly timeoutMs: number;
   private readonly retries: number;
   private readonly retryDelayMs: number;
-  private readonly observability?: AIObservability;\n  private readonly includeRequestContentInObservability: boolean;
+  private readonly observability?: AIObservability;
+  private readonly includeRequestContentInObservability: boolean;
 
   constructor(config: AIConfig) {
     this.provider = config.provider;
     this.timeoutMs = config.timeoutMs ?? 30_000;
     this.retries = config.retries ?? 2;
     this.retryDelayMs = config.retryDelayMs ?? 250;
-    this.observability = config.observability;\n    this.includeRequestContentInObservability = config.includeRequestContentInObservability ?? false;\n    if (typeof this.includeRequestContentInObservability !== "boolean") throw new AIError("includeRequestContentInObservability must be a boolean", "INVALID_CONFIG");
+    this.observability = config.observability;
+    this.includeRequestContentInObservability = config.includeRequestContentInObservability ?? false;
+    if (typeof this.includeRequestContentInObservability !== "boolean") throw new AIError("includeRequestContentInObservability must be a boolean", "INVALID_CONFIG");
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new AIError("timeoutMs must be a positive integer", "INVALID_CONFIG");
     if (!Number.isInteger(this.retries) || this.retries < 0) throw new AIError("retries must be a non-negative integer", "INVALID_CONFIG");
     if (!Number.isInteger(this.retryDelayMs) || this.retryDelayMs < 0) throw new AIError("retryDelayMs must be a non-negative integer", "INVALID_CONFIG");
