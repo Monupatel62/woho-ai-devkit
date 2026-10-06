@@ -410,17 +410,21 @@ const run = async () => {
     {
       agent: "general",
       input: "resume checkpoint safely",
+      runId: "resume-checkpoint-initial-persist",
       checkpoint: {
         step: 1,
         messages: [
           { role: "user", content: "resume checkpoint safely" },
           { role: "assistant", content: "safe boundary" },
         ],
-        updatedAt: Date.now(),
+        updatedAt: 1,
       },
     },
   ).catch(() => undefined);
   assert.equal(failedResumeResult, undefined);
+  const failedResumeCheckpoint = failedResumeCheckpointStore.get("resume-checkpoint-initial-persist")?.checkpoint;
+  assert.equal(failedResumeCheckpoint?.step, 1);
+  assert.equal(failedResumeCheckpoint?.messages.at(-1)?.content, "safe boundary");
 
   const ambiguousCheckpointStore = new InMemoryExecutionStore();
   await ambiguousCheckpointStore.create({
