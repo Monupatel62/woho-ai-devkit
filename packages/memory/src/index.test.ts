@@ -119,6 +119,14 @@ const run = async () => {
   );
   assert.equal(semantic[0]?.message.id, "v1");
   assert.equal(semantic[0]?.score, 1);
+  await assert.rejects(
+    () => searchMemorySemantic([{ id: "v1", role: "user", content: "alpha" }, { id: "v2", role: "user", content: "beta" }], "alpha", { embed: async () => [1, 0] }, { maxMessages: 1 }),
+    /exceeds maxMessages/,
+  );
+  await assert.rejects(
+    () => searchMemorySemantic([{ id: "v1", role: "user", content: "alpha" }], "alpha", { embed: async () => [1, 0] }, { maxTextCharacters: 3 }),
+    /exceeds maxTextCharacters/,
+  );
   await rm(dir, { recursive: true, force: true });
   console.log("memory runtime tests passed");
 };
