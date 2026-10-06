@@ -5,6 +5,8 @@ import { createToolPolicy, type ToolPolicy } from "./policy.js";
 export interface CommandToolPolicy extends Partial<ToolPolicy> {
   allowedCommands?: string[];
   maxOutputBytes?: number;
+  maxArgs?: number;
+  maxArgBytes?: number;
 }
 
 function basename(command: string): string {
@@ -16,7 +18,11 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
   const policy = createToolPolicy(inputPolicy);
   const allowedCommands = (inputPolicy.allowedCommands ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean);
   const maxOutputBytes = inputPolicy.maxOutputBytes ?? 1_000_000;
+  const maxArgs = inputPolicy.maxArgs ?? 128;
+  const maxArgBytes = inputPolicy.maxArgBytes ?? 256 * 1024;
   if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 1) throw new Error("maxOutputBytes must be a positive integer");
+  if (!Number.isInteger(maxArgs) || maxArgs < 1) throw new Error("maxArgs must be a positive integer");
+  if (!Number.isInteger(maxArgBytes) || maxArgBytes < 1) throw new Error("maxArgBytes must be a positive integer");
   return {
     name: "command",
     description: "Run an explicitly allowlisted local command inside an explicitly allowed working directory.",
@@ -33,7 +39,14 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
       const args = value.args ?? [];
       const cwd = value.cwd;
       if (typeof command !== "string" || !command.trim()) throw new Error("command is required");
+      if (Buffer.byteLength(command, "utf8") > 4096) throw new Error("command exceeds max command length");
       if (!Array.isArray(args) || args.some((arg) => typeof arg !== "string")) throw new Error("args must be an array of strings");
+      if (args.length > maxArgs) throw new Error("Command exceeds maxArgs");
+      let argBytes = 0;
+      for (const arg of args as string[]) {
+        argBytes += Buffer.byteLength(arg, "utf8");
+        if (argBytes > maxArgBytes) throw new Error("Command arguments exceed maxArgBytes");
+      }
       if (!allowedCommands.includes(basename(command).toLowerCase())) throw new Error("Command is not allowed by policy");
       if (typeof cwd !== "undefined" && typeof cwd !== "string") throw new Error("cwd must be a string");
       if (policy.allowedDirectories.length) {
