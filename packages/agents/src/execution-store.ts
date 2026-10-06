@@ -288,7 +288,7 @@ export async function recoverStaleExecutions(
 ): Promise<ExecutionRecord[]> {
   validateRecoveryOptions(options);
   const now = options.now ?? Date.now();
-  const statuses = options.statuses ?? (["running"] as const);
+  const statuses = options.statuses ?? (["running", "waiting"] as const);
   const cutoff = now - options.staleAfterMs;
   const recovered: ExecutionRecord[] = [];
 
