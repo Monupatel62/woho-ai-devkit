@@ -16,6 +16,7 @@ export interface OpenAIProviderOptions {
   apiKey: string;
   baseUrl?: string;
   maxResponseBytes?: number;
+  maxRequestBytes?: number;
   defaultModel?: string;
   organization?: string;
 }
@@ -96,7 +97,9 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
   if (!options.apiKey.trim()) throw new AuthenticationError("An API key is required");
   if (!/^https:\/\//i.test(baseUrl) && !/^http:\/\/localhost(?::\d+)?(?:\/|$)/i.test(baseUrl)) throw new InvalidRequestError("baseUrl must use HTTPS (localhost is allowed for development)");
   const maxResponseBytes = options.maxResponseBytes ?? 4 * 1024 * 1024;
+  const maxRequestBytes = options.maxRequestBytes ?? 1 * 1024 * 1024;
   if (!Number.isInteger(maxResponseBytes) || maxResponseBytes < 1) throw new InvalidRequestError("maxResponseBytes must be a positive integer");
+  if (!Number.isInteger(maxRequestBytes) || maxRequestBytes < 1) throw new InvalidRequestError("maxRequestBytes must be a positive integer");
 
   const requestBody = (request: AIRequest, stream = false) => ({
     model: request.model ?? options.defaultModel ?? "gpt-4o-mini",
@@ -118,6 +121,14 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     ...(stream ? { stream: true } : {}),
   });
 
+  const serializeRequest = (body: ReturnType<typeof requestBody>): string => {
+    let serialized: string;
+    try { serialized = JSON.stringify(body); }
+    catch { throw new InvalidRequestError("Provider request is not serializable"); }
+    if (Buffer.byteLength(serialized, "utf8") > maxRequestBytes) throw new InvalidRequestError("Provider request exceeds maxRequestBytes");
+    return serialized;
+  };
+
   const headers = () => ({
     "content-type": "application/json",
     authorization: "Bearer " + options.apiKey,
@@ -128,11 +139,12 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     name: "openai",
     async chat(request: AIRequest): Promise<AIResponse> {
       let response: Response;
+      const requestBodyJson = serializeRequest(requestBody(request));
       try {
         response = await fetch(baseUrl + "/chat/completions", {
           method: "POST",
           headers: headers(),
-          body: JSON.stringify(requestBody(request)),
+          body: requestBodyJson,
           signal: request.signal,
         });
       } catch (error) {
@@ -164,11 +176,12 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     },
     async *stream(request: AIRequest): AsyncIterable<AIStreamChunk> {
       let response: Response;
+      const requestBodyJson = serializeRequest(requestBody(request, true));
       try {
         response = await fetch(baseUrl + "/chat/completions", {
           method: "POST",
           headers: headers(),
-          body: JSON.stringify(requestBody(request, true)),
+          body: requestBodyJson,
           signal: request.signal,
         });
       } catch (error) {
