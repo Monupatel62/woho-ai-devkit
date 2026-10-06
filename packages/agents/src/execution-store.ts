@@ -3,6 +3,16 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { ExecutionEvent, ExecutionStatus } from "@woho/core";
 
+export interface ExecutionApprovalRecord {
+  readonly status: "pending" | "approved" | "denied";
+  readonly tool: string;
+  readonly capability: string;
+  readonly action: string;
+  readonly reason?: string;
+  readonly requestedAt: number;
+  readonly decidedAt?: number;
+}
+
 export interface ExecutionRecord {
   readonly runId: string;
   readonly agent: string;
@@ -13,6 +23,8 @@ export interface ExecutionRecord {
   readonly parentRunId?: string;
   readonly sessionId?: string;
   readonly metadata: Readonly<Record<string, unknown>>;
+  /** Latest approval decision associated with this execution. */
+  readonly approval?: ExecutionApprovalRecord;
   status: ExecutionStatus;
   startedAt: number;
   updatedAt: number;
@@ -127,6 +139,17 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   if (record.parentRunId !== undefined) validateRunId(record.parentRunId);
   if (record.sessionId !== undefined && typeof record.sessionId !== "string") throw new Error("Invalid execution sessionId");
   if (!isRecord(record.metadata)) throw new Error("Invalid execution metadata");
+  if (record.approval !== undefined) {
+    if (!isRecord(record.approval)) throw new Error("Invalid execution approval");
+    if (!["pending", "approved", "denied"].includes(record.approval.status)) throw new Error("Invalid execution approval status");
+    for (const key of ["tool", "capability", "action"]) if (typeof record.approval[key] !== "string" || !record.approval[key].trim()) throw new Error("Invalid execution approval " + key);
+    validateRequiredTimestamp(record.approval.requestedAt, "Execution approval requestedAt");
+    validateTimestamp(record.approval.decidedAt, "Execution approval decidedAt");
+    if (record.approval.decidedAt !== undefined && record.approval.decidedAt < record.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
+    if (record.approval.reason !== undefined && typeof record.approval.reason !== "string") throw new Error("Invalid execution approval reason");
+    if (record.approval.status === "pending" && record.approval.decidedAt !== undefined) throw new Error("Pending approval cannot have decidedAt");
+    if (record.approval.status !== "pending" && record.approval.decidedAt === undefined) throw new Error("Resolved approval requires decidedAt");
+  }
   validateExecutionStatus(record.status);
   validateRequiredTimestamp(record.startedAt, "Execution startedAt");
   validateRequiredTimestamp(record.updatedAt, "Execution updatedAt");
