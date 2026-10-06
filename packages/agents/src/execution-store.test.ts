@@ -82,6 +82,7 @@ try {
     () => store.get("malformed-persisted"),
     /Invalid execution status/,
   );
+  await rm(malformedPath, { force: true });
 
   const event = {
     type: "run.completed" as const,
