@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.36
+
+- Corrected the coordinated release snapshot to include the current mainline platform work after the v0.8.35 release was created from an older commit.
+- Added first-class project tool context and bounded project/session context lifecycle propagation across plans, platform runs, and coding loops.
+- Bumped all six public packages for the corrected coordinated release.
+
 ## 0.8.34
 
 - Hardened agent tool-result serialization with bounded incremental traversal and regression coverage for very large results.
