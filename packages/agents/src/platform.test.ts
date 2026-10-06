@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createAI, type AIProvider } from "@woho/core";
 import { createWohoAgentPlatform } from "./platform.js";
+import type { AgentTool } from "./index.js";
 
 const responses = [
   JSON.stringify({ steps: [
@@ -29,7 +30,7 @@ assert.ok(platform.registry.get("woho-browser"));
 assert.ok(platform.registry.get("woho-security"));
 assert.ok(platform.registry.get("woho-orchestrator"));
 
-const projectTool = {
+const projectTool: AgentTool = {
   name: "project_context_probe",
   description: "Probe the authorized project context.",
   capability: "file",
