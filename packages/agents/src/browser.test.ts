@@ -5,9 +5,9 @@ import { createBrowserTools } from "./browser.js";
 test("browser tools enforce HTTP(S), host policy, and bounded output", async () => {
   const calls: string[] = [];
   const browser = {
-    async open(url: string, options?: { signal?: AbortSignal }) { calls.push(\`open:\${url}:\${options?.signal ? "signal" : "none"}\`); return { url, title: "Example", text: "x".repeat(100) }; },
-    async click(selector: string) { calls.push(\`click:\${selector}\`); return { url: "https://example.com", text: "clicked" }; },
-    async type(selector: string, text: string) { calls.push(\`type:\${selector}:\${text}\`); return { url: "https://example.com" }; },
+    async open(url: string, options?: { signal?: AbortSignal }) { calls.push(`open:\${url}:\${options?.signal ? "signal" : "none"}`); return { url, title: "Example", text: "x".repeat(100) }; },
+    async click(selector: string) { calls.push(`click:\${selector}`); return { url: "https://example.com", text: "clicked" }; },
+    async type(selector: string, text: string) { calls.push(`type:\${selector}:\${text}`); return { url: "https://example.com" }; },
     async close() { calls.push("close"); },
   };
   const tools = createBrowserTools(browser, { allowedHosts: ["example.com"], maxTextChars: 10 });
