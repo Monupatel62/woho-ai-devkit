@@ -127,7 +127,7 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
     const response = await ai.chat({
       messages: [
         { role: "system", content:
-          "You are the WoHo planning engine. Return ONLY JSON with shape {"steps":[{"id":"step-1","agent":"woho-coding","input":"...","dependsOn":[]}]}." +
+          "You are the WoHo planning engine. Return ONLY JSON with shape {steps:[{id:step-1,agent:woho-coding,input:...,dependsOn:[]}]}. " +
           " Use only the supplied agent IDs. Keep the plan minimal, ordered, independently verifiable, and never claim an unavailable capability." },
         { role: "user", content: "Available agents: " + [...allowedAgents].join(", ") + "\nGoal:\n" + goal },
       ],
