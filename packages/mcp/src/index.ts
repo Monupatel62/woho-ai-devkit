@@ -197,7 +197,7 @@ export class MCPClient {
     } catch (error) {
       if (error instanceof MCPError) throw error;
       if (controller.signal.aborted) throw new MCPError("MCP request timed out: " + method, method);
-      throw new MCPError(error instanceof Error ? error.message : String(error), method);
+      throw new MCPError("MCP transport request failed", method);
     } finally {
       if (timer) clearTimeout(timer);
     }
