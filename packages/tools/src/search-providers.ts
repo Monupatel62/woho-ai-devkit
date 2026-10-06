@@ -19,8 +19,16 @@ async function readBodyWithLimit(response: Response, maxBytes: number, signal?: 
   const decoder = new TextDecoder();
   const chunks: string[] = [];
   let received = 0;
+  let aborted = false;
+  const onAbort = () => {
+    aborted = true;
+    void reader.cancel().catch(() => undefined);
+  };
+  if (signal?.aborted) onAbort();
+  else signal?.addEventListener("abort", onAbort, { once: true });
   try {
     while (true) {
+      if (aborted) throw new Error("Search provider request timed out or was aborted");
       const { value, done } = await reader.read();
       if (done) break;
       received += value.byteLength;
@@ -30,6 +38,7 @@ async function readBodyWithLimit(response: Response, maxBytes: number, signal?: 
     chunks.push(decoder.decode());
     return chunks.join("");
   } finally {
+    signal?.removeEventListener("abort", onAbort);
     await reader.cancel().catch(() => undefined);
   }
 }
