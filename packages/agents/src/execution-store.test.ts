@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { FileExecutionStore } from "./execution-store.js";
 
+assert.throws(() => new (FileExecutionStore as typeof FileExecutionStore)({ directory: os.tmpdir(), maxEvents: 0 }), /maxEvents must be a positive integer/);
+
 const root = await mkdtemp(path.join(os.tmpdir(), "woho-execution-store-"));
 try {
   const store = new FileExecutionStore({ directory: root });
@@ -30,6 +32,21 @@ try {
   };
   await store.appendEvent(record.runId, event);
   await store.update(record.runId, { status: "succeeded", completedAt: 2, updatedAt: 2 });
+
+  const bounded = new FileExecutionStore({ directory: root, maxEvents: 2 });
+  await bounded.appendEvent(record.runId, { type: "tool.started", runId: record.runId, timestamp: 3, data: { step: 1 } });
+  await bounded.appendEvent(record.runId, { type: "tool.completed", runId: record.runId, timestamp: 4, data: { step: 1 } });
+  await bounded.appendEvent(record.runId, { type: "tool.started", runId: record.runId, timestamp: 5, data: { step: 2 } });
+  const boundedRecord = await bounded.get(record.runId);
+  assert.equal(boundedRecord?.events.length, 2);
+  assert.deepEqual(boundedRecord?.events.map((item) => item.timestamp), [4, 5]);
+
+  const inMemoryBounded = new (await import("./execution-store.js")).InMemoryExecutionStore({ maxEvents: 2 });
+  await inMemoryBounded.create(record);
+  await inMemoryBounded.appendEvent(record.runId, { type: "tool.started", runId: record.runId, timestamp: 3, data: { step: 1 } });
+  await inMemoryBounded.appendEvent(record.runId, { type: "tool.completed", runId: record.runId, timestamp: 4, data: { step: 1 } });
+  await inMemoryBounded.appendEvent(record.runId, { type: "tool.started", runId: record.runId, timestamp: 5, data: { step: 2 } });
+  assert.deepEqual(inMemoryBounded.get(record.runId)?.events.map((item) => item.timestamp), [4, 5]);
 
   const writerA = new FileExecutionStore({ directory: root });
   const writerB = new FileExecutionStore({ directory: root });
