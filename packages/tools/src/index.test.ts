@@ -157,6 +157,13 @@ const run = async () => {
   (await import("node:child_process")).execFileSync("git", ["config", "user.name", "WoHo Test"], { cwd: gitRoot });
   const git = (await import("./git.js")).gitTool({ root: gitRoot, allowWrite: true });
   const status = await git.execute({ operation: "status" }) as { stdout: string };
+
+  const isolatedGit = (await import("./git.js")).gitTool({
+    root: gitRoot,
+    environment: { WOHO_TOOLS_SAFE: "yes" },
+  });
+  const isolatedGitStatus = await isolatedGit.execute({ operation: "status" }) as { stdout: string };
+  assert.match(isolatedGitStatus.stdout, /README/);
   await assert.rejects(() => git.execute({ operation: "add", paths: ["../outside"] }), /parent traversal/);
   assert.match(status.stdout, /README/);
   await git.execute({ operation: "add", paths: ["README.md"] });
