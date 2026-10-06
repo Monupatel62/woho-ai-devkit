@@ -7,12 +7,14 @@
 - Hardened search-provider timeouts through response-body consumption and stalled-reader cancellation.
 - Upgraded GitHub CodeQL Actions to v4.
 
-## Unreleased
+## 0.8.35
 
-- Hardened agent tool-result serialization with bounded incremental traversal, depth limits, circular-reference protection, and regression coverage for million-element results.
-- Hardened OpenAI-compatible request serialization with bounded preflight traversal so oversized or deeply nested requests are rejected before unbounded stringification.
-- Hardened Brave and Tavily search providers so response timeouts remain active through full body consumption and cancel stalled response readers.
-- Added regression coverage for oversized provider requests and stalled search response bodies.
+- Added the first usable WoHo platform workspace layer with permission-first phone-agent foundations and a read-only project CLI.
+- Added bounded specialist-agent delegation with explicit agent allowlists, delegation depth limits, parent-run linkage, and bounded delegated results.
+- Added regression coverage for specialist delegation boundaries and approval-safe multi-agent execution.
+- Bumped all six public packages for the coordinated release.
+
+## Unreleased
 
 ## 0.8.33
 
