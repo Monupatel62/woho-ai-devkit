@@ -27,6 +27,10 @@ export interface AgentContext {
 
 export interface AgentApprovalRequest {
   readonly runId?: string;
+  /** Exact model tool-call identity requiring owner approval. */
+  readonly callId: string;
+  /** Durable approval request identity assigned by AgentRuntime. */
+  readonly approvalId?: string;
   readonly tool: string;
   readonly capability: string;
   readonly action: PermissionAction;
