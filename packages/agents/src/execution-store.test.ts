@@ -24,18 +24,9 @@ try {
   assert.deepEqual(await store.get(record.runId), record);
   await assert.rejects(() => store.create(record), /already exists/);
 
-  assert.throws(
-    () => store.create({ ...record, runId: "invalid-status", status: "corrupt" as never }),
-    /Invalid execution status/,
-  );
-  assert.throws(
-    () => store.create({ ...record, runId: "invalid-time", updatedAt: -1 }),
-    /Execution updatedAt must be a non-negative finite number/,
-  );
-  assert.throws(
-    () => store.create({ ...record, runId: "invalid-attempts", attempts: 1.5 }),
-    /Execution attempts must be a non-negative integer/,
-  );
+  await assert.rejects(() => store.create({ ...record, runId: "invalid-status", status: "corrupt" as never }), /Invalid execution status/);
+  await assert.rejects(() => store.create({ ...record, runId: "invalid-time", updatedAt: -1 }), /Execution updatedAt must be a non-negative finite number/);
+  await assert.rejects(() => store.create({ ...record, runId: "invalid-attempts", attempts: 1.5 }), /Execution attempts must be a non-negative integer/);
   assert.throws(
     () => store.create({ ...record, runId: "missing-started-at", startedAt: undefined as never }),
     /Execution startedAt must be a non-negative finite number/,
