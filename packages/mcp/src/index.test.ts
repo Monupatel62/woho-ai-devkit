@@ -114,6 +114,11 @@ const run = async () => {
   await assert.rejects(() => malformedStdio.request("ping"), /Invalid MCP JSON-RPC response/);
   await malformedStdio.close();
 
+  const errorStdioScript = 'process.stdin.setEncoding("utf8"); process.stdin.on("data",()=>process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,error:{code:-32000,message:"secret server token"}})+"\\n"));';
+  const errorStdio = createMCPStdioTransport({ command: execPath, args: ["-e", errorStdioScript], timeoutMs: 1000 });
+  await assert.rejects(() => errorStdio.request("ping"), (error) => error instanceof Error && error.message === "MCP JSON-RPC request failed" && !error.message.includes("secret server token"));
+  await errorStdio.close();
+
   const oversizedStdioScript = 'process.stdin.resume(); process.stdout.write("x".repeat(200));';
   const oversizedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", oversizedStdioScript], timeoutMs: 1000, maxMessageBytes: 50 });
   await assert.rejects(() => oversizedStdio.request("ping"), /exceeds maxMessageBytes/);
