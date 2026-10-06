@@ -48,8 +48,56 @@ export function calculatorTool(): AgentTool {
       validateToolInput({ type: "object", properties: { expression: { type: "string" } }, required: ["expression"], additionalProperties: false }, input);
       if (typeof value !== "string" || value.trim().length === 0 || value.length > 200) throw new Error("Invalid expression");
       if (!/^[0-9+\-*/().%\s]+$/.test(value)) throw new Error("Only basic arithmetic is allowed");
-      const result = Function('"use strict"; return (' + value.replace(/%/g, "/100") + ')')();
-      if (typeof result !== "number" || !Number.isFinite(result)) throw new Error("Expression did not produce a finite number");
+      const tokens = value.match(/\d+(?:\.\d+)?|[()+\-*/%]/g) ?? [];
+      if (tokens.join("") !== value.replace(/\s+/g, "")) throw new Error("Invalid expression");
+      const values: number[] = [];
+      const operators: string[] = [];
+      const precedence = (operator: string) => operator === "+" || operator === "-" ? 1 : 2;
+      const apply = () => {
+        const operator = operators.pop();
+        if (!operator) throw new Error("Invalid expression");
+        const right = values.pop();
+        const left = values.pop();
+        if (left === undefined || right === undefined) throw new Error("Invalid expression");
+        let result: number;
+        if (operator === "+") result = left + right;
+        else if (operator === "-") result = left - right;
+        else if (operator === "*") result = left * right;
+        else if (operator === "/") result = left / right;
+        else result = left % right;
+        if (!Number.isFinite(result)) throw new Error("Expression did not produce a finite number");
+        values.push(result);
+      };
+      let previous: "value" | "operator" | "open" = "operator";
+      for (const token of tokens) {
+        if (/^\d/.test(token)) {
+          if (previous === "value") throw new Error("Invalid expression");
+          values.push(Number(token));
+          previous = "value";
+        } else if (token === "(") {
+          if (previous === "value") throw new Error("Invalid expression");
+          operators.push(token);
+          previous = "open";
+        } else if (token === ")") {
+          if (previous !== "value") throw new Error("Invalid expression");
+          while (operators.at(-1) !== "(") apply();
+          operators.pop();
+          previous = "value";
+        } else {
+          if (previous !== "value" && !(token === "-" && (previous === "operator" || previous === "open"))) throw new Error("Invalid expression");
+          if (token === "-" && previous !== "value") values.push(0);
+          else while (operators.at(-1) !== "(" && operators.length && precedence(operators.at(-1)!) >= precedence(token)) apply();
+          operators.push(token);
+          previous = "operator";
+        }
+      }
+      if (previous !== "value") throw new Error("Invalid expression");
+      while (operators.length) {
+        if (operators.at(-1) === "(") throw new Error("Invalid expression");
+        apply();
+      }
+      const result = values.length === 1 ? values[0] : NaN;
+      if (!Number.isFinite(result)) throw new Error("Expression did not produce a finite number");
       return { expression: value, result };
     },
   };
