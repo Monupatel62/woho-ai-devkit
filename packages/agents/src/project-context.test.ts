@@ -23,5 +23,5 @@ assert.deepEqual(merged, {
 });
 assert.throws(() => createWohoProjectContext({ root: "" }), /Project root is required/);
 assert.throws(() => createWohoProjectContext({ root: "/workspace/demo", metadata: { value: "x".repeat(100) }, maxMetadataBytes: 10 }), /maxMetadataBytes/);
-assert.throws(() => createWohoProjectContext({ root: "/workspace/demo", metadata: { value: undefined }, maxMetadataBytes: 100 }), /JSON-serializable/);
+assert.throws(() => createWohoProjectContext({ root: "/workspace/demo", metadata: { value: 1n }, maxMetadataBytes: 100 }), /JSON-serializable/);
 console.log("project context tests passed");
