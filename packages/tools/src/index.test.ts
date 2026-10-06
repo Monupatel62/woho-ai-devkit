@@ -83,6 +83,17 @@ const run = async () => {
   await assert.rejects(() => boundedBrave.search("woho"), /size limit/);
   const boundedTavily = createTavilySearchProvider({ apiKey: "test", maxResponseBytes: 10, fetchImpl: oversizedFetch });
   await assert.rejects(() => boundedTavily.search("woho"), /size limit/);
+
+  const hangingBodyFetch: typeof fetch = async (_input, init) => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")), { once: true });
+      },
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": "application/json" } });
+  };
+  const timedSearch = createBraveSearchProvider({ apiKey: "test", timeoutMs: 10, fetchImpl: hangingBodyFetch });
+  await assert.rejects(() => timedSearch.search("woho"), /timed out|aborted/);
   assert.throws(() => createBraveSearchProvider({ apiKey: " " }), /apiKey is required/);
 
   const command = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], timeoutMs: 2_000, maxOutputBytes: 10_000 });
