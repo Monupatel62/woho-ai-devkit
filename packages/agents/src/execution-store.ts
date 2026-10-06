@@ -34,7 +34,7 @@ export interface ExecutionStore {
   /** Atomically claim a single child run for resuming a failed/cancelled execution. */
   claimResume?(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined | Promise<string | undefined>;
   /** Atomically apply a record patch and append its lifecycle event. */
-  transition?(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent): void | Promise<void>;
+  transition?(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void | Promise<void>;
 }
 
 export interface RecoverStaleExecutionsOptions {
@@ -118,6 +118,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
+    if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
     validateExecutionTransition(current, patch.status);
     this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
   }
@@ -129,7 +130,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     this.records.set(runId, { ...current, updatedAt: event.timestamp, events: [...current.events, event] });
   }
 
-  transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent): void {
+  transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
@@ -237,12 +238,13 @@ export class FileExecutionStore implements ExecutionStore {
     });
   }
 
-  async transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent): Promise<void> {
+  async transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
     validateRunId(runId);
     await this.enqueue(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
+      if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
       validateExecutionTransition(current, patch.status);
       await this.writeRecord(target, {
         ...current,
@@ -397,10 +399,10 @@ export async function recoverStaleExecutions(
       let claimed = false;
       if (store.transition) {
         try {
-          await store.transition(candidate.runId, { ...patch, updatedAt: undefined }, event);
+          await store.transition(candidate.runId, { ...patch, updatedAt: undefined }, event, candidate.updatedAt);
           claimed = true;
         } catch (error) {
-          if (error instanceof Error && (error.message.includes("Execution not found") || error.message.includes("Invalid execution status transition"))) {
+          if (error instanceof Error && (error.message.includes("Execution not found") || error.message.includes("Invalid execution status transition") || error.message.includes("Execution changed before transition"))) {
             continue;
           }
           throw error;
