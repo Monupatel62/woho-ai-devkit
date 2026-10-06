@@ -10,7 +10,8 @@ export type CapabilityKind =
   | "security"
   | "git"
   | "documentation"
-  | "data";
+  | "data"
+  | "command";
 
 export type PermissionAction = "read" | "write" | "execute" | "network" | "communicate" | "call";
 
