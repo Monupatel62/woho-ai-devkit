@@ -45,6 +45,7 @@ function isPrivateAddress(address: string): boolean {
   }
   if (version === 6) {
     const normalized = address.toLowerCase();
+    if (normalized.startsWith("::ffff:") && isPrivateAddress(normalized.slice(7))) return true;
     return normalized === "::1" || normalized === "::" || normalized.startsWith("fc") ||
       normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") ||
       normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("ff");
