@@ -52,6 +52,7 @@ const run = async () => {
         return "late";
       } },
       { definition: { name: "large" }, execute: async () => "x".repeat(100) },
+      { definition: { name: "huge" }, execute: async () => ({ values: Array.from({ length: 1_000_000 }, (_, index) => index) }) },
     ],
     resources: [{ definition: { uri: "memory://large" }, read: async () => [{ uri: "memory://large", text: "x".repeat(100) }] }],
     prompts: [{ definition: { name: "slow" }, get: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return "late"; } }],
@@ -60,6 +61,7 @@ const run = async () => {
   await new Promise((resolve) => setTimeout(resolve, 35));
   assert.equal(timedOutToolAborted, true);
   await assert.rejects(() => boundedServer.callTool("large", {}), /result exceeds maxResultBytes/);
+  await assert.rejects(() => boundedServer.callTool("huge", {}), /result exceeds maxResultBytes/);
   await assert.rejects(() => boundedServer.readResource("memory://large"), /result exceeds maxResultBytes/);
   await assert.rejects(() => boundedServer.getPrompt("slow"), /execution timed out/);
   assert.throws(() => createMCPServer({ name: "bad", version: "1", maxExecutionMs: 0 }), /maxExecutionMs/);
