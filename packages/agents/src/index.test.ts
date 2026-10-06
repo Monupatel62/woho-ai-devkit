@@ -438,10 +438,6 @@ const run = async () => {
   const retryCheckpointStore = new InMemoryExecutionStore();
   let retryToolExecutions = 0;
   let retryModelCalls = 0;
-  const checkpointRetryRuntime = new AgentRuntime({
-    store: retryCheckpointStore,
-    retry: { maxAttempts: 2, delayMs: 0 },
-  }, retryAgentRegistry);
   const checkpointRetryAI = createAI({
     provider: {
       name: "checkpoint-retry",
@@ -478,6 +474,10 @@ const run = async () => {
       }],
     }),
   );
+  const checkpointRetryRuntime = new AgentRuntime({
+    store: retryCheckpointStore,
+    retry: { maxAttempts: 2, delayMs: 0 },
+  }, retryAgentRegistry);
   const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
   assert.equal(checkpointRetryResult.text, "retry-recovered");
   assert.equal(retryToolExecutions, 1);
