@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createAI, type AIProvider } from "@woho/core";
 import { createWohoAgentPlatform } from "./platform.js";
+import { InMemoryExecutionStore } from "./execution-store.js";
 import type { AgentTool } from "./index.js";
 
 const responses = [
@@ -138,7 +139,10 @@ const projectInspectTool = {
     return { inspected: (input as { path: string }).path, content: "verified project state" };
   },
 };
+const codingStore = new InMemoryExecutionStore();
 const codingPlatform = createWohoAgentPlatform({
+  projectContext: { projectId: "platform-project", root: "/tmp/platform-project", sessionId: "platform-session" },
+  runtime: { store: codingStore },
   toolsByRole: { coding: [projectInspectTool] },
   permissionsByRole: { coding: { check: (request) => request.capability === "file" && request.action === "read" ? { allowed: true } : { allowed: false } } },
   codingLoop: { maxAttempts: 2 },
@@ -152,4 +156,8 @@ assert.equal(codingResult.attempts, 1);
 assert.equal(codingResult.final.text, "implemented after inspecting project tool output");
 assert.equal(codingToolRuns, 1);
 assert.ok(codingCalls >= 2);
+const codingRecord = codingStore.get(codingResult.runId);
+assert.ok(codingRecord);
+assert.equal(codingRecord.projectId, "platform-project");
+assert.equal(codingRecord.sessionId, "platform-session");
 console.log("WoHo agent platform tests passed");
