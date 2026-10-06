@@ -26,6 +26,14 @@ function redactObservabilityError(error: unknown): unknown {
   return { name: "UnknownError" };
 }
 
+function redactResponse(response: AIResponse): AIResponse {
+  return {
+    ...response,
+    text: "[REDACTED]",
+    toolCalls: response.toolCalls?.map((call) => ({ ...call, arguments: "[REDACTED]" })),
+  };
+}
+
 function redactRequest(request: AIRequest): AIRequest {
   return {
     ...request,
@@ -112,7 +120,7 @@ export class AIClient {
       try {
         if (merged.signal.aborted) throw merged.signal.reason ?? new Error("Aborted");
         const response = await awaitWithSignal(this.provider.chat({ ...request, signal: merged.signal }), merged.signal);
-        await this.observability?.onEvent?.({ type: "request.success", response, attempt, durationMs: Date.now() - started });
+        await this.observability?.onEvent?.({ type: "request.success", response: this.includeRequestContentInObservability ? response : redactResponse(response), attempt, durationMs: Date.now() - started });
         return response;
       } catch (error) {
         const normalized = merged.signal.aborted && !request.signal?.aborted ? new TimeoutError() : error;

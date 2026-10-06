@@ -168,7 +168,10 @@ assert.equal(
 
 {
   const events: AILogEvent[] = [];
-  const provider = createMockProvider();
+  const provider = {
+    name: "secret-response-provider",
+    async chat() { return { id: "response-1", model: "secret-response-provider", text: "secret model output", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"token\":\"secret\"}" }] }; },
+  };
   const client = createAI({ provider, observability: { onEvent: (event) => { events.push(event); } } });
   await client.chat({
     messages: [{ role: "user", content: "secret prompt", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"secret\":\"value\"}" }] }],
@@ -179,6 +182,12 @@ assert.equal(
   assert.equal(event.request.messages[0]?.content, "[REDACTED]");
   assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");
   assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");
+  const success = events.find((item) => item.type === "request.success");
+  assert.equal(success?.type, "request.success");
+  assert.equal(success.response.text, "[REDACTED]");
+  assert.equal(success.response.toolCalls?.[0]?.arguments, "[REDACTED]");
+  assert.ok(!JSON.stringify(success).includes("secret model output"));
+  assert.ok(!JSON.stringify(success).includes('{"token":"secret"}'));
 }
 
 {
