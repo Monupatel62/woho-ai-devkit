@@ -161,8 +161,8 @@ const run = async () => {
   const atomicEventStore = new AtomicEventStore();
   const atomicEventRuntime = new AgentRuntime({ store: atomicEventStore }, registry);
   const atomicRun = await atomicEventRuntime.run(createAI({ provider: createMockProvider({ response: "atomic-ok" }) }), { agent: "general", input: "atomic" });
-  const atomicRecord = atomicEventStore.get(atomicRun.runId);
-  assert.equal(atomicRecord?.status, "succeeded");
+  const runtimeAtomicRecord = atomicEventStore.get(atomicRun.runId);
+  assert.equal(runtimeAtomicRecord?.status, "succeeded");
   assert.ok(atomicEventStore.transitionCalls >= 1);
   const parallel = await runtime.runParallel(createAI({ provider: createMockProvider({ response: "parallel-ok" }) }), [
     { agent: "general", input: "one" }, { agent: "general", input: "two" },
