@@ -363,7 +363,7 @@ export class Agent {
             if (!decision.allowed) {
               if (decision.requiresApproval) {
                 await runEvent(runOptions, { type: "run.waiting", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { reason: "approval", tool: tool.name, capability: permission.capability, action: permission.action } });
-                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, tool: tool.name, capability: permission.capability, action: permission.action, input: parsed, reason: decision.reason });
+                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, callId: call.id, tool: tool.name, capability: permission.capability, action: permission.action, input: parsed, reason: decision.reason });
                 if (!approved) throw new AIError(decision.reason ?? "Tool action was not approved", "APPROVAL_REQUIRED");
               } else {
                 throw new AIError(decision.reason ?? "Tool action denied by permission policy", "PERMISSION_DENIED");
