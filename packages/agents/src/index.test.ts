@@ -245,7 +245,8 @@ const run = async () => {
     events: [],
   });
   casRecoveryStore.update("cas-recovery", { updatedAt: 150 });
-  const casRecovered = await recoverStaleExecutions(casRecoveryStore, { staleAfterMs: 50, now: 200 });
+  const casRuntime = new AgentRuntime({ store: casRecoveryStore }, registry);
+  const casRecovered = await casRuntime.recoverStale({ staleAfterMs: 50, now: 200 });
   assert.equal(casRecovered.length, 0);
   assert.equal(casRecoveryStore.get("cas-recovery")?.status, "running");
   const resumableStore = new InMemoryExecutionStore();
