@@ -11,6 +11,7 @@ try {
   const store = new FileExecutionStore({ directory: root });
   const record = {
     runId: "run-file-1",
+    projectId: "project-alpha",
     agent: "general",
     metadata: { source: "test" },
     status: "running" as const,
@@ -146,6 +147,13 @@ try {
   assert.equal(listed.length, 1);
   assert.equal(listed[0]?.runId, record.runId);
 
+  const projectListed = await reopened.list({ projectId: "project-alpha" });
+  assert.equal(projectListed.length, 1);
+  assert.equal(projectListed[0]?.projectId, "project-alpha");
+  const otherProject = { ...record, runId: "project-beta-run", projectId: "project-beta" };
+  await reopened.create(otherProject);
+  assert.deepEqual((await reopened.list({ projectId: "project-beta" })).map((item) => item.runId), ["project-beta-run"]);
+
   const limited = new FileExecutionStore({ directory: root, maxRecordBytes: 100 });
   await assert.rejects(
     () => limited.create({ ...record, runId: "oversized", metadata: { oversized: "x".repeat(200) } }),
@@ -162,6 +170,7 @@ try {
 const approvalStore = new InMemoryExecutionStore();
 const approvalRun = {
   runId: "approval-audit-run",
+  projectId: "project-alpha",
   agent: "woho-coding",
   input: "approve a protected action",
   metadata: {},
