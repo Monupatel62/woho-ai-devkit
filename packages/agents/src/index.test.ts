@@ -237,6 +237,23 @@ const run = async () => {
   assert.throws(() => new AgentRuntime({ heartbeatIntervalMs: 0 }), /heartbeatIntervalMs/);
   assert.throws(() => new AgentRuntime({ maxInputBytes: 0 }), /maxInputBytes/);
 
+  const safetyStore = new InMemoryExecutionStore();
+  await safetyStore.create({ runId: "safety-run", agent: "general", input: "safety", metadata: {}, status: "running", startedAt: 1, updatedAt: 1, attempts: 0, events: [] });
+  const claimed = await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1");
+  assert.equal(claimed?.status, "in_flight");
+  assert.equal((await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1"))?.status, "in_flight");
+  assert.equal(await safetyStore.completeToolExecution!("safety-run", "tool-1", "fp-1", { status: "completed", result: JSON.stringify({ ok: true }) }), true);
+  assert.equal((await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1"))?.status, "completed");
+  await assert.rejects(() => Promise.resolve(safetyStore.claimToolExecution!("safety-run", "tool-1", "different-fingerprint")), /fingerprint conflict/);
+
+  const leaseOne = await safetyStore.acquireLease!("safety-run", "worker-a", 10_000, 100);
+  assert.equal(leaseOne?.fencingToken, 1);
+  assert.equal(await safetyStore.acquireLease!("safety-run", "worker-b", 10_000, 101), undefined);
+  assert.equal(await safetyStore.renewLease!("safety-run", "worker-b", leaseOne!.fencingToken, 10_000, 102), false);
+  assert.equal(await safetyStore.releaseLease!("safety-run", "worker-a", leaseOne!.fencingToken, 103), true);
+  const leaseTwo = await safetyStore.acquireLease!("safety-run", "worker-b", 10_000, 104);
+  assert.equal(leaseTwo?.fencingToken, 2);
+
   const boundedInputStore = new InMemoryExecutionStore();
   const boundedInputRuntime = new AgentRuntime({ store: boundedInputStore, maxInputBytes: 8 }, registry);
   await assert.rejects(
