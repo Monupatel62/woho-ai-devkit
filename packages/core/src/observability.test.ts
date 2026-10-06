@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createAI, createMockProvider, createModelRouter, RateLimitError, TimeoutError } from "./index.js";
+import { createAI, createMockProvider, createModelRouter, RateLimitError, TimeoutError, type AILogEvent } from "./index.js";
 
 const requestEvents: string[] = [];
 const ai = createAI({
