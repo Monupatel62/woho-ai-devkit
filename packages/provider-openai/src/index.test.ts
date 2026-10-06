@@ -20,6 +20,7 @@ const run = async () => {
   assert.throws(() => createOpenAIProvider({ apiKey: " ", baseUrl: "https://example.test/v1" }), /API key is required/);
   assert.throws(() => createOpenAIProvider({ apiKey: "secret", baseUrl: "http://example.test/v1" }), /HTTPS/);
   assert.throws(() => createOpenAIProvider({ apiKey: "secret", maxResponseBytes: 0 }), /maxResponseBytes/);
+  assert.throws(() => createOpenAIProvider({ apiKey: "secret", maxRequestBytes: 0 }), /maxRequestBytes/);
   const provider = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", defaultModel: "test-model" });
   const result = await provider.chat({
     messages: [{ role: "user", content: "hi" }],
@@ -33,6 +34,19 @@ const run = async () => {
 
   globalThis.fetch = async () => new Response("{bad-json}", { status: 200, headers: { "content-type": "application/json" } });
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "malformed" }] }), /Malformed provider JSON response/);
+
+  const circular: Record<string, unknown> = {};
+  circular.self = circular;
+  await assert.rejects(
+    provider.chat({ messages: [{ role: "user", content: "secret-request" }], tools: [{ name: "circular", description: "secret", parameters: circular }] }),
+    (e) => e instanceof Error && e.message === "Provider request is not serializable" && !e.message.includes("secret"),
+  );
+
+  const bounded = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", maxRequestBytes: 20 });
+  await assert.rejects(
+    bounded.chat({ messages: [{ role: "user", content: "this request is too large" }] }),
+    /maxRequestBytes/,
+  );
 
   globalThis.fetch = async () => jsonResponse({}, 401);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof AuthenticationError);
