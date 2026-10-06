@@ -86,4 +86,5 @@ export interface AIConfig {
   retries?: number;
   retryDelayMs?: number;
   observability?: AIObservability;
+  includeRequestContentInObservability?: boolean;
 }
