@@ -81,6 +81,46 @@ async function readBodyWithLimit(response: Response, maxBytes: number): Promise<
   }
 }
 
+function assertSerializableWithinBytes(value: unknown, maxBytes: number): void {
+  let used = 0;
+  const seen = new WeakSet<object>();
+  const add = (text: string): void => {
+    used += Buffer.byteLength(text, "utf8");
+    if (used > maxBytes) throw new InvalidRequestError("Provider request exceeds maxRequestBytes");
+  };
+  const write = (input: unknown, depth: number): void => {
+    if (depth > 20) throw new InvalidRequestError("Provider request is too deeply nested");
+    if (input === null) return add("null");
+    if (typeof input === "string") return add(JSON.stringify(input));
+    if (typeof input === "number") return add(Number.isFinite(input) ? String(input) : "null");
+    if (typeof input === "boolean") return add(input ? "true" : "false");
+    if (typeof input === "undefined" || typeof input === "function" || typeof input === "symbol") return add("null");
+    if (typeof input === "bigint") throw new InvalidRequestError("Provider request is not serializable");
+    if (typeof input !== "object") throw new InvalidRequestError("Provider request is not serializable");
+    if (seen.has(input)) throw new InvalidRequestError("Provider request is not serializable");
+    seen.add(input);
+    if (Array.isArray(input)) {
+      add("[");
+      for (let index = 0; index < input.length; index += 1) {
+        if (index > 0) add(",");
+        write(input[index], depth + 1);
+      }
+      add("]");
+      return;
+    }
+    add("{");
+    let first = true;
+    for (const key of Object.keys(input as Record<string, unknown>)) {
+      if (!first) add(",");
+      first = false;
+      add(JSON.stringify(key) + ":");
+      write((input as Record<string, unknown>)[key], depth + 1);
+    }
+    add("}");
+  };
+  write(value, 0);
+}
+
 function normalizeToolCalls(message: { tool_calls?: Array<{ id?: string; function?: { name?: string; arguments?: string } }> } | undefined): AIToolCall[] {
   const calls = message?.tool_calls ?? [];
   return calls
@@ -122,6 +162,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
   });
 
   const serializeRequest = (body: ReturnType<typeof requestBody>): string => {
+    assertSerializableWithinBytes(body, maxRequestBytes);
     let serialized: string;
     try { serialized = JSON.stringify(body); }
     catch { throw new InvalidRequestError("Provider request is not serializable"); }
