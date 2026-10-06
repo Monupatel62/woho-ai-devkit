@@ -179,6 +179,11 @@ assert.equal(
   assert.equal(event.request.messages[0]?.content, "[REDACTED]");
   assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");
   assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");
+  const success = events.find((item) => item.type === "request.success");
+  assert.equal(success?.type, "request.success");
+  assert.equal(success.response.text, "[REDACTED]");
+  assert.equal(success.response.toolCalls?.[0]?.arguments, "[REDACTED]");
+  assert.ok(!JSON.stringify(success).includes("secret"));
 }
 
 {
