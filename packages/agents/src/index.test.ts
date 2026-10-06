@@ -135,7 +135,7 @@ const run = async () => {
     maxSteps: 2,
   });
   const missingPolicyResult = await missingPolicy.run("run unprotected");
-  assert.match(String(missingPolicyResult.toolResults["mock-call-1"] && (missingPolicyResult.toolResults["mock-call-1"] as { error: string }).error), /permission policy/);
+  assert.equal((missingPolicyResult.toolResults["mock-call-1"] as { error?: unknown }).error, "PERMISSION_POLICY_REQUIRED");
   let toolAborted = false;
   const abortingTool = createAgent(createAI({
     provider: {
