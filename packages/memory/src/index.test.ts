@@ -101,6 +101,13 @@ const run = async () => {
   const ranked = await searchMemory(rankedStore, "typescript python", { limit: 5 });
   assert.equal(ranked[0]?.message.id, "r1");
   assert.equal(ranked[0]?.score, 2);
+  await assert.rejects(
+    () => searchMemory(rankedStore, "x".repeat(20), { maxQueryCharacters: 10 }),
+    /exceeds maxQueryCharacters/,
+  );
+  const boundedRanked = await searchMemory(rankedStore, "typescript", { maxMessages: 1 });
+  assert.equal(boundedRanked.length, 1);
+  assert.equal(boundedRanked[0]?.message.id, "r2");
   const summary = summarizeMemory([{ id: "s", role: "user", content: "hello world" }], { maxCharacters: 50 });
   assert.equal(summary.role, "system");
   assert.ok(summary.content.includes("hello world"));
