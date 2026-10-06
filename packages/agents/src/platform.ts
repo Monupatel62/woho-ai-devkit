@@ -118,7 +118,13 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
     const id = agentId(role);
     if (registry.get(id)) continue;
     const roleTools = projectToolRoles.has(role) ? projectTools : [];
-    const tools = [...commonTools, ...roleTools, ...(options.toolsByRole?.[role] ?? [])];
+    const tools: AgentTool[] = [];
+    const seenToolNames = new Set<string>();
+    for (const tool of [...commonTools, ...roleTools, ...(options.toolsByRole?.[role] ?? [])]) {
+      if (seenToolNames.has(tool.name)) continue;
+      seenToolNames.add(tool.name);
+      tools.push(tool);
+    }
     registry.register({
       id,
       name: `WoHo ${role[0]!.toUpperCase() + role.slice(1)} Agent`,
