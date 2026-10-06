@@ -11,7 +11,15 @@ export interface MCPPromptArgument { name: string; description?: string; require
 export interface MCPPromptDefinition { name: string; description?: string; arguments?: MCPPromptArgument[]; }
 export interface MCPPrompt { definition: MCPPromptDefinition; get(promptArguments?: Record<string, string>): Promise<unknown>; }
 export interface MCPServerInfo { name: string; version: string; }
-export interface MCPServerOptions { name: string; version: string; tools?: MCPTool[]; resources?: MCPResource[]; prompts?: MCPPrompt[]; }
+export interface MCPServerOptions {
+  name: string;
+  version: string;
+  tools?: MCPTool[];
+  resources?: MCPResource[];
+  prompts?: MCPPrompt[];
+  maxExecutionMs?: number;
+  maxResultBytes?: number;
+}
 export interface MCPTransport { request(method: string, params?: unknown, signal?: AbortSignal): Promise<unknown>; notify?(method: string, params?: unknown): Promise<void>; close?(): Promise<void>; }
 export interface MCPClientSecurityOptions {
   maxResponseBytes?: number;
@@ -29,10 +37,16 @@ export class MCPServer {
   private readonly tools = new Map<string, MCPTool>();
   private readonly resources = new Map<string, MCPResource>();
   private readonly prompts = new Map<string, MCPPrompt>();
+  private readonly maxExecutionMs: number;
+  private readonly maxResultBytes: number;
   constructor(options: MCPServerOptions) {
     if (!options.name.trim()) throw new Error("MCP server name is required");
     if (!options.version.trim()) throw new Error("MCP server version is required");
     this.info = { name: options.name, version: options.version };
+    this.maxExecutionMs = options.maxExecutionMs ?? 30_000;
+    this.maxResultBytes = options.maxResultBytes ?? 4 * 1024 * 1024;
+    if (!Number.isInteger(this.maxExecutionMs) || this.maxExecutionMs < 1) throw new Error("maxExecutionMs must be a positive integer");
+    if (!Number.isInteger(this.maxResultBytes) || this.maxResultBytes < 1) throw new Error("maxResultBytes must be a positive integer");
     for (const tool of options.tools ?? []) this.registerTool(tool);
     for (const resource of options.resources ?? []) this.registerResource(resource);
     for (const prompt of options.prompts ?? []) this.registerPrompt(prompt);
@@ -50,12 +64,33 @@ export class MCPServer {
     this.resources.set(resource.definition.uri, resource);
   }
   listResources(): MCPResourceDefinition[] { return [...this.resources.values()].map((resource) => ({ ...resource.definition })); }
+  private async executeBounded<T>(operation: string, action: () => Promise<T>): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new MCPError("MCP server execution timed out", operation)), this.maxExecutionMs);
+    });
+    try {
+      const result = await Promise.race([action(), timeout]);
+      try {
+        const bytes = Buffer.byteLength(JSON.stringify(result) ?? "", "utf8");
+        if (bytes > this.maxResultBytes) throw new MCPError("MCP server result exceeds maxResultBytes", operation);
+      } catch (error) {
+        if (error instanceof MCPError) throw error;
+        throw new MCPError("MCP server result is not serializable", operation);
+      }
+      return result;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async readResource(uri: string): Promise<MCPResourceContent[]> {
     const resource = this.resources.get(uri);
     if (!resource) throw new Error("Unknown MCP resource: " + uri);
     try {
-      return await resource.read();
-    } catch {
+      return await this.executeBounded("resources/read", () => resource.read());
+    } catch (error) {
+      if (error instanceof MCPError) throw error;
       throw new MCPError("MCP resource read failed", "resources/read");
     }
   }
@@ -70,8 +105,9 @@ export class MCPServer {
     const prompt = this.prompts.get(name);
     if (!prompt) throw new Error("Unknown MCP prompt: " + name);
     try {
-      return await prompt.get(promptArguments);
-    } catch {
+      return await this.executeBounded("prompts/get", () => prompt.get(promptArguments));
+    } catch (error) {
+      if (error instanceof MCPError) throw error;
       throw new MCPError("MCP prompt execution failed", "prompts/get");
     }
   }
@@ -79,8 +115,9 @@ export class MCPServer {
     const tool = this.tools.get(name);
     if (!tool) throw new Error("Unknown MCP tool: " + name);
     try {
-      return await tool.execute(input);
-    } catch {
+      return await this.executeBounded("tools/call", () => tool.execute(input));
+    } catch (error) {
+      if (error instanceof MCPError) throw error;
       throw new MCPError("MCP tool execution failed", "tools/call");
     }
   }
