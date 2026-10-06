@@ -40,7 +40,23 @@ export interface AgentApprovalRequest {
 
 export type AgentApprovalHandler = (request: AgentApprovalRequest) => boolean | Promise<boolean>;
 
-export interface AgentRunOptions { signal?: AbortSignal; runId?: string; onEvent?: (event: ExecutionEvent) => void | Promise<void>; approval?: AgentApprovalHandler; }
+export interface AgentExecutionCheckpoint {
+  readonly step: number;
+  readonly messages: readonly AIMessage[];
+  /** A tool call that may have started; recovery must fail closed until reconciled. */
+  readonly inFlightToolCallId?: string;
+  readonly updatedAt: number;
+}
+
+export interface AgentRunOptions {
+  signal?: AbortSignal;
+  runId?: string;
+  onEvent?: (event: ExecutionEvent) => void | Promise<void>;
+  approval?: AgentApprovalHandler;
+  /** Continue from a durable checkpoint without replaying the original user message. */
+  checkpoint?: AgentExecutionCheckpoint;
+  onCheckpoint?: (checkpoint: AgentExecutionCheckpoint) => void | Promise<void>;
+}
 
 export interface AgentOptions {
   name: string;
@@ -272,14 +288,15 @@ export class Agent {
     if (!input.trim()) throw new AIError("Agent input cannot be empty", "INVALID_AGENT_INPUT");
     if (runOptions.signal?.aborted) throw runOptions.signal.reason ?? new AIError("Agent run aborted", "AGENT_ABORTED");
 
-    const messages: AIMessage[] = [];
+    const messages: AIMessage[] = runOptions.checkpoint ? [...runOptions.checkpoint.messages] : [];
     const toolResults: Record<string, unknown> = {};
     let usage: AIUsage | undefined;
     const toolsByName = new Map(this.tools.map((tool) => [tool.name, tool]));
 
-    if (this.instructions) messages.push({ role: "system", content: this.instructions });
-    const conversation = this.memory && this.sessionId ? createConversation({ sessionId: this.sessionId, store: this.memory }) : undefined;
-    if (conversation) {
+    const resumed = Boolean(runOptions.checkpoint);
+    if (!resumed && this.instructions) messages.push({ role: "system", content: this.instructions });
+    const conversation = !resumed && this.memory && this.sessionId ? createConversation({ sessionId: this.sessionId, store: this.memory }) : undefined;
+    if (!resumed && conversation) {
       let history = await conversation.messages(this.maxContextMessages);
       if (this.memorySummarizer && history.length >= this.memorySummaryThreshold) {
         const summary = await this.memorySummarizer.summarize(history, { maxCharacters: this.maxContextChars ?? 4000 });
@@ -291,11 +308,17 @@ export class Agent {
         ...(Array.isArray(metadata?.toolCalls) ? { toolCalls: metadata.toolCalls as AIToolCall[] } : {}),
       })));
     }
-    const userMessage: AIMessage = { role: "user", content: input };
-    messages.push(userMessage);
-    if (conversation) await conversation.add({ id: `user-${Date.now()}-${Math.random()}`, role: "user", content: input, timestamp: Date.now() });
+    if (!resumed) {
+      const userMessage: AIMessage = { role: "user", content: input };
+      messages.push(userMessage);
+      if (conversation) await conversation.add({ id: `user-${Date.now()}-${Math.random()}`, role: "user", content: input, timestamp: Date.now() });
+    }
+    const initialStep = runOptions.checkpoint?.step ?? 0;
+    if (runOptions.onCheckpoint) {
+      await runOptions.onCheckpoint({ step: initialStep, messages: [...messages], updatedAt: Date.now() });
+    }
 
-    for (let step = 1; step <= this.maxSteps; step += 1) {
+    for (let step = initialStep + 1; step <= this.maxSteps; step += 1) {
       const response = await this.ai.chat({
         messages,
         tools: this.tools.length ? toolDefinitions(this.tools) : undefined,
@@ -330,6 +353,9 @@ export class Agent {
       };
       messages.push(assistantMessage);
       if (conversation) await conversation.add({ id: `assistant-${Date.now()}-${step}`, ...assistantMessage, timestamp: Date.now() });
+      if (runOptions.onCheckpoint) {
+        await runOptions.onCheckpoint({ step, messages: [...messages], updatedAt: Date.now() });
+      }
 
       if (!calls.length) {
         return { text: response.text, steps: step, messages, toolResults, ...(usage ? { usage } : {}) };
@@ -343,6 +369,9 @@ export class Agent {
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(error, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
+          if (runOptions.onCheckpoint) {
+            await runOptions.onCheckpoint({ step, messages: [...messages], updatedAt: Date.now() });
+          }
           continue;
         }
 
@@ -369,6 +398,9 @@ export class Agent {
                 throw new AIError(decision.reason ?? "Tool action denied by permission policy", "PERMISSION_DENIED");
               }
             }
+          }
+          if (runOptions.onCheckpoint) {
+            await runOptions.onCheckpoint({ step, messages: [...messages], inFlightToolCallId: call.id, updatedAt: Date.now() });
           }
           await runEvent(runOptions, { type: "tool.started", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step } });
           let result: unknown;
