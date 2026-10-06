@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createAI, createMockProvider, createModelRouter, RateLimitError, TimeoutError, type AILogEvent } from "./index.js";
+import { AIError } from "./errors.js";
 
 const requestEvents: string[] = [];
 const ai = createAI({
@@ -146,6 +147,23 @@ assert.equal(iteratorReturned, true);
 
 const router = createModelRouter({ routes: [{ provider: createMockProvider({ response: "routed" }), models: ["router-test"] }] });
 assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "user", content: "route" }], model: "router-test" })).text, "routed");
+
+await assert.rejects(
+  () => createAI({ provider: router }).chat({ messages: [{ role: "user", content: "unknown" }], model: "unconfigured-model" }),
+  (error) => error instanceof AIError && error.code === "MODEL_NOT_FOUND",
+);
+
+assert.throws(
+  () => createModelRouter({ routes: [{ provider: createMockProvider() }], rejectUnknownModel: "yes" as never }),
+  /rejectUnknownModel must be a boolean/,
+);
+
+assert.equal(
+  (await createAI({
+    provider: createModelRouter({ routes: [{ provider: createMockProvider({ response: "fallback" }) }], rejectUnknownModel: false }),
+  }).chat({ messages: [{ role: "user", content: "legacy" }], model: "unconfigured-model" })).text,
+  "fallback",
+);
 
 
 {
