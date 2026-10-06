@@ -187,7 +187,7 @@ assert.equal(
   assert.equal(success.response.text, "[REDACTED]");
   assert.equal(success.response.toolCalls?.[0]?.arguments, "[REDACTED]");
   assert.ok(!JSON.stringify(success).includes("secret model output"));
-  assert.ok(!JSON.stringify(success).includes("\\"token\\":\\"secret\\""));
+  assert.ok(!JSON.stringify(success).includes("secret"));
 }
 
 {
