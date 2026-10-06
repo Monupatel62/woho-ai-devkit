@@ -87,6 +87,34 @@ const run = async () => {
 
   const command = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], timeoutMs: 2_000, maxOutputBytes: 10_000 });
   const commandResult = await command.execute({ command: process.execPath, args: ["-e", "process.stdout.write('woho-command-ok')"], cwd: process.cwd() }) as { stdout: string };
+
+  const previousSecret = process.env.WOHO_TOOLS_TEST_SECRET;
+  process.env.WOHO_TOOLS_TEST_SECRET = "secret-value";
+  const isolatedCommand = commandTool({
+    allowedCommands: ["node"],
+    allowedDirectories: [process.cwd()],
+    environment: { WOHO_TOOLS_SAFE: "yes" },
+  });
+  const isolatedResult = await isolatedCommand.execute({
+    command: process.execPath,
+    args: ["-e", "process.stdout.write((process.env.WOHO_TOOLS_TEST_SECRET ?? 'missing') + ':' + (process.env.WOHO_TOOLS_SAFE ?? 'missing'))"],
+    cwd: process.cwd(),
+  }) as { stdout: string };
+  assert.equal(isolatedResult.stdout, "missing:yes");
+  assert.equal(process.env.WOHO_TOOLS_TEST_SECRET, "secret-value");
+
+  const inheritedCommand = commandTool({
+    allowedCommands: ["node"],
+    allowedDirectories: [process.cwd()],
+    inheritEnvironment: true,
+  });
+  const inheritedResult = await inheritedCommand.execute({
+    command: process.execPath,
+    args: ["-e", "process.stdout.write(process.env.WOHO_TOOLS_TEST_SECRET ?? 'missing')"],
+    cwd: process.cwd(),
+  }) as { stdout: string };
+  assert.equal(inheritedResult.stdout, "secret-value");
+  if (previousSecret === undefined) delete process.env.WOHO_TOOLS_TEST_SECRET; else process.env.WOHO_TOOLS_TEST_SECRET = previousSecret;
   assert.equal(commandResult.stdout, "woho-command-ok");
   await assert.rejects(() => command.execute({ command: "sh", args: ["-c", "echo no"] }), /not allowed/);
 
