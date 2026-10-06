@@ -24,6 +24,66 @@ try {
   assert.deepEqual(await store.get(record.runId), record);
   await assert.rejects(() => store.create(record), /already exists/);
 
+  await assert.rejects(() => store.create({ ...record, runId: "invalid-status", status: "corrupt" as never }), /Invalid execution status/);
+  await assert.rejects(() => store.create({ ...record, runId: "invalid-time", updatedAt: -1 }), /Execution updatedAt must be a non-negative finite number/);
+  await assert.rejects(() => store.create({ ...record, runId: "invalid-attempts", attempts: 1.5 }), /Execution attempts must be a non-negative integer/);
+  await assert.rejects(
+    () => store.create({ ...record, runId: "missing-started-at", startedAt: undefined as never }),
+    /Execution startedAt must be a non-negative finite number/,
+  );
+  await assert.rejects(
+    () => store.create({ ...record, runId: "missing-updated-at", updatedAt: undefined as never }),
+    /Execution updatedAt must be a non-negative finite number/,
+  );
+  await assert.rejects(
+    () => store.create({
+      ...record,
+      runId: "invalid-event",
+      events: [{ type: "not-an-event", runId: "invalid-event", timestamp: 1 }],
+    } as never),
+    /Invalid execution event type/,
+  );
+  await assert.rejects(
+    () => store.create({
+      ...record,
+      runId: "invalid-event-run",
+      events: [{ type: "run.started", runId: "different-run", timestamp: 1 }],
+    } as never),
+    /does not match execution record/,
+  );
+  await assert.rejects(
+    () => store.appendEvent(record.runId, {
+      type: "run.completed",
+      runId: "different-run",
+      timestamp: 2,
+    }),
+    /does not match execution record/,
+  );
+  await assert.rejects(
+    () => store.appendEvent(record.runId, {
+      type: "run.completed",
+      runId: record.runId,
+      timestamp: undefined as never,
+    }),
+    /Execution event timestamp must be a non-negative finite number/,
+  );
+  const malformedPath = path.join(root, Buffer.from("malformed-persisted", "utf8").toString("base64url") + ".json");
+  await writeFile(malformedPath, JSON.stringify({
+    runId: "malformed-persisted",
+    agent: "general",
+    metadata: {},
+    status: "corrupt",
+    startedAt: 1,
+    updatedAt: 1,
+    attempts: 0,
+    events: [],
+  }));
+  await assert.rejects(
+    () => store.get("malformed-persisted"),
+    /Invalid execution status/,
+  );
+  await rm(malformedPath, { force: true });
+
   const event = {
     type: "run.completed" as const,
     runId: record.runId,
