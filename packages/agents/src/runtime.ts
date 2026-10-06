@@ -47,6 +47,8 @@ export interface AgentResumeOptions {
 export interface AgentTask {
   readonly agent: string;
   readonly input: string;
+  /** Stable project scope carried into durable execution history. */
+  readonly projectId?: string;
   readonly parentRunId?: string;
   /** Optional caller-supplied run ID; primarily used for idempotent durable resume. */
   readonly runId?: string;
@@ -121,7 +123,7 @@ export class AgentRuntime {
       metadata: task.metadata ?? {},
     };
     const startedAt = Date.now();
-    await this.store?.create({ runId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
+    await this.store?.create({ runId, projectId: task.projectId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
     const heartbeat = this.store
       ? setInterval(() => {
@@ -308,6 +310,7 @@ export class AgentRuntime {
       agent: record.agent,
       input: record.input,
       parentRunId: record.runId,
+      projectId: record.projectId,
       sessionId: record.sessionId,
       metadata: { ...record.metadata },
       retry: options.retry,

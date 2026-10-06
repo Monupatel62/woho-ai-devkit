@@ -200,6 +200,7 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
         input,
         runId: runnerOptions?.runId ?? runId,
         signal: runnerOptions?.signal,
+        projectId: projectContext?.projectId,
         sessionId: projectContext?.sessionId,
         metadata: projectContext ? mergeWohoProjectMetadata(projectContext) : undefined,
       }),
@@ -211,6 +212,7 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
 
   return { registry, runtime, plan, runPlan, run, runAgent: (ai, task) => runtime.run(ai, {
     ...task,
+    projectId: task.projectId ?? projectContext?.projectId,
     sessionId: task.sessionId ?? projectContext?.sessionId,
     metadata: projectContext ? mergeWohoProjectMetadata(projectContext, task.metadata) : task.metadata,
   }), projectContext, runCodingTask };
