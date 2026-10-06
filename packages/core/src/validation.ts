@@ -53,8 +53,8 @@ export function validateAIRequest(request: AIRequest, options: ValidationOptions
   if (request.temperature !== undefined && (!Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2)) {
     throw new Error("temperature must be a finite number between 0 and 2");
   }
-  if (request.topP !== undefined && (!Number.isFinite(request.topP) || request.topP <= 0 || request.topP > 1)) {
-    throw new Error("topP must be a finite number greater than 0 and at most 1");
+  if (request.topP !== undefined && (!Number.isFinite(request.topP) || request.topP < 0 || request.topP > 1)) {
+    throw new Error("topP must be a finite number between 0 and 1");
   }
   if (request.maxTokens !== undefined && (!Number.isInteger(request.maxTokens) || request.maxTokens < 1)) {
     throw new Error("maxTokens must be a positive integer");
