@@ -31,6 +31,18 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
     capability: "command",
     action: "execute",
     description: "Run an explicitly allowlisted local command inside an explicitly allowed working directory.",
+    authorize(input) {
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
+        return { capability: "command", action: "execute" };
+      }
+      const value = input as Record<string, unknown>;
+      const command = typeof value.command === "string" ? value.command.trim() : "";
+      const cwd = typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : undefined;
+      const resource = command
+        ? `command:${basename(command).toLowerCase()}${cwd ? `@${cwd}` : ""}`
+        : undefined;
+      return { capability: "command", action: "execute", ...(resource ? { resource } : {}) };
+    },
     parameters: {
       type: "object",
       properties: { command: { type: "string" }, args: { type: "array" }, cwd: { type: "string" } },
@@ -72,8 +84,8 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
         const safeEnvironment: Record<string, string> = {
           PATH: process.env.PATH ?? "",
           ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-          ...(inputPolicy.environment ?? {}),
           ...(inheritEnvironment ? process.env : {}),
+          ...(inputPolicy.environment ?? {}),
         };
         const child = spawn(command, args as string[], { cwd, shell: false, windowsHide: true, env: safeEnvironment });
         let stdout = "";
