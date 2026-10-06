@@ -334,13 +334,15 @@ export async function pruneExecutionHistory(
   const now = options.now ?? Date.now();
   const records = await store.list({ status: options.status });
   const cutoff = options.olderThanMs === undefined ? undefined : now - options.olderThanMs;
-  const candidates = records
-    .sort((a, b) => a.updatedAt - b.updatedAt)
-    .filter((record, index) => {
-      const oldEnough = cutoff === undefined || record.updatedAt <= cutoff;
-      const overCount = options.maxRecords === undefined || index >= options.maxRecords;
-      return oldEnough && overCount;
-    });
+  const sorted = records.sort((a, b) => a.updatedAt - b.updatedAt);
+  const keepFromIndex = options.maxRecords === undefined
+    ? sorted.length
+    : Math.max(0, sorted.length - options.maxRecords);
+  const candidates = sorted.filter((record, index) => {
+    const oldEnough = cutoff === undefined || record.updatedAt <= cutoff;
+    const overCount = options.maxRecords === undefined || index < keepFromIndex;
+    return oldEnough && overCount;
+  });
   const removed: ExecutionRecord[] = [];
   for (const record of candidates) {
     if (await store.remove(record.runId)) removed.push(record);
