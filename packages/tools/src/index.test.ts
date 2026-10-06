@@ -118,6 +118,10 @@ const run = async () => {
   assert.deepEqual(await workspace.execute({ operation: "delete", path: "hello.txt" }), { path: "hello.txt", deleted: true });
   await rm(workspaceRoot, { recursive: true, force: true });
 
+  const boundedGit = (await import("./git.js")).gitTool({ root: process.cwd(), maxPaths: 1, maxPathBytes: 10 });
+  await assert.rejects(() => boundedGit.execute({ operation: "status", paths: ["a", "b"] }), /maxPaths/);
+  await assert.rejects(() => boundedGit.execute({ operation: "status", paths: ["x".repeat(11)] }), /maxPathBytes/);
+
   const gitRoot = await mkdtemp(join(tmpdir(), "woho-git-"));
   (await import("node:child_process")).execFileSync("git", ["init"], { cwd: gitRoot, stdio: "ignore" });
   await writeFile(join(gitRoot, "README.md"), "woho\n", "utf8");
