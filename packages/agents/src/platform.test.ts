@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createAI, type AIProvider } from "@woho/core";
 import { createWohoAgentPlatform } from "./platform.js";
+import type { AgentTool } from "./index.js";
 
 const responses = [
   JSON.stringify({ steps: [
@@ -28,6 +29,29 @@ assert.ok(platform.registry.get("woho-coding"));
 assert.ok(platform.registry.get("woho-browser"));
 assert.ok(platform.registry.get("woho-security"));
 assert.ok(platform.registry.get("woho-orchestrator"));
+
+const projectTool: AgentTool = {
+  name: "project_context_probe",
+  description: "Probe the authorized project context.",
+  capability: "file",
+  action: "read" as const,
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  async execute() { return { ok: true }; },
+};
+const projectContextPlatform = createWohoAgentPlatform({
+  projectTools: [projectTool],
+  toolsByRole: { coding: [projectTool] },
+});
+assert.ok(projectContextPlatform.registry.get("woho-coding")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-file")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-testing")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-git")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-security")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-documentation")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.equal(projectContextPlatform.registry.get("woho-orchestrator")?.definition.tools?.some((tool) => tool.name === "project_context_probe"), false);
+assert.equal(projectContextPlatform.registry.get("woho-planner")?.definition.tools?.some((tool) => tool.name === "project_context_probe"), false);
+assert.equal(projectContextPlatform.registry.get("woho-coding")?.definition.tools?.filter((tool) => tool.name === "project_context_probe").length, 1);
+
 
 const ai = createAI({ provider });
 const plan = await platform.plan(ai, "Build the requested software change.");
