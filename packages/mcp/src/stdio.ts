@@ -164,7 +164,7 @@ export class MCPStdioTransport implements MCPTransport {
     if (message.id === undefined) return;
     const pending = this.pending.get(message.id);
     if (!pending) return;
-    if (message.error) pending.reject(new MCPError(typeof message.error.message === "string" ? message.error.message : "MCP JSON-RPC error"));
+    if (message.error) pending.reject(new MCPError("MCP JSON-RPC request failed"));
     else if ("result" in message) pending.resolve(message.result);
     else pending.reject(new MCPError("Invalid MCP JSON-RPC response"));
   }
