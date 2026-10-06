@@ -1,4 +1,5 @@
 import type { AgentTool } from "@woho/agents";
+import { isIP } from "node:net";
 import { validateToolInput } from "./validation.js";
 export { ToolRegistry, createToolRegistry } from "./registry.js";
 export { commandTool, type CommandToolPolicy } from "./command.js";
@@ -31,6 +32,32 @@ async function readResponseTextWithLimit(response: Response, maxBytes: number): 
   } finally {
     await reader.cancel().catch(() => undefined);
   }
+}
+
+function isPrivateAddress(address: string): boolean {
+  const version = isIP(address);
+  if (version === 4) {
+    const octets = address.split(".").map(Number);
+    const [a, b] = octets;
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) || a >= 224;
+  }
+  if (version === 6) {
+    const normalized = address.toLowerCase();
+    if (normalized.startsWith("::ffff:") && isPrivateAddress(normalized.slice(7))) return true;
+    return normalized === "::1" || normalized === "::" || normalized.startsWith("fc") ||
+      normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") ||
+      normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("ff");
+  }
+  return false;
+}
+
+async function assertPublicHttpAddress(hostname: string, allowPrivateAddresses: boolean): Promise<void> {
+  if (allowPrivateAddresses) return;
+  const addresses = isIP(hostname) ? [hostname] : (await (await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true })).map((entry) => entry.address);
+  if (!addresses.length) throw new Error("Hostname did not resolve");
+  if (addresses.some(isPrivateAddress)) throw new Error("URL resolves to a private or reserved address");
 }
 
 function requireObject(input: unknown): Record<string, unknown> {
@@ -144,6 +171,7 @@ export function httpGetTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
       if (url.username || url.password) throw new Error("Credential-bearing URLs are not allowed");
       if (url.protocol !== "https:") throw new Error("Only HTTPS URLs are allowed");
       assertAllowedHost(url.hostname, policy.allowedHosts);
+      await assertPublicHttpAddress(url.hostname, policy.allowPrivateAddresses);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), policy.timeoutMs);
       try {
