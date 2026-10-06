@@ -105,6 +105,42 @@ await abortIterator.return?.();
 
 console.log("core streaming timeout tests passed");
 
+{
+  const events: AILogEvent[] = [];
+  const client = createAI({
+    provider: {
+      name: "secret-stream-provider",
+      async chat() { return { id: "x", text: "", model: "secret-stream-provider" }; },
+      async *stream() { yield { id: "chunk-1", text: "secret streamed output", model: "secret-stream-provider" }; },
+    },
+    observability: { onEvent: (event) => { events.push(event); } },
+  });
+  const chunks: string[] = [];
+  for await (const chunk of client.stream({ messages: [{ role: "user", content: "x" }] })) chunks.push(chunk.text);
+  assert.deepEqual(chunks, ["secret streamed output"]);
+  const event = events.find((item) => item.type === "stream.chunk");
+  assert.equal(event?.type, "stream.chunk");
+  assert.equal(event.chunk.text, "[REDACTED]");
+  assert.ok(!JSON.stringify(event).includes("secret streamed output"));
+}
+
+{
+  const events: AILogEvent[] = [];
+  const client = createAI({
+    provider: {
+      name: "visible-stream-provider",
+      async chat() { return { id: "x", text: "", model: "visible-stream-provider" }; },
+      async *stream() { yield { id: "chunk-1", text: "visible streamed output", model: "visible-stream-provider" }; },
+    },
+    includeRequestContentInObservability: true,
+    observability: { onEvent: (event) => { events.push(event); } },
+  });
+  for await (const _chunk of client.stream({ messages: [{ role: "user", content: "x" }] })) {}
+  const event = events.find((item) => item.type === "stream.chunk");
+  assert.equal(event?.type, "stream.chunk");
+  assert.equal(event.chunk.text, "visible streamed output");
+}
+
 
 const alreadyAborted = new AbortController();
 alreadyAborted.abort(new Error("already aborted"));
