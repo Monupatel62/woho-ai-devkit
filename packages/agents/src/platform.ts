@@ -13,6 +13,8 @@ export interface WohoAgentPlatformOptions {
   readonly permissionsByRole?: Partial<Record<AgentRole, AgentDefinition["permissions"]>>;
   readonly maxPlanSteps?: number;
   readonly maxPlanGoalBytes?: number;
+  /** Maximum UTF-8 bytes accepted for any planner-generated step input. */
+  readonly maxPlanStepInputBytes?: number;
   readonly delegation?: AgentDelegationPolicy;
 }
 
@@ -58,7 +60,7 @@ function extractJson(text: string): unknown {
   catch { throw new Error("Planner returned invalid JSON"); }
 }
 
-function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, maxSteps: number): AgentPlan {
+function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, maxSteps: number, maxStepInputBytes: number): AgentPlan {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Planner output must be an object");
   const steps = (value as Record<string, unknown>).steps;
   if (!Array.isArray(steps) || steps.length < 1 || steps.length > maxSteps) throw new Error("Planner returned an invalid step count");
@@ -74,9 +76,12 @@ function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, maxSte
     if (typeof id !== "string" || !id.trim() || ids.has(id)) throw new Error("Planner returned an invalid or duplicate step id");
     if (typeof agent !== "string" || !allowedAgents.has(agent)) throw new Error("Planner selected an unavailable agent: " + String(agent));
     if (typeof input !== "string" || !input.trim()) throw new Error("Planner returned an invalid step input");
+    if (Buffer.byteLength(input, "utf8") > maxStepInputBytes) throw new Error("Planner step input exceeds maxPlanStepInputBytes");
     if (dependsOn !== undefined && (!Array.isArray(dependsOn) || dependsOn.some((x) => typeof x !== "string"))) {
       throw new Error("Planner returned invalid dependencies");
     }
+    if (dependsOn?.some((dependency) => dependency === id)) throw new Error("Planner returned a self dependency: " + id);
+    if (dependsOn && new Set(dependsOn).size !== dependsOn.length) throw new Error("Planner returned duplicate dependencies: " + id);
     ids.add(id);
     result.push({ id, agent, input, ...(dependsOn ? { dependsOn } : {}) });
   }
@@ -89,8 +94,10 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
   const commonTools = [...(options.commonTools ?? [])];
   const maxPlanSteps = options.maxPlanSteps ?? 16;
   const maxPlanGoalBytes = options.maxPlanGoalBytes ?? 256 * 1024;
+  const maxPlanStepInputBytes = options.maxPlanStepInputBytes ?? 64 * 1024;
   if (!Number.isInteger(maxPlanSteps) || maxPlanSteps < 1) throw new Error("maxPlanSteps must be a positive integer");
   if (!Number.isInteger(maxPlanGoalBytes) || maxPlanGoalBytes < 1) throw new Error("maxPlanGoalBytes must be a positive integer");
+  if (!Number.isInteger(maxPlanStepInputBytes) || maxPlanStepInputBytes < 1) throw new Error("maxPlanStepInputBytes must be a positive integer");
 
   for (const role of ROLES) {
     const id = agentId(role);
@@ -133,7 +140,7 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
       ],
       signal: planOptions.signal,
     });
-    return validatePlan(extractJson(response.text), allowedAgents, maxPlanSteps);
+    return validatePlan(extractJson(response.text), allowedAgents, maxPlanSteps, maxPlanStepInputBytes);
   };
 
   const runPlan = (ai: AIClient, agentPlan: AgentPlan, runOptions: { signal?: AbortSignal } = {}) =>
