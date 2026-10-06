@@ -52,7 +52,8 @@ export function createAgentDelegationTool(
       const value = input as Record<string, unknown>;
       const agent = value.agent;
       const task = value.task;
-      const depth = value.depth === undefined ? 0 : value.depth;
+      const rawDepth = value.depth;
+      const depth = rawDepth === undefined ? 0 : rawDepth;
       if (typeof agent !== "string" || !agent.trim()) throw new Error("agent is required");
       if (typeof task !== "string" || !task.trim()) throw new Error("task is required");
       if (!Number.isInteger(depth) || depth < 0) throw new Error("depth must be a non-negative integer");
