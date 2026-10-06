@@ -128,7 +128,7 @@ const run = async () => {
     maxSteps: 2,
   });
   const denied = await permissioned.run("run secure");
-  assert.match(String(denied.toolResults["mock-call-1"] && (denied.toolResults["mock-call-1"] as { error: string }).error), /needs approval/);
+  assert.equal((denied.toolResults["mock-call-1"] as { error?: unknown }).error, "APPROVAL_REQUIRED");
   const missingPolicy = createAgent(createAI({ provider: createMockProvider({ response: "policy-required", toolCall: { name: "unprotected", arguments: "{}" } }) }), {
     name: "missing-policy",
     tools: [{ name: "unprotected", description: "Unprotected", capability: "computer", action: "execute", execute: async () => "should-not-run" }],
