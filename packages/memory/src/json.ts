@@ -1,7 +1,7 @@
 import { mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { MemoryMessage, MemoryQuery, MemoryStore } from "./index.js";
+import { validateMemoryMetadata, type MemoryMessage, type MemoryQuery, type MemoryStore } from "./index.js";
 
 export interface JsonFileStoreOptions {
   filePath: string;
@@ -10,6 +10,8 @@ export interface JsonFileStoreOptions {
   lockTimeoutMs?: number;
   lockRetryMs?: number;
   lockStaleMs?: number;
+  maxMetadataBytes?: number;
+  maxMetadataDepth?: number;
 }
 
 export class JsonFileStore implements MemoryStore {
@@ -19,6 +21,8 @@ export class JsonFileStore implements MemoryStore {
   private readonly lockTimeoutMs: number;
   private readonly lockRetryMs: number;
   private readonly lockStaleMs: number;
+  private readonly maxMetadataBytes: number;
+  private readonly maxMetadataDepth: number;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: JsonFileStoreOptions) {
@@ -29,11 +33,15 @@ export class JsonFileStore implements MemoryStore {
     this.lockTimeoutMs = options.lockTimeoutMs ?? 10_000;
     this.lockRetryMs = options.lockRetryMs ?? 25;
     this.lockStaleMs = options.lockStaleMs ?? 30_000;
+    this.maxMetadataBytes = options.maxMetadataBytes ?? 256 * 1024;
+    this.maxMetadataDepth = options.maxMetadataDepth ?? 10;
     if (!Number.isInteger(this.maxMessages) || this.maxMessages < 1) throw new Error("maxMessages must be a positive integer");
     if (!Number.isInteger(this.maxFileBytes) || this.maxFileBytes < 1) throw new Error("maxFileBytes must be a positive integer");
     if (!Number.isInteger(this.lockTimeoutMs) || this.lockTimeoutMs < 1) throw new Error("lockTimeoutMs must be a positive integer");
     if (!Number.isInteger(this.lockRetryMs) || this.lockRetryMs < 1) throw new Error("lockRetryMs must be a positive integer");
     if (!Number.isInteger(this.lockStaleMs) || this.lockStaleMs < this.lockRetryMs) throw new Error("lockStaleMs must be at least lockRetryMs");
+    if (!Number.isInteger(this.maxMetadataBytes) || this.maxMetadataBytes < 1) throw new Error("maxMetadataBytes must be a positive integer");
+    if (!Number.isInteger(this.maxMetadataDepth) || this.maxMetadataDepth < 1) throw new Error("maxMetadataDepth must be a positive integer");
   }
 
   private async load(): Promise<MemoryMessage[]> {
@@ -123,6 +131,7 @@ export class JsonFileStore implements MemoryStore {
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
     if (message.metadata !== undefined && (typeof message.metadata !== "object" || message.metadata === null || Array.isArray(message.metadata))) throw new Error("Memory message metadata must be an object");
+    validateMemoryMetadata(message.metadata, this.maxMetadataBytes, this.maxMetadataDepth);
     return this.enqueueWrite(async () => {
       const messages = await this.load();
       messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
