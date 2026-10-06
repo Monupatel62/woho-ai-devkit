@@ -38,10 +38,10 @@ function normalizeArgs(operation: string, input: Record<string, unknown>): strin
   const paths = (pathArgs as string[] | undefined) ?? [];
   paths.forEach(assertGitPath);
   if (operation === "status") return ["status", "--short", "--branch"];
-  if (operation === "diff") return ["diff", "--", ...paths];
+  if (operation === "diff") return ["-c", "core.pager=cat", "diff", "--no-ext-diff", "--", ...paths];
   if (operation === "log") return ["log", "-n", "20", "--oneline", "--decorate"];
   if (operation === "branch") return ["branch", "--show-current"];
-  if (operation === "show") return ["show", "--stat", "--oneline", "HEAD"];
+  if (operation === "show") return ["-c", "core.pager=cat", "show", "--no-ext-diff", "--stat", "--oneline", "HEAD"];
   if (operation === "add") {
     if (!paths.length) throw new Error("add requires at least one path");
     return ["add", "--", ...paths];
@@ -54,7 +54,7 @@ function normalizeArgs(operation: string, input: Record<string, unknown>): strin
     const message = input.message;
     if (typeof message !== "string" || !message.trim()) throw new Error("commit message is required");
     if (message.length > 200) throw new Error("commit message is too long");
-    return ["commit", "-m", message];
+    return ["-c", "core.hooksPath=/dev/null", "-c", "core.pager=cat", "commit", "-m", message];
   }
   throw new Error("Unsupported git operation");
 }
@@ -92,7 +92,18 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
       const args = normalizeArgs(operation, value);
 
       return new Promise((resolve, reject) => {
-        const child = spawn("git", args, { cwd, shell: false, windowsHide: true });
+        const child = spawn("git", args, {
+          cwd,
+          shell: false,
+          windowsHide: true,
+          env: {
+            ...process.env,
+            GIT_CONFIG_NOSYSTEM: "1",
+            GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
+            GIT_PAGER: "cat",
+            GIT_TERMINAL_PROMPT: "0",
+          },
+        });
         let stdout = "";
         let stderr = "";
         let bytes = 0;
