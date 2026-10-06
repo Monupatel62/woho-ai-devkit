@@ -97,10 +97,14 @@ function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, maxSte
 
 export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}): WohoAgentPlatform {
   const registry = options.registry ?? new AgentRegistry();
-  const projectContext = options.projectContext
-    ? ("sessionId" in options.projectContext && typeof options.projectContext.sessionId === "string"
-      ? options.projectContext
-      : createWohoProjectContext(options.projectContext))
+  const projectContext: WohoProjectContext | undefined = options.projectContext
+    ? ("projectId" in options.projectContext &&
+      typeof options.projectContext.projectId === "string" &&
+      "sessionId" in options.projectContext &&
+      typeof options.projectContext.sessionId === "string" &&
+      "metadata" in options.projectContext)
+      ? options.projectContext as WohoProjectContext
+      : createWohoProjectContext(options.projectContext)
     : undefined;
   const runtime = new AgentRuntime(options.runtime, registry);
   const commonTools = [...(options.commonTools ?? [])];
