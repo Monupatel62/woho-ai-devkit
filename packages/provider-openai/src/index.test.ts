@@ -48,6 +48,12 @@ const run = async () => {
     /maxRequestBytes/,
   );
 
+  const hugeBounded = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", maxRequestBytes: 128 });
+  await assert.rejects(
+    hugeBounded.chat({ messages: [{ role: "user", content: "x" }], tools: [{ name: "huge", description: "huge", parameters: { values: Array.from({ length: 1_000_000 }, (_, index) => index) } }] }),
+    /maxRequestBytes/,
+  );
+
   globalThis.fetch = async () => jsonResponse({}, 401);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof AuthenticationError);
 
