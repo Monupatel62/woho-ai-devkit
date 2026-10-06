@@ -10,6 +10,8 @@ export interface GitToolPolicy {
   maxOutputBytes?: number;
   maxPaths?: number;
   maxPathBytes?: number;
+  environment?: Record<string, string>;
+  inheritEnvironment?: boolean;
 }
 
 const readOperations = new Set(["status", "diff", "log", "branch", "show"]);
@@ -73,6 +75,7 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
   const maxOutputBytes = inputPolicy.maxOutputBytes ?? 1_000_000;
   const maxPaths = inputPolicy.maxPaths ?? 256;
   const maxPathBytes = inputPolicy.maxPathBytes ?? 64 * 1024;
+  const inheritEnvironment = inputPolicy.inheritEnvironment ?? false;
   positiveInteger(maxPaths, "maxPaths");
   positiveInteger(maxPathBytes, "maxPathBytes");
   positiveInteger(timeoutMs, "timeoutMs");
@@ -109,7 +112,10 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
           shell: false,
           windowsHide: true,
           env: {
-            ...process.env,
+            PATH: process.env.PATH ?? "",
+            ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+            ...(inputPolicy.environment ?? {}),
+            ...(inheritEnvironment ? process.env : {}),
             GIT_CONFIG_NOSYSTEM: "1",
             GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
             GIT_PAGER: "cat",
