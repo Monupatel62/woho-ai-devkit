@@ -36,6 +36,9 @@ const run = async () => {
   await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
   await assert.rejects(() => httpGetTool({ allowedHosts: ["127.0.0.1"] }).execute({ url: "https://127.0.0.1" }), /private or reserved/);
   await assert.rejects(() => httpGetTool({ allowedHosts: ["127.0.0.1"] }).execute({ url: "https://127.0.0.1", }), /private or reserved/);
+  for (const address of ["192.0.0.1", "192.0.2.1", "198.18.0.1", "198.51.100.1", "203.0.113.1"]) {
+    await assert.rejects(() => httpGetTool({ allowedHosts: [address] }).execute({ url: "https://" + address }), /private or reserved/);
+  }
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
 
   const normalizedPolicy = createToolPolicy({ allowedHosts: ["Example.COM."] });
