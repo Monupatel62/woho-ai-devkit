@@ -148,6 +148,22 @@ const run = async () => {
   assert.equal(runtimeResult.text, "runtime-ok");
   assert.equal(runtimeEvents[0], "run.started");
   assert.equal(runtimeEvents.at(-1), "run.completed");
+  class AtomicEventStore extends InMemoryExecutionStore {
+    transitionCalls = 0;
+    override async transition(runId: string, patch: Partial<import("./execution-store.js").ExecutionRecord>, event: import("@woho/core").ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
+      this.transitionCalls += 1;
+      return super.transition(runId, patch, event, expectedUpdatedAt);
+    }
+    override async appendEvent(): Promise<void> {
+      throw new Error("recordAgentEvent must use transition when available");
+    }
+  }
+  const atomicEventStore = new AtomicEventStore();
+  const atomicEventRuntime = new AgentRuntime({ store: atomicEventStore }, registry);
+  const atomicRun = await atomicEventRuntime.run(createAI({ provider: createMockProvider({ response: "atomic-ok" }) }), { agent: "general", input: "atomic" });
+  const runtimeAtomicRecord = atomicEventStore.get(atomicRun.runId);
+  assert.equal(runtimeAtomicRecord?.status, "succeeded");
+  assert.ok(atomicEventStore.transitionCalls >= 1);
   const parallel = await runtime.runParallel(createAI({ provider: createMockProvider({ response: "parallel-ok" }) }), [
     { agent: "general", input: "one" }, { agent: "general", input: "two" },
   ]);
