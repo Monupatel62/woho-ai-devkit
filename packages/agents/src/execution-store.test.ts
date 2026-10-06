@@ -197,7 +197,55 @@ assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1",
 assert.equal(approvalStore.get("approval-audit-run")?.approval?.status, "approved");
 assert.equal(approvalStore.get("approval-audit-run")?.approval?.decidedAt, 3);
 assert.equal(approvalStore.get("approval-audit-run")?.status, "running");
-assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1", false), false);
+assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1", false), false);\nconst checkpointStore = new InMemoryExecutionStore();
+await checkpointStore.create({
+  runId: "checkpoint-run",
+  agent: "general",
+  metadata: {},
+  status: "failed",
+  startedAt: 10,
+  updatedAt: 20,
+  completedAt: 20,
+  attempts: 1,
+  events: [],
+  checkpoint: {
+    step: 2,
+    messages: [{ role: "user", content: "continue" }],
+    updatedAt: 20,
+  },
+});
+assert.equal(checkpointStore.get("checkpoint-run")?.checkpoint?.step, 2);
+assert.equal(checkpointStore.get("checkpoint-run")?.checkpoint?.messages.length, 1);
+await assert.rejects(
+  () => checkpointStore.create({
+    runId: "checkpoint-invalid",
+    agent: "general",
+    metadata: {},
+    status: "failed",
+    startedAt: 10,
+    updatedAt: 20,
+    attempts: 1,
+    events: [],
+    checkpoint: { step: 2, messages: [], updatedAt: 21 },
+  }),
+  /cannot be newer than execution record/,
+);
+await assert.rejects(
+  () => checkpointStore.create({
+    runId: "checkpoint-inflight-invalid",
+    agent: "general",
+    metadata: {},
+    status: "failed",
+    startedAt: 10,
+    updatedAt: 20,
+    attempts: 1,
+    events: [],
+    checkpoint: { step: 0, messages: [], updatedAt: 20 },
+  }),
+  /checkpoint step/,
+);
+
+
 assert.throws(() => approvalStore.update("approval-audit-run", {
   approval: { ...approvalRun.approval, status: "pending", decidedAt: 3 },
 }), /Pending approval cannot have decidedAt/);
