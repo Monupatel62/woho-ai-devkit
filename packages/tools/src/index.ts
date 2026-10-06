@@ -84,8 +84,8 @@ export function calculatorTool(): AgentTool {
           operators.pop();
           previous = "value";
         } else {
-          if (previous !== "value" && !(token === "-" && previous === "operator")) throw new Error("Invalid expression");
-          if (token === "-" && previous === "operator") values.push(0);
+          if (previous !== "value" && !(token === "-" && (previous === "operator" || previous === "open"))) throw new Error("Invalid expression");
+          if (token === "-" && previous !== "value") values.push(0);
           else while (operators.at(-1) !== "(" && operators.length && precedence(operators.at(-1)!) >= precedence(token)) apply();
           operators.push(token);
           previous = "operator";
