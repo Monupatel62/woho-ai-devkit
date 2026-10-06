@@ -158,7 +158,10 @@ assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "us
   });
   const event = events.find((item) => item.type === "request.start");
   assert.equal(event?.type, "request.start");
-  assert.equal(event.request.messages[0]?.content, "[REDACTED]");\n  assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");\n  assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");\n}
+  assert.equal(event.request.messages[0]?.content, "[REDACTED]");
+  assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");
+  assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");
+}
 
 {
   const events: AILogEvent[] = [];
@@ -167,7 +170,9 @@ assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "us
   await client.chat({ messages: [{ role: "user", content: "visible prompt" }] });
   const event = events.find((item) => item.type === "request.start");
   assert.equal(event?.type, "request.start");
-  assert.equal(event.request.messages[0]?.content, "visible prompt");\n}
+  assert.equal(event.request.messages[0]?.content, "visible prompt");
+}
 
 {
-  assert.throws(() => createAI({ provider: new MockAIProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);\n}\n
+  assert.throws(() => createAI({ provider: new MockAIProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
+}
