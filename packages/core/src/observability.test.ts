@@ -148,7 +148,7 @@ const router = createModelRouter({ routes: [{ provider: createMockProvider({ res
 assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "user", content: "route" }], model: "router-test" })).text, "routed");
 
 
-test("redacts request content from observability by default", async () => {
+{
   const events: AILogEvent[] = [];
   const provider = new MockAIProvider();
   const client = createAI({ provider, observability: { onEvent: (event) => { events.push(event); } } });
@@ -158,21 +158,16 @@ test("redacts request content from observability by default", async () => {
   });
   const event = events.find((item) => item.type === "request.start");
   assert.equal(event?.type, "request.start");
-  assert.equal(event.request.messages[0]?.content, "[REDACTED]");
-  assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");
-  assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");
-});
+  assert.equal(event.request.messages[0]?.content, "[REDACTED]");\n  assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");\n  assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");\n}
 
-test("allows request content observability only when explicitly enabled", async () => {
+{
   const events: AILogEvent[] = [];
   const provider = new MockAIProvider();
   const client = createAI({ provider, includeRequestContentInObservability: true, observability: { onEvent: (event) => { events.push(event); } } });
   await client.chat({ messages: [{ role: "user", content: "visible prompt" }] });
   const event = events.find((item) => item.type === "request.start");
   assert.equal(event?.type, "request.start");
-  assert.equal(event.request.messages[0]?.content, "visible prompt");
-});
+  assert.equal(event.request.messages[0]?.content, "visible prompt");\n}
 
-test("rejects invalid observability content configuration", () => {
-  assert.throws(() => createAI({ provider: new MockAIProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
-});
+{
+  assert.throws(() => createAI({ provider: new MockAIProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);\n}\n
