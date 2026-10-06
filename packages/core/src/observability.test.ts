@@ -168,7 +168,10 @@ assert.equal(
 
 {
   const events: AILogEvent[] = [];
-  const provider = createMockProvider();
+  const provider = {
+    name: "secret-response-provider",
+    async chat() { return { id: "response-1", model: "secret-response-provider", text: "secret model output", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"token\":\"secret\"}" }] }; },
+  };
   const client = createAI({ provider, observability: { onEvent: (event) => { events.push(event); } } });
   await client.chat({
     messages: [{ role: "user", content: "secret prompt", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"secret\":\"value\"}" }] }],
