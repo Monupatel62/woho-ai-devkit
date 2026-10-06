@@ -71,6 +71,7 @@ const store = new InMemoryExecutionStore();
 const runtime = new AgentRuntime({
   store,
   retry: { maxAttempts: 3, delayMs: 250, backoff: 2 },
+  heartbeatIntervalMs: 15_000,
 });
 ```
 
@@ -78,7 +79,7 @@ Runtime events include run lifecycle and tool execution events, making the execu
 
 ### Crash recovery and retention
 
-A durable store can be inspected after a process restart. `recoverStaleExecutions` marks runs that have stopped advancing as failed, using a compare-and-set update when the store supports it. Recovery is explicit and defaults to the `running` state; approval/waiting states are not automatically failed.
+A durable store can be inspected after a process restart. `AgentRuntime` persists periodic heartbeats while a run is active and also records tool/approval lifecycle events, so active long-running runs are less likely to be mistaken for stale work. `recoverStaleExecutions` marks runs that have stopped advancing as failed, using a compare-and-set update when the store supports it. Recovery is explicit and defaults to the `running` and `waiting` states; waiting covers interrupted retry backoff. Approval waits remain `running` until the caller resolves them.
 
 ```ts
 import { FileExecutionStore, AgentRuntime } from "@woho/agents";
@@ -100,7 +101,7 @@ await runtime.pruneHistory({
 });
 ```
 
-Count-based retention keeps the newest `maxRecords` matching the optional status and removes older records. Age and count filters can be combined for a conservative cleanup policy.
+Count-based retention keeps the newest `maxRecords` matching the optional status and removes older records. Age and count filters can be combined for a conservative cleanup policy. Set `heartbeatIntervalMs` below the stale-recovery threshold you use for production workers.
 
 ## License
 
