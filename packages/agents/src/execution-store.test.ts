@@ -197,7 +197,8 @@ assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1",
 assert.equal(approvalStore.get("approval-audit-run")?.approval?.status, "approved");
 assert.equal(approvalStore.get("approval-audit-run")?.approval?.decidedAt, 3);
 assert.equal(approvalStore.get("approval-audit-run")?.status, "running");
-assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1", false), false);\nconst checkpointStore = new InMemoryExecutionStore();
+assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1", false), false);
+const checkpointStore = new InMemoryExecutionStore();
 await checkpointStore.create({
   runId: "checkpoint-run",
   agent: "general",
