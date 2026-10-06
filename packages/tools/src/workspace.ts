@@ -55,8 +55,26 @@ async function safeExisting(root: string, relative: string): Promise<string> {
   return real;
 }
 
+async function rejectSymlinkAncestors(root: string, relative: string): Promise<void> {
+  assertRelative(relative);
+  const parts = relative.replaceAll("\\\\", "/").split("/").filter(Boolean);
+  let current = root;
+  for (const part of parts.slice(0, -1)) {
+    current = path.join(current, part);
+    try {
+      const stat = await fs.lstat(current);
+      if (stat.isSymbolicLink()) throw new Error("Symbolic link ancestors are not allowed");
+      if (!stat.isDirectory()) throw new Error("Path ancestor is not a directory");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      break;
+    }
+  }
+}
+
 async function safeParent(root: string, relative: string): Promise<{ target: string; parent: string }> {
   assertRelative(relative);
+  await rejectSymlinkAncestors(root, relative);
   const target = path.resolve(root, relative);
   const requestedParent = path.dirname(target);
   let existingParent = requestedParent;
