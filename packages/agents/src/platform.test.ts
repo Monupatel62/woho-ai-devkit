@@ -38,7 +38,10 @@ const projectTool: AgentTool = {
   parameters: { type: "object", properties: {}, additionalProperties: false },
   async execute() { return { ok: true }; },
 };
-const projectContextPlatform = createWohoAgentPlatform({ commonTools: [projectTool], projectTools: [projectTool] });
+const projectContextPlatform = createWohoAgentPlatform({
+  projectTools: [projectTool],
+  toolsByRole: { coding: [projectTool] },
+});
 assert.ok(projectContextPlatform.registry.get("woho-coding")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
 assert.ok(projectContextPlatform.registry.get("woho-file")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
 assert.ok(projectContextPlatform.registry.get("woho-testing")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
