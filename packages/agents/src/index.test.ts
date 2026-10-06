@@ -434,6 +434,17 @@ const run = async () => {
   const capturedRecord = checkpointCaptureStore.get(checkpointCaptureResult.runId);
   assert.equal(capturedRecord?.checkpoint?.step, 1);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
+  const secretCheckpointStore = new InMemoryExecutionStore();
+  const secretCheckpointRuntime = new AgentRuntime({ store: secretCheckpointStore }, registry);
+  const secretCheckpointResult = await secretCheckpointRuntime.run(
+    createAI({ provider: createMockProvider({ response: "token Bearer super-secret-value" }) }),
+    { agent: "general", input: "persist secret checkpoint" },
+  );
+  const secretCheckpoint = secretCheckpointStore.get(secretCheckpointResult.runId)?.checkpoint;
+  const checkpointText = JSON.stringify(secretCheckpoint);
+  assert.ok(!checkpointText.includes("Bearer super-secret-value"));
+  assert.ok(checkpointText.includes("Bearer [REDACTED]"));
+
 
   await resumableStore.create({
     runId: "legacy-failed",
