@@ -399,6 +399,9 @@ const run = async () => {
   assert.equal(checkpointChild?.projectId, "checkpoint-project");
   assert.equal(checkpointChild?.sessionId, "checkpoint-session");
   assert.equal(checkpointChild?.metadata.source, "checkpoint-test");
+  assert.equal(checkpointChild?.checkpoint?.step, 1);
+  assert.equal(checkpointChild?.checkpoint?.inFlightToolCallId, undefined);
+  assert.equal(checkpointChild?.checkpoint?.messages.at(-1)?.role, "tool");
 
   const ambiguousCheckpointStore = new InMemoryExecutionStore();
   await ambiguousCheckpointStore.create({
