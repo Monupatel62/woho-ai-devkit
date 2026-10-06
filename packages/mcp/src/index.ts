@@ -89,7 +89,8 @@ export class MCPServer {
     if (!resource) throw new Error("Unknown MCP resource: " + uri);
     try {
       return await this.executeBounded("resources/read", () => resource.read());
-    } catch {
+    } catch (error) {
+      if (error instanceof MCPError) throw error;
       throw new MCPError("MCP resource read failed", "resources/read");
     }
   }
@@ -105,7 +106,8 @@ export class MCPServer {
     if (!prompt) throw new Error("Unknown MCP prompt: " + name);
     try {
       return await this.executeBounded("prompts/get", () => prompt.get(promptArguments));
-    } catch {
+    } catch (error) {
+      if (error instanceof MCPError) throw error;
       throw new MCPError("MCP prompt execution failed", "prompts/get");
     }
   }
@@ -114,7 +116,8 @@ export class MCPServer {
     if (!tool) throw new Error("Unknown MCP tool: " + name);
     try {
       return await this.executeBounded("tools/call", () => tool.execute(input));
-    } catch {
+    } catch (error) {
+      if (error instanceof MCPError) throw error;
       throw new MCPError("MCP tool execution failed", "tools/call");
     }
   }
