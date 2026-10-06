@@ -74,6 +74,8 @@ export interface AgentTask {
   readonly retry?: AgentRetryPolicy;
   readonly approval?: AgentApprovalHandler;
   readonly verify?: AgentVerifier;
+  /** Optional durable checkpoint used to continue a safe recovery. */
+  readonly checkpoint?: AgentExecutionCheckpoint;
 }
 
 export class AgentRuntime {
@@ -206,6 +208,7 @@ export class AgentRuntime {
               await this.recordAgentEvent(event);
             },
             approval: auditedApproval,
+            checkpoint: task.checkpoint,
             onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
               let serialized: string;
               try {
