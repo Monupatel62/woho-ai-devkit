@@ -49,6 +49,11 @@ importers:
         version: link:../../packages/tools
 
   apps/phone-agent:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+
     dependencies:
       '@woho/agents':
         specifier: workspace:*
