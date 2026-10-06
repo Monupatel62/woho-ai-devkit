@@ -18,6 +18,14 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 
+function redactObservabilityError(error: unknown): unknown {
+  if (error instanceof AIError) {
+    return { name: error.name, code: error.code, retryable: error.retryable };
+  }
+  if (error instanceof Error) return { name: error.name };
+  return { name: "UnknownError" };
+}
+
 function redactRequest(request: AIRequest): AIRequest {
   return {
     ...request,
@@ -108,7 +116,7 @@ export class AIClient {
         return response;
       } catch (error) {
         const normalized = merged.signal.aborted && !request.signal?.aborted ? new TimeoutError() : error;
-        await this.observability?.onEvent?.({ type: "request.error", error: normalized, attempt, durationMs: Date.now() - started });
+        await this.observability?.onEvent?.({ type: "request.error", error: redactObservabilityError(normalized), attempt, durationMs: Date.now() - started });
         const retryable = normalized instanceof AIError ? normalized.retryable : false;
         if (!retryable || attempt >= this.retries) throw normalized;
         attempt += 1;
