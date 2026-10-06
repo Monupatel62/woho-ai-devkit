@@ -189,7 +189,12 @@ export class AgentRuntime {
                     approval: { ...approval, status: "denied", decidedAt },
                     status: "running",
                     updatedAt: decidedAt,
-                  }).catch(() => undefined);
+                  });
+                  await Promise.resolve().then(() => this.store?.update(runId, {
+                    approval: { ...approval, status: "denied", decidedAt },
+                    status: "running",
+                    updatedAt: decidedAt,
+                  })).catch(() => undefined);
                   throw approvalError;
                 }
               }
