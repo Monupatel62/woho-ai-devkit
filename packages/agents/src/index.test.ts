@@ -106,7 +106,7 @@ const run = async () => {
   }), { name: "timeout-agent", maxToolResultChars: 100, toolTimeoutMs: 5, tools: [{ name: "slow", description: "Slow", execute: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return "late"; } }] });
   const timeoutResult = await timeoutTool.run("run");
   assert.equal(timeoutResult.text, "done");
-  assert.match(String(timeoutResult.toolResults["slow-1"] && (timeoutResult.toolResults["slow-1"] as { error: string }).error), /timed out/);
+  assert.equal((timeoutResult.toolResults["slow-1"] as { error?: unknown }).error, "TOOL_TIMEOUT");
 
   const limitedTool = createAgent(createAI({
     provider: {
@@ -128,14 +128,14 @@ const run = async () => {
     maxSteps: 2,
   });
   const denied = await permissioned.run("run secure");
-  assert.match(String(denied.toolResults["mock-call-1"] && (denied.toolResults["mock-call-1"] as { error: string }).error), /needs approval/);
+  assert.equal((denied.toolResults["mock-call-1"] as { error?: unknown }).error, "APPROVAL_REQUIRED");
   const missingPolicy = createAgent(createAI({ provider: createMockProvider({ response: "policy-required", toolCall: { name: "unprotected", arguments: "{}" } }) }), {
     name: "missing-policy",
     tools: [{ name: "unprotected", description: "Unprotected", capability: "computer", action: "execute", execute: async () => "should-not-run" }],
     maxSteps: 2,
   });
   const missingPolicyResult = await missingPolicy.run("run unprotected");
-  assert.match(String(missingPolicyResult.toolResults["mock-call-1"] && (missingPolicyResult.toolResults["mock-call-1"] as { error: string }).error), /permission policy/);
+  assert.equal((missingPolicyResult.toolResults["mock-call-1"] as { error?: unknown }).error, "PERMISSION_POLICY_REQUIRED");
   let toolAborted = false;
   const abortingTool = createAgent(createAI({
     provider: {
@@ -424,10 +424,14 @@ const run = async () => {
       tools: [{ name: "secret-tool", description: "Secret tool", execute: async () => { throw new Error("super-secret-provider-token"); } }],
     },
   );
-  await secretErrorAgent.run("test", { runId: "secret-error-run", onEvent: (event) => { toolErrorEvents.push(event); } });
+  const secretErrorResult = await secretErrorAgent.run("test", { runId: "secret-error-run", onEvent: (event) => { toolErrorEvents.push(event); } });
   const failedToolEvent = toolErrorEvents.find((event) => event.type === "tool.completed" && event.data?.success === false);
   assert.equal(failedToolEvent?.data?.errorCode, "TOOL_EXECUTION_ERROR");
   assert.ok(!JSON.stringify(failedToolEvent).includes("super-secret-provider-token"));
+  assert.equal((secretErrorResult.toolResults["mock-call-1"] as { error?: unknown })?.error, "TOOL_EXECUTION_ERROR");
+  assert.ok(!JSON.stringify(secretErrorResult.toolResults).includes("super-secret-provider-token"));
+  assert.ok(!JSON.stringify(secretErrorResult.messages).includes("super-secret-provider-token"));
+
 
   let verificationAttempts = 0;
   const verificationRuntime = new AgentRuntime({
