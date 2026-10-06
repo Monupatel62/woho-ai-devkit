@@ -185,11 +185,6 @@ export class AgentRuntime {
                   return approved;
                 } catch (approvalError) {
                   const decidedAt = Date.now();
-                  await this.store?.update(runId, {
-                    approval: { ...approval, status: "denied", decidedAt },
-                    status: "running",
-                    updatedAt: decidedAt,
-                  });
                   await Promise.resolve().then(() => this.store?.update(runId, {
                     approval: { ...approval, status: "denied", decidedAt },
                     status: "running",
