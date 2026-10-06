@@ -1,0 +1,20 @@
+{
+  "name": "@woho/phone-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Permission-controlled AI phone agent platform built on WoHo AI DevKit.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm build && node dist/index.test.js"
+  },
+  "dependencies": {
+    "@woho/agents": "workspace:*",
+    "@woho/core": "workspace:*",
+    "@woho/memory": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
