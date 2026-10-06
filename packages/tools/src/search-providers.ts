@@ -13,7 +13,7 @@ export interface SearchProviderOptions {
   fetchImpl?: typeof fetch;
 }
 
-async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
+async function readBodyWithLimit(response: Response, maxBytes: number, signal?: AbortSignal): Promise<string> {
   if (!response.body) throw new Error("Search provider returned no response body");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -46,9 +46,10 @@ function createFetch(fetchImpl: typeof fetch | undefined, timeoutMs: number, max
       const response = await fn(input, { ...init, signal });
       const length = Number(response.headers.get("content-length") ?? 0);
       if (length > maxResponseBytes) throw new Error("Search provider response exceeds size limit");
-      return { response, maxResponseBytes };
-    } finally {
+      return { response, maxResponseBytes, signal, cleanup: () => clearTimeout(timer) };
+    } catch (error) {
       clearTimeout(timer);
+      throw error;
     }
   };
 }
@@ -73,16 +74,18 @@ export function createBraveSearchProvider(options: SearchProviderOptions): Searc
       const url = new URL("https://api.search.brave.com/res/v1/web/search");
       url.searchParams.set("q", query);
       url.searchParams.set("count", String(count));
-      const { response, maxResponseBytes } = await request(url, {
+      const { response, maxResponseBytes, signal, cleanup } = await request(url, {
         headers: { Accept: "application/json", "X-Subscription-Token": options.apiKey },
         signal: searchOptions?.signal,
       });
       if (!response.ok) throw new Error(`Brave Search request failed: ${response.status}`);
-      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes)) as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
+      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes, signal)) as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
       return (body.web?.results ?? [])
         .filter((item): item is { title: string; url: string; description?: string } => typeof item.title === "string" && typeof item.url === "string")
         .slice(0, count)
         .map((item) => ({ title: item.title, url: item.url, snippet: item.description }));
+      cleanup();
+      return results;
     },
   };
 }
@@ -94,18 +97,20 @@ export function createTavilySearchProvider(options: SearchProviderOptions): Sear
     async search(query, searchOptions) {
       if (!query.trim()) throw new Error("query is required");
       const maxResults = clampLimit(searchOptions?.limit, 20);
-      const { response, maxResponseBytes } = await request("https://api.tavily.com/search", {
+      const { response, maxResponseBytes, signal, cleanup } = await request("https://api.tavily.com/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ api_key: options.apiKey, query, max_results: maxResults }),
         signal: searchOptions?.signal,
       });
       if (!response.ok) throw new Error(`Tavily Search request failed: ${response.status}`);
-      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes)) as { results?: Array<{ title?: string; url?: string; content?: string }> };
-      return (body.results ?? [])
+      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes, signal)) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+      const results = (body.results ?? [])
         .filter((item): item is { title: string; url: string; content?: string } => typeof item.title === "string" && typeof item.url === "string")
         .slice(0, maxResults)
         .map((item) => ({ title: item.title, url: item.url, snippet: item.content }));
+      cleanup();
+      return results;
     },
   };
 }
