@@ -29,9 +29,13 @@ const run = async () => {
   assert.throws(() => createToolPolicy({ allowedHosts: [""] }), /non-empty strings/);
   assert.throws(() => createToolPolicy({ allowedDirectories: [""] }), /non-empty strings/);
   assert.deepEqual(createToolPolicy({ allowedHosts: ["Example.COM."] }).allowedHosts, ["example.com"]);
+  assert.equal(createToolPolicy().allowPrivateAddresses, false);
+  assert.throws(() => createToolPolicy({ allowPrivateAddresses: "yes" as never }), /boolean/);
   const unixPathPolicy = createToolPolicy({ allowedDirectories: ["/Tmp/WoHo"] });
   assert.deepEqual(unixPathPolicy.allowedDirectories, ["/Tmp/WoHo"]);
   await assert.rejects(() => httpGetTool().execute({ url: "https://example.com" }), /not allowed/);
+  await assert.rejects(() => httpGetTool({ allowedHosts: ["127.0.0.1"] }).execute({ url: "https://127.0.0.1" }), /private or reserved/);
+  await assert.rejects(() => httpGetTool({ allowedHosts: ["127.0.0.1"] }).execute({ url: "https://127.0.0.1", }), /private or reserved/);
   await assert.rejects(() => httpGetTool().execute({ url: "http://example.com" }), /HTTPS/);
 
   const normalizedPolicy = createToolPolicy({ allowedHosts: ["Example.COM."] });
