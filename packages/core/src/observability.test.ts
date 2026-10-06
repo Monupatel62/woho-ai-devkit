@@ -150,7 +150,7 @@ assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "us
 
 {
   const events: AILogEvent[] = [];
-  const provider = new MockAIProvider();
+  const provider = createMockProvider();
   const client = createAI({ provider, observability: { onEvent: (event) => { events.push(event); } } });
   await client.chat({
     messages: [{ role: "user", content: "secret prompt", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"secret\":\"value\"}" }] }],
@@ -165,7 +165,7 @@ assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "us
 
 {
   const events: AILogEvent[] = [];
-  const provider = new MockAIProvider();
+  const provider = createMockProvider();
   const client = createAI({ provider, includeRequestContentInObservability: true, observability: { onEvent: (event) => { events.push(event); } } });
   await client.chat({ messages: [{ role: "user", content: "visible prompt" }] });
   const event = events.find((item) => item.type === "request.start");
@@ -174,5 +174,5 @@ assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "us
 }
 
 {
-  assert.throws(() => createAI({ provider: new MockAIProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
+  assert.throws(() => createAI({ provider: createMockProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
 }
