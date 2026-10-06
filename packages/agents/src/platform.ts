@@ -1,4 +1,5 @@
 import type { AIClient } from "@woho/core";
+import { randomUUID } from "node:crypto";
 import { Agent, type AgentTool, type AgentRunResult } from "./index.js";
 import { AgentRuntime, type AgentRuntimeOptions, type AgentTask } from "./runtime.js";
 import { AgentRegistry, type AgentDefinition, type AgentRole } from "./definition.js";
@@ -161,7 +162,7 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
     goal: string,
     codingOptions: { signal?: AbortSignal; verify?: string; runId?: string } = {},
   ): Promise<CodingLoopResult> => {
-    const runId = codingOptions.runId ?? `coding-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const runId = codingOptions.runId ?? `coding-${randomUUID()}`;
     return runCodingLoop(
       ai,
       (input, runnerOptions) => runtime.run(ai, {
