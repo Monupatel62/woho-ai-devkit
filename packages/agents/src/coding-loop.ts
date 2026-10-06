@@ -3,7 +3,6 @@ import type { AgentTool, AgentRunResult, AgentRunOptions } from "./index.js";
 
 export interface CodingLoopPolicy {
   readonly maxAttempts?: number;
-  readonly maxStepsPerAttempt?: number;
 }
 
 export interface CodingLoopTask {
