@@ -111,7 +111,14 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
     name: "workspace",
     description: "Safely inspect and modify files inside one fixed workspace root using relative paths.",
     capability,
-    action: canWrite || canDelete || canMove ? "write" : "read",
+    action: "read",
+    authorize(input) {
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
+      const operation = (input as Record<string, unknown>).operation;
+      const action = operation === "list" || operation === "read" ? "read" : "write";
+      const resource = typeof (input as Record<string, unknown>).path === "string" ? (input as Record<string, unknown>).path as string : undefined;
+      return { capability, action, ...(resource ? { resource } : {}) };
+    },
     parameters: {
       type: "object",
       properties: {
