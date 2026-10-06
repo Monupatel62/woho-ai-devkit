@@ -87,14 +87,16 @@ export function createBraveSearchProvider(options: SearchProviderOptions): Searc
         headers: { Accept: "application/json", "X-Subscription-Token": options.apiKey },
         signal: searchOptions?.signal,
       });
-      if (!response.ok) throw new Error(`Brave Search request failed: ${response.status}`);
-      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes, signal)) as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
-      return (body.web?.results ?? [])
-        .filter((item): item is { title: string; url: string; description?: string } => typeof item.title === "string" && typeof item.url === "string")
-        .slice(0, count)
-        .map((item) => ({ title: item.title, url: item.url, snippet: item.description }));
-      cleanup();
-      return results;
+      try {
+        if (!response.ok) throw new Error(`Brave Search request failed: ${response.status}`);
+        const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes, signal)) as { web?: { results?: Array<{ title?: string; url?: string; description?: string }> } };
+        return (body.web?.results ?? [])
+          .filter((item): item is { title: string; url: string; description?: string } => typeof item.title === "string" && typeof item.url === "string")
+          .slice(0, count)
+          .map((item) => ({ title: item.title, url: item.url, snippet: item.description }));
+      } finally {
+        cleanup();
+      }
     },
   };
 }
@@ -112,14 +114,16 @@ export function createTavilySearchProvider(options: SearchProviderOptions): Sear
         body: JSON.stringify({ api_key: options.apiKey, query, max_results: maxResults }),
         signal: searchOptions?.signal,
       });
-      if (!response.ok) throw new Error(`Tavily Search request failed: ${response.status}`);
-      const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes, signal)) as { results?: Array<{ title?: string; url?: string; content?: string }> };
-      const results = (body.results ?? [])
-        .filter((item): item is { title: string; url: string; content?: string } => typeof item.title === "string" && typeof item.url === "string")
-        .slice(0, maxResults)
-        .map((item) => ({ title: item.title, url: item.url, snippet: item.content }));
-      cleanup();
-      return results;
+      try {
+        if (!response.ok) throw new Error(`Tavily Search request failed: ${response.status}`);
+        const body = JSON.parse(await readBodyWithLimit(response, maxResponseBytes, signal)) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+        return (body.results ?? [])
+          .filter((item): item is { title: string; url: string; content?: string } => typeof item.title === "string" && typeof item.url === "string")
+          .slice(0, maxResults)
+          .map((item) => ({ title: item.title, url: item.url, snippet: item.content }));
+      } finally {
+        cleanup();
+      }
     },
   };
 }
