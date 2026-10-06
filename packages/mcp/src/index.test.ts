@@ -158,6 +158,16 @@ const run = async () => {
   assert.deepEqual(await stdio.request("ping"), { ok: true });
   await stdio.close();
 
+  process.env.WOHO_MCP_STDIO_SECRET = "parent-secret";
+  const isolatedEnvScript = 'process.stdin.setEncoding("utf8"); process.stdin.on("data",()=>process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:1,result:{secret:process.env.WOHO_MCP_STDIO_SECRET ?? null, custom:process.env.WOHO_MCP_CUSTOM ?? null}})+"\\n"));';
+  const isolatedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", isolatedEnvScript], env: { WOHO_MCP_CUSTOM: "custom-value" }, timeoutMs: 1000 });
+  assert.deepEqual(await isolatedStdio.request("ping"), { secret: null, custom: "custom-value" });
+  await isolatedStdio.close();
+  const inheritedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", isolatedEnvScript], inheritEnvironment: true, timeoutMs: 1000 });
+  assert.deepEqual(await inheritedStdio.request("ping"), { secret: "parent-secret", custom: null });
+  await inheritedStdio.close();
+  delete process.env.WOHO_MCP_STDIO_SECRET;
+
   const secretCircular: Record<string, unknown> = {};
   secretCircular.self = secretCircular;
   const circularStdio = createMCPStdioTransport({ command: execPath, args: ["-e", "process.stdin.resume();"], timeoutMs: 1000 });
