@@ -3,13 +3,13 @@ export interface MCPToolDefinition {
   description?: string;
   inputSchema?: Record<string, unknown>;
 }
-export interface MCPTool { definition: MCPToolDefinition; execute(input: unknown): Promise<unknown>; }
+export interface MCPTool { definition: MCPToolDefinition; execute(input: unknown, signal?: AbortSignal): Promise<unknown>; }
 export interface MCPResourceDefinition { uri: string; name?: string; description?: string; mimeType?: string; }
 export interface MCPResourceContent { uri: string; mimeType?: string; text?: string; blob?: string; }
-export interface MCPResource { definition: MCPResourceDefinition; read(): Promise<MCPResourceContent[]>; }
+export interface MCPResource { definition: MCPResourceDefinition; read(signal?: AbortSignal): Promise<MCPResourceContent[]>; }
 export interface MCPPromptArgument { name: string; description?: string; required?: boolean; }
 export interface MCPPromptDefinition { name: string; description?: string; arguments?: MCPPromptArgument[]; }
-export interface MCPPrompt { definition: MCPPromptDefinition; get(promptArguments?: Record<string, string>): Promise<unknown>; }
+export interface MCPPrompt { definition: MCPPromptDefinition; get(promptArguments?: Record<string, string>, signal?: AbortSignal): Promise<unknown>; }
 export interface MCPServerInfo { name: string; version: string; }
 export interface MCPServerOptions {
   name: string;
@@ -64,13 +64,17 @@ export class MCPServer {
     this.resources.set(resource.definition.uri, resource);
   }
   listResources(): MCPResourceDefinition[] { return [...this.resources.values()].map((resource) => ({ ...resource.definition })); }
-  private async executeBounded<T>(operation: string, action: () => Promise<T>): Promise<T> {
+  private async executeBounded<T>(operation: string, action: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new MCPError("MCP server execution timed out", operation)), this.maxExecutionMs);
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new MCPError("MCP server execution timed out", operation));
+      }, this.maxExecutionMs);
     });
     try {
-      const result = await Promise.race([action(), timeout]);
+      const result = await Promise.race([action(controller.signal), timeout]);
       try {
         const bytes = Buffer.byteLength(JSON.stringify(result) ?? "", "utf8");
         if (bytes > this.maxResultBytes) throw new MCPError("MCP server result exceeds maxResultBytes", operation);
@@ -88,7 +92,7 @@ export class MCPServer {
     const resource = this.resources.get(uri);
     if (!resource) throw new Error("Unknown MCP resource: " + uri);
     try {
-      return await this.executeBounded("resources/read", () => resource.read());
+      return await this.executeBounded("resources/read", (signal) => resource.read(signal));
     } catch (error) {
       if (error instanceof MCPError) throw error;
       throw new MCPError("MCP resource read failed", "resources/read");
@@ -105,7 +109,7 @@ export class MCPServer {
     const prompt = this.prompts.get(name);
     if (!prompt) throw new Error("Unknown MCP prompt: " + name);
     try {
-      return await this.executeBounded("prompts/get", () => prompt.get(promptArguments));
+      return await this.executeBounded("prompts/get", (signal) => prompt.get(promptArguments, signal));
     } catch (error) {
       if (error instanceof MCPError) throw error;
       throw new MCPError("MCP prompt execution failed", "prompts/get");
@@ -115,7 +119,7 @@ export class MCPServer {
     const tool = this.tools.get(name);
     if (!tool) throw new Error("Unknown MCP tool: " + name);
     try {
-      return await this.executeBounded("tools/call", () => tool.execute(input));
+      return await this.executeBounded("tools/call", (signal) => tool.execute(input, signal));
     } catch (error) {
       if (error instanceof MCPError) throw error;
       throw new MCPError("MCP tool execution failed", "tools/call");
