@@ -157,7 +157,10 @@ export class AIClient {
           throw error;
         }
           if (result.done) break;
-          await this.observability?.onEvent?.({ type: "stream.chunk", chunk: result.value });
+          await this.observability?.onEvent?.({
+            type: "stream.chunk",
+            chunk: this.includeRequestContentInObservability ? result.value : { ...result.value, text: "[REDACTED]" },
+          });
           yield result.value;
         }
       } finally {
