@@ -32,6 +32,70 @@ export interface MCPClientOptions { transport: MCPTransport; timeoutMs?: number;
 export interface MCPCallResult { content: unknown; isError: boolean; }
 export class MCPError extends Error { constructor(message: string, public readonly method?: string) { super(message); this.name = "MCPError"; } }
 
+
+function ensureResultFits(value: unknown, maxBytes: number): void {
+  let used = 0;
+  const seen = new WeakSet<object>();
+
+  const add = (text: string): void => {
+    used += Buffer.byteLength(text, "utf8");
+    if (used > maxBytes) throw new MCPError("MCP server result exceeds maxResultBytes");
+  };
+
+  const writeString = (value: string): void => {
+    add('"');
+    for (const character of value) {
+      add(JSON.stringify(character).slice(1, -1));
+    }
+    add('"');
+  };
+
+  const write = (input: unknown, depth: number): void => {
+    if (depth > 8) {
+      add("[MaxDepth]");
+      return;
+    }
+    if (input === null) return add("null");
+    if (typeof input === "string") return writeString(input);
+    if (typeof input === "number" || typeof input === "boolean") return add(String(input));
+    if (typeof input === "bigint") return add(JSON.stringify(String(input)) + "n");
+    if (typeof input === "undefined" || typeof input === "function" || typeof input === "symbol") return add("null");
+    if (seen.has(input)) throw new MCPError("MCP server result is not serializable");
+    seen.add(input);
+
+    if (Array.isArray(input)) {
+      add("[");
+      for (let index = 0; index < input.length; index += 1) {
+        if (index > 0) add(",");
+        write(input[index], depth + 1);
+      }
+      add("]");
+      return;
+    }
+
+    add("{");
+    let first = true;
+    for (const key in input as Record<string, unknown>) {
+      if (!Object.prototype.hasOwnProperty.call(input, key)) continue;
+      const property = (input as Record<string, unknown>)[key];
+      if (typeof property === "undefined" || typeof property === "function" || typeof property === "symbol") continue;
+      if (!first) add(",");
+      first = false;
+      writeString(key);
+      add(":");
+      write(property, depth + 1);
+    }
+    add("}");
+  };
+
+  try {
+    write(value, 0);
+  } catch (error) {
+    if (error instanceof MCPError) throw error;
+    throw new MCPError("MCP server result is not serializable");
+  }
+}
+
 export class MCPServer {
   readonly info: MCPServerInfo;
   private readonly tools = new Map<string, MCPTool>();
@@ -76,8 +140,7 @@ export class MCPServer {
     try {
       const result = await Promise.race([action(controller.signal), timeout]);
       try {
-        const bytes = Buffer.byteLength(JSON.stringify(result) ?? "", "utf8");
-        if (bytes > this.maxResultBytes) throw new MCPError("MCP server result exceeds maxResultBytes", operation);
+        ensureResultFits(result, this.maxResultBytes);
       } catch (error) {
         if (error instanceof MCPError) throw error;
         throw new MCPError("MCP server result is not serializable", operation);
