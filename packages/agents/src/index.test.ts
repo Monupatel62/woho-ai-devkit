@@ -438,11 +438,11 @@ const run = async () => {
   const retryCheckpointStore = new InMemoryExecutionStore();
   let retryToolExecutions = 0;
   let retryModelCalls = 0;
-  const retryRuntime = new AgentRuntime({
+  const checkpointRetryRuntime = new AgentRuntime({
     store: retryCheckpointStore,
     retry: { maxAttempts: 2, delayMs: 0 },
-  }, registry);
-  const retryAI = createAI({
+  }, retryAgentRegistry);
+  const checkpointRetryAI = createAI({
     provider: {
       name: "checkpoint-retry",
       async chat(request) {
@@ -478,10 +478,10 @@ const run = async () => {
       }],
     }),
   );
-  const retryResult = await retryRuntime.run(retryAI, { agent: "retry-agent", input: "retry safely" });
-  assert.equal(retryResult.text, "retry-recovered");
+  const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
+  assert.equal(checkpointRetryResult.text, "retry-recovered");
   assert.equal(retryToolExecutions, 1);
-  const retryRecord = retryCheckpointStore.get(retryResult.runId);
+  const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
   assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
   assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "tool");
   const secretCheckpointStore = new InMemoryExecutionStore();
