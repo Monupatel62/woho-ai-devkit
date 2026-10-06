@@ -30,6 +30,46 @@ importers:
         specifier: ^22.0.0
         version: 22.20.5
 
+  apps/cli:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+
+    dependencies:
+      '@woho/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@woho/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@woho/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@woho/provider-openai':
+        specifier: workspace:*
+        version: link:../../packages/provider-openai
+      '@woho/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+
+  apps/phone-agent:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+
+    dependencies:
+      '@woho/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@woho/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@woho/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+
   packages/agents:
     dependencies:
       '@woho/core':

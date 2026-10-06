@@ -1,0 +1,19 @@
+{
+  "name": "@woho/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Interactive local AI developer agent powered by WoHo AI DevKit.",
+  "type": "module",
+  "bin": { "woho": "./dist/index.js" },
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test dist/index.test.js" },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
+  "dependencies": {
+    "@woho/agents": "workspace:*",
+    "@woho/core": "workspace:*",
+    "@woho/memory": "workspace:*",
+    "@woho/provider-openai": "workspace:*",
+    "@woho/tools": "workspace:*"
+  }
+}
