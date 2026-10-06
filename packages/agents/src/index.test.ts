@@ -170,6 +170,7 @@ const run = async () => {
     ],
   }), /cycle or unknown dependency/);
   assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);
+  assert.throws(() => new AgentRuntime({ heartbeatIntervalMs: 0 }), /heartbeatIntervalMs/);
   let retryCount = 0;
   const retryRegistry = new AgentRegistry();
   retryRegistry.register({ id: "retry", name: "Retry", role: "general" }, ({ ai }) => createAgent(ai, { name: "Retry" }));
@@ -262,6 +263,25 @@ const run = async () => {
     { steps: [{ id: "verified-step", agent: "general", input: "verify", verify: (result) => result.text === "plan-verified" }] },
   );
   assert.equal(planVerification.steps["verified-step"]?.text, "plan-verified");
+  class CountingExecutionStore extends InMemoryExecutionStore {
+    updateCalls = 0;
+    override update(runId: string, patch: Parameters<InMemoryExecutionStore["update"]>[1]): void {
+      this.updateCalls += 1;
+      super.update(runId, patch);
+    }
+  }
+  const heartbeatStore = new CountingExecutionStore();
+  const heartbeatRegistry = new AgentRegistry();
+  heartbeatRegistry.register({ id: "heartbeat", name: "Heartbeat", role: "general" }, ({ ai }) => createAgent(ai, { name: "Heartbeat" }));
+  const heartbeatRuntime = new AgentRuntime({ store: heartbeatStore, heartbeatIntervalMs: 5 }, heartbeatRegistry);
+  const heartbeatAI = createAI({ provider: { name: "heartbeat", async chat() {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    return { id: "heartbeat", text: "heartbeat-ok", model: "heartbeat" };
+  } } });
+  const heartbeatResult = await heartbeatRuntime.run(heartbeatAI, { agent: "heartbeat", input: "wait" });
+  assert.equal(heartbeatResult.text, "heartbeat-ok");
+  assert.ok(heartbeatStore.updateCalls >= 4, "active execution should receive persisted heartbeat updates");
+
   const usageAI = createAI({
     provider: {
       name: "usage-test",
