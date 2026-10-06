@@ -316,7 +316,7 @@ await assert.rejects(
   /AI stop sequence exceeds maxStopSequenceCharacters/,
 );
 await assert.rejects(
-  () => ai.chat({ messages: [{ role: "user", content: "x" }], stop: ["x".repeat(4096), "y".repeat(4096), "z".repeat(4096), "w".repeat(4097)] }),
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], stop: ["x".repeat(4096), "y".repeat(4096), "z".repeat(4096), "w".repeat(4096), "v"] }),
   /AI request exceeds maxStopSequenceTotalCharacters/,
 );
 
