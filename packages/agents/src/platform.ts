@@ -11,6 +11,13 @@ export interface WohoAgentPlatformOptions {
   readonly runtime?: AgentRuntimeOptions;
   readonly registry?: AgentRegistry;
   readonly commonTools?: readonly AgentTool[];
+  /**
+   * Bounded project tools shared with project-facing specialist roles.
+   * These are kept separate from commonTools so orchestration-only agents do not
+   * receive filesystem/Git/command capabilities by accident.
+   */
+  readonly projectTools?: readonly AgentTool[];
+  readonly projectToolRoles?: readonly AgentRole[];
   readonly toolsByRole?: Partial<Record<AgentRole, readonly AgentTool[]>>;
   readonly permissionsByRole?: Partial<Record<AgentRole, AgentDefinition["permissions"]>>;
   readonly maxPlanSteps?: number;
@@ -96,6 +103,10 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
   const registry = options.registry ?? new AgentRegistry();
   const runtime = new AgentRuntime(options.runtime, registry);
   const commonTools = [...(options.commonTools ?? [])];
+  const projectTools = [...(options.projectTools ?? [])];
+  const projectToolRoles = new Set<AgentRole>(options.projectToolRoles ?? [
+    "coding", "file", "testing", "git", "security", "documentation",
+  ]);
   const maxPlanSteps = options.maxPlanSteps ?? 16;
   const maxPlanGoalBytes = options.maxPlanGoalBytes ?? 256 * 1024;
   const maxPlanStepInputBytes = options.maxPlanStepInputBytes ?? 64 * 1024;
@@ -106,7 +117,8 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
   for (const role of ROLES) {
     const id = agentId(role);
     if (registry.get(id)) continue;
-    const tools = [...commonTools, ...(options.toolsByRole?.[role] ?? [])];
+    const roleTools = projectToolRoles.has(role) ? projectTools : [];
+    const tools = [...commonTools, ...roleTools, ...(options.toolsByRole?.[role] ?? [])];
     registry.register({
       id,
       name: `WoHo ${role[0]!.toUpperCase() + role.slice(1)} Agent`,
