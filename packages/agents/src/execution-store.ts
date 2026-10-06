@@ -54,6 +54,12 @@ function validateTimestamp(value: number | undefined, name: string): void {
   if (value !== undefined && (!Number.isFinite(value) || value < 0)) throw new Error(name + " must be a non-negative finite number");
 }
 
+function validateRequiredTimestamp(value: unknown, name: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(name + " must be a non-negative finite number");
+  }
+}
+
 function validatePositiveDuration(value: number, name: string): void {
   if (!Number.isInteger(value) || value < 1) throw new Error(name + " must be a positive integer");
 }
@@ -102,7 +108,7 @@ function validateExecutionEvent(event: ExecutionEvent, expectedRunId?: string): 
   if (typeof event.type !== "string" || !EXECUTION_EVENT_TYPES.includes(event.type as ExecutionEvent["type"])) {
     throw new Error("Invalid execution event type");
   }
-  validateTimestamp(event.timestamp, "Execution event timestamp");
+  validateRequiredTimestamp(event.timestamp, "Execution event timestamp");
   if (event.data !== undefined && !isRecord(event.data)) throw new Error("Invalid execution event data");
 }
 
@@ -122,8 +128,8 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   if (record.sessionId !== undefined && typeof record.sessionId !== "string") throw new Error("Invalid execution sessionId");
   if (!isRecord(record.metadata)) throw new Error("Invalid execution metadata");
   validateExecutionStatus(record.status);
-  validateTimestamp(record.startedAt, "Execution startedAt");
-  validateTimestamp(record.updatedAt, "Execution updatedAt");
+  validateRequiredTimestamp(record.startedAt, "Execution startedAt");
+  validateRequiredTimestamp(record.updatedAt, "Execution updatedAt");
   if (record.updatedAt < record.startedAt) throw new Error("Execution updatedAt cannot be before startedAt");
   validateTimestamp(record.completedAt, "Execution completedAt");
   if (record.completedAt !== undefined && record.completedAt < record.startedAt) {
