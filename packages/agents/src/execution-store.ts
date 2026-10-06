@@ -186,25 +186,40 @@ export class InMemoryExecutionStore implements ExecutionStore {
 export interface FileExecutionStoreOptions {
   readonly directory: string;
   readonly maxRecordBytes?: number;
+  /** Maximum time to wait for the cross-process store lock. */
+  readonly lockTimeoutMs?: number;
+  /** Delay between cross-process lock acquisition attempts. */
+  readonly lockRetryMs?: number;
+  /** Lock files older than this are considered abandoned after a process crash. */
+  readonly lockStaleMs?: number;
 }
 
 export class FileExecutionStore implements ExecutionStore {
   private readonly directory: string;
   private readonly maxRecordBytes: number;
   private writeQueue: Promise<void> = Promise.resolve();
+  private readonly lockTimeoutMs: number;
+  private readonly lockRetryMs: number;
+  private readonly lockStaleMs: number;
 
   constructor(options: FileExecutionStoreOptions) {
     if (!options.directory.trim()) throw new Error("Execution store directory is required");
     this.directory = path.resolve(options.directory);
     this.maxRecordBytes = options.maxRecordBytes ?? 5_000_000;
+    this.lockTimeoutMs = options.lockTimeoutMs ?? 10_000;
+    this.lockRetryMs = options.lockRetryMs ?? 25;
+    this.lockStaleMs = options.lockStaleMs ?? 30_000;
     if (!Number.isInteger(this.maxRecordBytes) || this.maxRecordBytes < 1) {
       throw new Error("maxRecordBytes must be a positive integer");
     }
+    if (!Number.isInteger(this.lockTimeoutMs) || this.lockTimeoutMs < 1) throw new Error("lockTimeoutMs must be a positive integer");
+    if (!Number.isInteger(this.lockRetryMs) || this.lockRetryMs < 1) throw new Error("lockRetryMs must be a positive integer");
+    if (!Number.isInteger(this.lockStaleMs) || this.lockStaleMs < this.lockRetryMs) throw new Error("lockStaleMs must be at least lockRetryMs");
   }
 
   async create(record: ExecutionRecord): Promise<void> {
     validateRunId(record.runId);
-    await this.enqueue(async () => {
+    await this.enqueue(() => this.withFileLock(async () => {
       await this.ensureDirectory();
       const target = this.filePath(record.runId);
       try {
@@ -214,33 +229,33 @@ export class FileExecutionStore implements ExecutionStore {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
       await this.writeRecord(target, cloneRecord(record), false);
-    });
+    }));
   }
 
   async update(runId: string, patch: Partial<ExecutionRecord>): Promise<void> {
     validateRunId(runId);
-    await this.enqueue(async () => {
+    await this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
       validateExecutionTransition(current, patch.status);
       await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
-    });
+    }));
   }
 
   async appendEvent(runId: string, event: ExecutionEvent): Promise<void> {
     validateRunId(runId);
-    await this.enqueue(async () => {
+    await this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) return;
       await this.writeRecord(target, { ...current, updatedAt: event.timestamp, events: [...current.events, event] }, true);
-    });
+    }));
   }
 
   async transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
     validateRunId(runId);
-    await this.enqueue(async () => {
+    await this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
@@ -252,7 +267,7 @@ export class FileExecutionStore implements ExecutionStore {
         updatedAt: event.timestamp,
         events: [...current.events, event],
       }, true);
-    });
+    }));
   }
 
   async get(runId: string): Promise<ExecutionRecord | undefined> {
@@ -278,7 +293,7 @@ export class FileExecutionStore implements ExecutionStore {
 
   async remove(runId: string): Promise<boolean> {
     validateRunId(runId);
-    return this.enqueue(async () => {
+    return this.enqueue(() => this.withFileLock(async () => {
       try {
         await fs.unlink(this.filePath(runId));
         return true;
@@ -286,25 +301,25 @@ export class FileExecutionStore implements ExecutionStore {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
         throw error;
       }
-    });
+    }));
   }
 
   async updateIf(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): Promise<boolean> {
     validateRunId(runId);
-    return this.enqueue(async () => {
+    return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
       try { validateExecutionTransition(current, patch.status); } catch { return false; }
       await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
       return true;
-    });
+    }));
   }
 
   async claimResume(runId: string, expectedUpdatedAt: number, resumeRunId: string): Promise<string | undefined> {
     validateRunId(runId);
     validateRunId(resumeRunId);
-    return this.enqueue(async () => {
+    return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
@@ -312,7 +327,47 @@ export class FileExecutionStore implements ExecutionStore {
       if (current.updatedAt !== expectedUpdatedAt) return undefined;
       await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }), true);
       return resumeRunId;
-    });
+    }));
+  }
+
+  private lockPath(): string {
+    return path.join(this.directory, ".execution-store.lock");
+  }
+
+  private async withFileLock<T>(operation: () => Promise<T>): Promise<T> {
+    await this.ensureDirectory();
+    const lock = this.lockPath();
+    const deadline = Date.now() + this.lockTimeoutMs;
+    while (true) {
+      try {
+        const handle = await fs.open(lock, "wx", 0o600);
+        try {
+          await handle.writeFile(JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }), "utf8");
+          await handle.sync();
+        } finally {
+          await handle.close();
+        }
+        try {
+          return await operation();
+        } finally {
+          await fs.rm(lock, { force: true });
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        try {
+          const stat = await fs.stat(lock);
+          if (Date.now() - stat.mtimeMs >= this.lockStaleMs) {
+            await fs.rm(lock, { force: true });
+            continue;
+          }
+        } catch (statError) {
+          if ((statError as NodeJS.ErrnoException).code !== "ENOENT") throw statError;
+          continue;
+        }
+        if (Date.now() >= deadline) throw new Error("Timed out acquiring execution store lock");
+        await new Promise((resolve) => setTimeout(resolve, this.lockRetryMs));
+      }
+    }
   }
 
   private filePath(runId: string): string {
