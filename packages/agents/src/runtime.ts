@@ -212,6 +212,7 @@ export class AgentRuntime {
             checkpoint: latestCheckpoint,
             onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
               const sanitizedCheckpoint = this.sanitizeCheckpoint(checkpoint);
+              latestCheckpoint = sanitizedCheckpoint;
               let serialized: string;
               try {
                 serialized = JSON.stringify(sanitizedCheckpoint);
