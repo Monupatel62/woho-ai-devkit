@@ -37,6 +37,12 @@ const run = async () => {
   globalThis.fetch = async () => jsonResponse({}, 401);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof AuthenticationError);
 
+  globalThis.fetch = async () => jsonResponse({ error: "secret-provider-detail" }, 400);
+  await assert.rejects(
+    provider.chat({ messages: [{ role: "user", content: "x" }] }),
+    (e) => e instanceof Error && e.message === "Provider rejected the request" && !e.message.includes("secret-provider-detail"),
+  );
+
   globalThis.fetch = async () => jsonResponse({}, 404);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof ModelNotFoundError);
 
@@ -44,8 +50,11 @@ const run = async () => {
   const oversizedChat = createOpenAIProvider({ apiKey: "secret", baseUrl: "https://example.test/v1", maxResponseBytes: 10 });
   await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "x" }] }), /maxResponseBytes/);
 
-  globalThis.fetch = async () => new Response("x".repeat(100), { status: 500, headers: { "content-type": "text/plain" } });
-  await assert.rejects(oversizedChat.chat({ messages: [{ role: "user", content: "oversized-error" }] }), /Provider error response could not be read safely/);
+  globalThis.fetch = async () => new Response("internal-secret-provider-detail", { status: 500, headers: { "content-type": "text/plain" } });
+  await assert.rejects(
+    oversizedChat.chat({ messages: [{ role: "user", content: "oversized-error" }] }),
+    (e) => e instanceof Error && !e.message.includes("internal-secret-provider-detail"),
+  );
 
   globalThis.fetch = async () => jsonResponse({}, 429);
   await assert.rejects(provider.chat({ messages: [{ role: "user", content: "x" }] }), (e) => e instanceof RateLimitError);
