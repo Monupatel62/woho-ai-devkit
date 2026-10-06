@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.34
+
+- Hardened agent tool-result serialization with bounded incremental traversal and regression coverage for very large results.
+- Hardened OpenAI-compatible request serialization with bounded preflight validation before final JSON encoding.
+- Hardened search-provider timeouts through response-body consumption and stalled-reader cancellation.
+- Upgraded GitHub CodeQL Actions to v4.
+
 ## Unreleased
 
 - Hardened agent tool-result serialization with bounded incremental traversal, depth limits, circular-reference protection, and regression coverage for million-element results.
