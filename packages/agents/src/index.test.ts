@@ -428,6 +428,9 @@ const run = async () => {
   const failedToolEvent = toolErrorEvents.find((event) => event.type === "tool.completed" && event.data?.success === false);
   assert.equal(failedToolEvent?.data?.errorCode, "TOOL_EXECUTION_ERROR");
   assert.ok(!JSON.stringify(failedToolEvent).includes("super-secret-provider-token"));
+  const toolFailureResult = secretErrorAgent;
+  assert.ok(toolFailureResult);
+
 
   let verificationAttempts = 0;
   const verificationRuntime = new AgentRuntime({
