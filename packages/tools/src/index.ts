@@ -70,7 +70,7 @@ export function calculatorTool(): AgentTool {
       };
       let previous: "value" | "operator" | "open" = "operator";
       for (const token of tokens) {
-        if (/^\\d/.test(token)) {
+        if (/^\d/.test(token)) {
           if (previous === "value") throw new Error("Invalid expression");
           values.push(Number(token));
           previous = "value";
