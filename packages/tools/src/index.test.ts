@@ -101,7 +101,7 @@ const run = async () => {
   assert.equal(listing.entries[0]?.name, "hello.txt");
   await assert.rejects(() => workspace.execute({ operation: "read", path: "../escape.txt" }), /Parent traversal/);
   await assert.rejects(() => workspace.execute({ operation: "write", path: "/tmp/escape.txt", content: "x" }), /Absolute paths/);
-  const symlinkPath = join(root, "linked");
+  const symlinkPath = join(workspaceRoot, "linked");
   try {
     await (await import("node:fs/promises")).symlink(".", symlinkPath, "dir");
     await assert.rejects(() => workspace.execute({ operation: "write", path: "linked/new.txt", content: "blocked" }), /Symbolic link ancestors/);
