@@ -202,6 +202,36 @@ const run = async () => {
   assert.equal(recoveredRuns.length, 1);
   assert.equal(recoveredRuns[0]?.status, "failed");
   assert.equal((recoverStore.get("stale-runtime-run")?.events.length ?? 0), 1);
+  const resumableStore = new InMemoryExecutionStore();
+  await resumableStore.create({
+    runId: "failed-resumable",
+    agent: "general",
+    input: "resume this task",
+    metadata: { source: "resume-test" },
+    status: "failed",
+    startedAt: 100,
+    updatedAt: 200,
+    completedAt: 200,
+    attempts: 1,
+    events: [],
+  });
+  const resumableRuntime = new AgentRuntime({ store: resumableStore }, registry);
+  const resumed = await resumableRuntime.resume(createAI({ provider: createMockProvider({ response: "resumed-ok" }) }), "failed-resumable");
+  assert.equal(resumed.text, "resumed-ok");
+  assert.notEqual(resumed.runId, "failed-resumable");
+  assert.equal(resumableStore.get(resumed.runId)?.parentRunId, "failed-resumable");
+  assert.equal(resumableStore.get(resumed.runId)?.input, "resume this task");
+  await resumableStore.create({
+    runId: "legacy-failed",
+    agent: "general",
+    metadata: {},
+    status: "failed",
+    startedAt: 100,
+    updatedAt: 200,
+    attempts: 1,
+    events: [],
+  });
+  await assert.rejects(() => resumableRuntime.resume(createAI({ provider: createMockProvider({ response: "x" }) }), "legacy-failed"), /does not contain input/);
   const prunedRuns = await maintenanceRuntime.pruneHistory({ maxRecords: 0, status: "failed" });
   assert.equal(prunedRuns.length, 1);
   assert.equal(recoverStore.get("stale-runtime-run"), undefined);
