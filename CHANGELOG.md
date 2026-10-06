@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Hardened agent tool-result serialization with bounded incremental traversal, depth limits, circular-reference protection, and regression coverage for million-element results.
+- Hardened OpenAI-compatible request serialization with bounded preflight traversal so oversized or deeply nested requests are rejected before unbounded stringification.
+- Hardened Brave and Tavily search providers so response timeouts remain active through full body consumption and cancel stalled response readers.
+- Added regression coverage for oversized provider requests and stalled search response bodies.
+
 ## 0.8.33
 
 - Added explicit stale-execution recovery for durable agent runtimes after process crashes.
