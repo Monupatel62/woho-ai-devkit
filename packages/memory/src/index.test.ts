@@ -19,9 +19,10 @@ const run = async () => {
   assert.throws(() => createInMemoryStore({ maxMessages: 0 }), /positive integer/);
   assert.throws(() => createInMemoryStore({ maxMetadataBytes: 0 }), /maxMetadataBytes/);
   assert.throws(() => createInMemoryStore({ maxMetadataDepth: 0 }), /maxMetadataDepth/);
+  const oversizedMetadataStore = createInMemoryStore({ maxMetadataBytes: 50 });
   const oversizedMetadata = { secret: "x".repeat(100) };
   await assert.rejects(
-    () => store.add({ id: "oversized-meta", role: "user", content: "x", metadata: oversizedMetadata }),
+    () => oversizedMetadataStore.add({ id: "oversized-meta", role: "user", content: "x", metadata: oversizedMetadata }),
     /maxMetadataBytes/,
   );
   const deepMetadata = { level: { level: { level: { value: true } } } };
