@@ -317,7 +317,11 @@ export class AgentRuntime {
   }
 
   private async emit(event: ExecutionEvent): Promise<void> {
-    await this.store?.appendEvent(event.runId, event);
+    if (this.store?.transition) {
+      await this.store.transition(event.runId, {}, event, undefined);
+    } else {
+      await this.store?.appendEvent(event.runId, event);
+    }
     await this.onEvent?.(event);
   }
 
