@@ -241,12 +241,13 @@ export class AgentRuntime {
               if (receipt.status === "failed") return { replay: true, result: { error: receipt.error ?? "TOOL_EXECUTION_ERROR" } };
               if (receipt.result === undefined) throw new AIError("Completed tool receipt has no result: " + callId, "TOOL_RECEIPT_INVALID");
               let replayResult: unknown;
-              try { replayResult = JSON.parse(receipt.result); } catch { throw new AIError("Completed tool receipt is not valid JSON: " + callId, "TOOL_RECEIPT_INVALID"); }
+              try { replayResult = receipt.result === "__WOHO_UNDEFINED_RESULT__" ? undefined : JSON.parse(receipt.result); } catch { throw new AIError("Completed tool receipt is not valid JSON: " + callId, "TOOL_RECEIPT_INVALID"); }
               return { replay: true, result: replayResult };
             } : undefined,
             onToolExecutionComplete: this.store?.completeToolExecution ? async ({ callId, tool, input, result, error }) => {
               const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
-              const payload = JSON.stringify(result);
+              const payload = result === undefined ? "__WOHO_UNDEFINED_RESULT__" : JSON.stringify(result);
+              if (payload === undefined) throw new AIError("Tool result is not serializable for durable receipt", "TOOL_RECEIPT_INVALID");
               if (Buffer.byteLength(payload, "utf8") > this.maxToolReceiptBytes) throw new AIError("Tool receipt exceeds maxToolReceiptBytes", "TOOL_RECEIPT_TOO_LARGE");
               const completed = await this.store!.completeToolExecution!(runId, callId, fingerprint, error ? { status: "failed", error } : { status: "completed", result: payload });
               if (!completed) throw new AIError("Tool receipt could not be committed safely: " + callId, "TOOL_RECEIPT_COMMIT_FAILED");
