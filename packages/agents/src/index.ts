@@ -365,7 +365,7 @@ export class Agent {
                 throw new AIError(decision.reason ?? "Tool action denied by permission policy", "PERMISSION_DENIED");
               }
             }
-          }}
+          }
           await runEvent(runOptions, { type: "tool.started", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step } });
           let result: unknown;
           const toolController = new AbortController();
