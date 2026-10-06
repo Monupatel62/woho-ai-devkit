@@ -47,7 +47,7 @@ export class MCPStdioTransport implements MCPTransport {
     try {
       message = JSON.stringify({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) });
     } catch (error) {
-      return Promise.reject(new MCPError(`MCP request is not serializable: ${error instanceof Error ? error.message : String(error)}`, method));
+      return Promise.reject(new MCPError("MCP request is not serializable", method));
     }
     if (Buffer.byteLength(message, "utf8") > this.maxMessageBytes) {
       return Promise.reject(new MCPError("MCP request exceeds maxMessageBytes", method));
@@ -99,7 +99,7 @@ export class MCPStdioTransport implements MCPTransport {
     try {
       message = JSON.stringify({ jsonrpc: "2.0", method, ...(params === undefined ? {} : { params }) });
     } catch (error) {
-      throw new MCPError(`MCP notification is not serializable: ${error instanceof Error ? error.message : String(error)}`, method);
+      throw new MCPError("MCP notification is not serializable", method);
     }
     if (Buffer.byteLength(message, "utf8") > this.maxMessageBytes) throw new MCPError("MCP notification exceeds maxMessageBytes", method);
     await new Promise<void>((resolve, reject) => {
