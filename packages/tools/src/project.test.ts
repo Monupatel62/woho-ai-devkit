@@ -31,7 +31,7 @@ try {
 
   const failingGit = tools.find((tool) => tool.name === "git")!;
   await assert.rejects(
-    () => failingGit.execute({ operation: "show" }),
+    () => failingGit.execute({ operation: "add", paths: ["missing-file-for-error-redaction"] }),
     (error: unknown) => error instanceof Error && error.message === "Git operation failed",
   );
 
