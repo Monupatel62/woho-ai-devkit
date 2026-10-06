@@ -25,6 +25,21 @@ export interface ExecutionCheckpoint {
   readonly updatedAt: number;
 }
 
+export interface ExecutionToolReceipt {
+  readonly callId: string;
+  readonly fingerprint: string;
+  readonly status: "in_flight" | "completed" | "failed";
+  readonly result?: string;
+  readonly error?: string;
+  readonly updatedAt: number;
+}
+
+export interface ExecutionLease {
+  readonly ownerId: string;
+  readonly fencingToken: number;
+  readonly expiresAt: number;
+}
+
 export interface ExecutionRecord {
   readonly runId: string;
   /** Stable project scope for execution history and authorization boundaries. */
@@ -39,6 +54,10 @@ export interface ExecutionRecord {
   readonly metadata: Readonly<Record<string, unknown>>;
   /** Latest approval decision associated with this execution. */
   readonly approval?: ExecutionApprovalRecord;
+  /** Durable idempotency receipts for tool side effects. */
+  readonly toolReceipts?: Readonly<Record<string, ExecutionToolReceipt>>;
+  /** Fenced worker lease for active execution ownership. */
+  readonly lease?: ExecutionLease;
   /** Last safe conversation checkpoint for crash recovery. */
   readonly checkpoint?: ExecutionCheckpoint;
   status: ExecutionStatus;
@@ -65,6 +84,11 @@ export interface ExecutionStore {
   resolveApproval?(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt?: number): boolean | Promise<boolean>;
   /** Atomically apply a record patch and append its lifecycle event. */
   transition?(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void | Promise<void>;
+  claimToolExecution?(runId: string, callId: string, fingerprint: string): ExecutionToolReceipt | undefined | Promise<ExecutionToolReceipt | undefined>;
+  completeToolExecution?(runId: string, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean | Promise<boolean>;
+  acquireLease?(runId: string, ownerId: string, ttlMs: number, now?: number): ExecutionLease | undefined | Promise<ExecutionLease | undefined>;
+  renewLease?(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now?: number): boolean | Promise<boolean>;
+  releaseLease?(runId: string, ownerId: string, fencingToken: number, now?: number): boolean | Promise<boolean>;
 }
 
 export interface RecoverStaleExecutionsOptions {
@@ -112,6 +136,8 @@ function cloneRecord(record: ExecutionRecord): ExecutionRecord {
     metadata: { ...record.metadata },
     events: [...record.events],
     ...(record.checkpoint ? { checkpoint: { ...record.checkpoint, messages: [...record.checkpoint.messages] } } : {}),
+    ...(record.toolReceipts ? { toolReceipts: Object.fromEntries(Object.entries(record.toolReceipts).map(([key, value]) => [key, { ...value }])) } : {}),
+    ...(record.lease ? { lease: { ...record.lease } } : {}),
   };
 }
 
@@ -183,6 +209,20 @@ function validateExecutionRecord(record: ExecutionRecord): void {
     }
     validateRequiredTimestamp(record.checkpoint.updatedAt, "Execution checkpoint updatedAt");
     if (record.checkpoint.updatedAt > record.updatedAt) throw new Error("Execution checkpoint cannot be newer than execution record");
+  }
+  if (record.toolReceipts !== undefined) {
+    if (!isRecord(record.toolReceipts)) throw new Error("Invalid execution toolReceipts");
+    for (const [key, receipt] of Object.entries(record.toolReceipts)) {
+      if (!isRecord(receipt) || key !== receipt.callId || typeof receipt.fingerprint !== "string" || !receipt.fingerprint.trim()) throw new Error("Invalid execution tool receipt");
+      if (!["in_flight", "completed", "failed"].includes(receipt.status as string)) throw new Error("Invalid execution tool receipt status");
+      if (receipt.result !== undefined && typeof receipt.result !== "string") throw new Error("Invalid execution tool receipt result");
+      if (receipt.error !== undefined && typeof receipt.error !== "string") throw new Error("Invalid execution tool receipt error");
+      validateRequiredTimestamp(receipt.updatedAt, "Execution tool receipt updatedAt");
+    }
+  }
+  if (record.lease !== undefined) {
+    if (!isRecord(record.lease) || typeof record.lease.ownerId !== "string" || !record.lease.ownerId.trim() || !Number.isInteger(record.lease.fencingToken) || record.lease.fencingToken < 1) throw new Error("Invalid execution lease");
+    validateRequiredTimestamp(record.lease.expiresAt, "Execution lease expiresAt");
   }
   if (record.approval !== undefined) {
     if (!isRecord(record.approval)) throw new Error("Invalid execution approval");
@@ -330,6 +370,42 @@ export class InMemoryExecutionStore implements ExecutionStore {
     return true;
   }
 
+
+  claimToolExecution(runId: string, callId: string, fingerprint: string): ExecutionToolReceipt | undefined {
+    validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
+    const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
+    const existing = current.toolReceipts?.[callId];
+    if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return cloneRecord({ ...current }).toolReceipts?.[callId]; }
+    const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
+    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: receipt.updatedAt }));
+    return receipt;
+  }
+
+  completeToolExecution(runId: string, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
+    validateRunId(runId); validateCallId(callId); const current = this.records.get(runId); if (!current) return false;
+    const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+    const updatedAt = patch.updatedAt ?? Date.now();
+    const nextReceipt = { ...receipt, ...patch, updatedAt };
+    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt })); return true;
+  }
+
+  acquireLease(runId: string, ownerId: string, ttlMs: number, now = Date.now()): ExecutionLease | undefined {
+    validateRunId(runId); if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution lease request");
+    const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
+    if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
+    const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
+    this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: now })); return lease;
+  }
+
+  renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): boolean {
+    const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
+    const lease = { ...current.lease, expiresAt: now + ttlMs }; this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: now })); return true;
+  }
+
+  releaseLease(runId: string, ownerId: string, fencingToken: number, now = Date.now()): boolean {
+    const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
+    this.records.set(runId, cloneRecord({ ...current, lease: undefined, updatedAt: now })); return true;
+  }
 
   resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): boolean {
     validateRunId(runId);
