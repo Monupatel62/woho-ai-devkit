@@ -290,11 +290,11 @@ export class AgentRuntime {
   private sanitizeError(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error);
     const redacted = raw
-      .replace(/\\bBearer\\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-      .replace(/\\b(?:sk|rk|pk)-[A-Za-z0-9_-]{12,}\\b/g, "[REDACTED_KEY]")
-      .replace(/\\bgh[pousr]_[A-Za-z0-9_]{20,}\\b/g, "[REDACTED_TOKEN]")
-      .replace(/\\bnpm_[A-Za-z0-9]{20,}\\b/g, "[REDACTED_TOKEN]")
-      .replace(/\\bAKIA[0-9A-Z]{16}\\b/g, "[REDACTED_AWS_KEY]");
+      .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+      .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{12,}\b/g, "[REDACTED_KEY]")
+      .replace(/\bgh[pousr]_[A-Za-z0-9_]{20,}\b/g, "[REDACTED_TOKEN]")
+      .replace(/\bnpm_[A-Za-z0-9]{20,}\b/g, "[REDACTED_TOKEN]")
+      .replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED_AWS_KEY]");
     if (Buffer.byteLength(redacted, "utf8") <= this.maxErrorMessageBytes) return redacted;
     const suffix = "…[truncated]";
     const suffixBytes = Buffer.byteLength(suffix, "utf8");
