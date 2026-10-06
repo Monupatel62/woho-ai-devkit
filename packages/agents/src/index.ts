@@ -428,3 +428,5 @@ export * from "./delegation.js";
 export function createAgent(ai: AIClient, options: AgentOptions): Agent {
   return new Agent(ai, options);
 }
+
+export * from "./platform.js";
