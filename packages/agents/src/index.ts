@@ -430,3 +430,5 @@ export function createAgent(ai: AIClient, options: AgentOptions): Agent {
 }
 
 export * from "./platform.js";
+
+export * from "./coding-loop.js";
