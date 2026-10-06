@@ -39,15 +39,15 @@ const projectTool: AgentTool = {
   async execute() { return { ok: true }; },
 };
 const projectContextPlatform = createWohoAgentPlatform({ commonTools: [projectTool], projectTools: [projectTool] });
-assert.ok(projectContextPlatform.registry.get("woho-coding")?.tools?.some((tool) => tool.name === "project_context_probe"));
-assert.ok(projectContextPlatform.registry.get("woho-file")?.tools?.some((tool) => tool.name === "project_context_probe"));
-assert.ok(projectContextPlatform.registry.get("woho-testing")?.tools?.some((tool) => tool.name === "project_context_probe"));
-assert.ok(projectContextPlatform.registry.get("woho-git")?.tools?.some((tool) => tool.name === "project_context_probe"));
-assert.ok(projectContextPlatform.registry.get("woho-security")?.tools?.some((tool) => tool.name === "project_context_probe"));
-assert.ok(projectContextPlatform.registry.get("woho-documentation")?.tools?.some((tool) => tool.name === "project_context_probe"));
-assert.equal(projectContextPlatform.registry.get("woho-orchestrator")?.tools?.some((tool) => tool.name === "project_context_probe"), false);
-assert.equal(projectContextPlatform.registry.get("woho-planner")?.tools?.some((tool) => tool.name === "project_context_probe"), false);
-assert.equal(projectContextPlatform.registry.get("woho-coding")?.tools?.filter((tool) => tool.name === "project_context_probe").length, 1);
+assert.ok(projectContextPlatform.registry.get("woho-coding")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-file")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-testing")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-git")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-security")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-documentation")?.definition.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.equal(projectContextPlatform.registry.get("woho-orchestrator")?.definition.tools?.some((tool) => tool.name === "project_context_probe"), false);
+assert.equal(projectContextPlatform.registry.get("woho-planner")?.definition.tools?.some((tool) => tool.name === "project_context_probe"), false);
+assert.equal(projectContextPlatform.registry.get("woho-coding")?.definition.tools?.filter((tool) => tool.name === "project_context_probe").length, 1);
 
 
 const ai = createAI({ provider });
