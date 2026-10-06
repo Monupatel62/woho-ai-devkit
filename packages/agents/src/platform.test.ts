@@ -37,7 +37,7 @@ const projectTool = {
   parameters: { type: "object", properties: {}, additionalProperties: false },
   async execute() { return { ok: true }; },
 };
-const projectContextPlatform = createWohoAgentPlatform({ projectTools: [projectTool] });
+const projectContextPlatform = createWohoAgentPlatform({ commonTools: [projectTool], projectTools: [projectTool] });
 assert.ok(projectContextPlatform.registry.get("woho-coding")?.tools?.some((tool) => tool.name === "project_context_probe"));
 assert.ok(projectContextPlatform.registry.get("woho-file")?.tools?.some((tool) => tool.name === "project_context_probe"));
 assert.ok(projectContextPlatform.registry.get("woho-testing")?.tools?.some((tool) => tool.name === "project_context_probe"));
@@ -45,7 +45,8 @@ assert.ok(projectContextPlatform.registry.get("woho-git")?.tools?.some((tool) =>
 assert.ok(projectContextPlatform.registry.get("woho-security")?.tools?.some((tool) => tool.name === "project_context_probe"));
 assert.ok(projectContextPlatform.registry.get("woho-documentation")?.tools?.some((tool) => tool.name === "project_context_probe"));
 assert.equal(projectContextPlatform.registry.get("woho-orchestrator")?.tools?.some((tool) => tool.name === "project_context_probe"), false);
-assert.equal(projectContextPlatform.registry.get("woho-planner")?.tools?.some((tool) => tool.name === "project_context_probe"), false);
+assert.equal(projectContextPlatform.registry.get("woho-planner")?.tools?.some((tool) => tool.name === "project_context_probe"), false);\nassert.equal(projectContextPlatform.registry.get("woho-coding")?.tools?.filter((tool) => tool.name === "project_context_probe").length, 1);
+
 
 const ai = createAI({ provider });
 const plan = await platform.plan(ai, "Build the requested software change.");
