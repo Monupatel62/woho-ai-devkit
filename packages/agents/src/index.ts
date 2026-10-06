@@ -321,7 +321,8 @@ export class Agent {
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
         } catch (error) {
-          await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: false, error: error instanceof Error ? error.message : String(error) } });
+          const errorCode = error instanceof AIError ? error.code : "TOOL_EXECUTION_ERROR";
+          await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: false, errorCode } });
           const failure = { error: error instanceof Error ? error.message : String(error) };
           toolResults[call.id] = failure;
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure, this.maxToolResultChars), toolCallId: call.id, name: call.name };

@@ -416,6 +416,19 @@ const run = async () => {
   const runtimeApprovalResult = await approvalRuntimeRunner.run(createAI({ provider: createMockProvider({ response: "runtime-approved", toolCall: { name: "protected-runtime", arguments: "{}" } }) }), { agent: "runtime-approval", input: "approve" });
   assert.equal(runtimeApproved, true);
   assert.equal(runtimeApprovalResult.toolResults["mock-call-1"], "approved-by-runtime");
+  const toolErrorEvents: import("@woho/core").ExecutionEvent[] = [];
+  const secretErrorAgent = createAgent(
+    createAI({ provider: createMockProvider({ response: "tool-failed", toolCall: { name: "secret-tool", arguments: "{}" } }) }),
+    {
+      name: "secret-error",
+      tools: [{ name: "secret-tool", description: "Secret tool", execute: async () => { throw new Error("super-secret-provider-token"); } }],
+    },
+  );
+  await secretErrorAgent.run("test", { runId: "secret-error-run", onEvent: (event) => { toolErrorEvents.push(event); } });
+  const failedToolEvent = toolErrorEvents.find((event) => event.type === "tool.completed" && event.data?.success === false);
+  assert.equal(failedToolEvent?.data?.errorCode, "TOOL_EXECUTION_ERROR");
+  assert.ok(!JSON.stringify(failedToolEvent).includes("super-secret-provider-token"));
+
   let verificationAttempts = 0;
   const verificationRuntime = new AgentRuntime({
     retry: { maxAttempts: 2, delayMs: 0 },
