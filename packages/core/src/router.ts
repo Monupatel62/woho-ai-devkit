@@ -10,6 +10,8 @@ export interface ModelRouterOptions {
   readonly routes: readonly ModelRoute[];
   readonly defaultModel?: string;
   readonly fallbackOnError?: boolean;
+  /** Reject explicit model names that have no configured route instead of silently routing elsewhere. */
+  readonly rejectUnknownModel?: boolean;
 }
 
 export class ModelRouter implements AIProvider {
@@ -17,12 +19,15 @@ export class ModelRouter implements AIProvider {
   private readonly routes: readonly ModelRoute[];
   private readonly defaultModel?: string;
   private readonly fallbackOnError: boolean;
+  private readonly rejectUnknownModel: boolean;
 
   constructor(options: ModelRouterOptions) {
     if (!options.routes.length) throw new AIError("At least one model route is required", "INVALID_CONFIG");
     this.routes = options.routes;
     this.defaultModel = options.defaultModel;
     this.fallbackOnError = options.fallbackOnError ?? true;
+    this.rejectUnknownModel = options.rejectUnknownModel ?? true;
+    if (typeof this.rejectUnknownModel !== "boolean") throw new AIError("rejectUnknownModel must be a boolean", "INVALID_CONFIG");
     const seen = new Set<string>();
     for (const route of this.routes) {
       if (!route.provider.name.trim()) throw new AIError("Provider name is required", "INVALID_CONFIG");
@@ -77,6 +82,7 @@ export class ModelRouter implements AIProvider {
     if (matching.length) return matching;
     const named = this.routes.filter((route) => route.provider.name === model);
     if (named.length) return named;
+    if (this.rejectUnknownModel) throw new AIError(`No route configured for model: ${model}`, "MODEL_NOT_FOUND");
     return this.routes;
   }
 }
