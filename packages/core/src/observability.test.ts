@@ -293,3 +293,31 @@ await assert.rejects(
 );
 
 console.log("core request resource-bound tests passed");
+
+
+await assert.rejects(
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], temperature: 2.1 }),
+  /temperature must be a finite number between 0 and 2/,
+);
+await assert.rejects(
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], topP: 0 }),
+  /topP must be a finite number greater than 0 and at most 1/,
+);
+await assert.rejects(
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], maxTokens: 0 }),
+  /maxTokens must be a positive integer/,
+);
+await assert.rejects(
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], stop: Array.from({ length: 17 }, () => "stop") }),
+  /AI request exceeds maxStopSequences/,
+);
+await assert.rejects(
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], stop: ["x".repeat(4097)] }),
+  /AI stop sequence exceeds maxStopSequenceCharacters/,
+);
+await assert.rejects(
+  () => ai.chat({ messages: [{ role: "user", content: "x" }], stop: ["x".repeat(4096), "y".repeat(4096), "z".repeat(4096), "w".repeat(4097)] }),
+  /AI request exceeds maxStopSequenceTotalCharacters/,
+);
+
+console.log("core request parameter-bound tests passed");
