@@ -73,7 +73,7 @@ export class InMemoryStore implements MemoryStore {
     if (typeof message.content !== "string") throw new Error("Memory message content is required");
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
-    validateMetadata(message.metadata, this.maxMetadataBytes, this.maxMetadataDepth);
+    validateMemoryMetadata(message.metadata, this.maxMetadataBytes, this.maxMetadataDepth);
     this.messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
     while (this.messages.length > this.maxMessages) this.messages.shift();
   }
