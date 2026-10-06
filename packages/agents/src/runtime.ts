@@ -30,6 +30,12 @@ export interface AgentRuntimeOptions {
   readonly heartbeatIntervalMs?: number;
 }
 
+export interface AgentResumeOptions {
+  readonly retry?: AgentRetryPolicy;
+  readonly approval?: AgentApprovalHandler;
+  readonly verify?: AgentVerifier;
+}
+
 export interface AgentTask {
   readonly agent: string;
   readonly input: string;
@@ -94,7 +100,7 @@ export class AgentRuntime {
       metadata: task.metadata ?? {},
     };
     const startedAt = Date.now();
-    await this.store?.create({ runId, agent: task.agent, parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
+    await this.store?.create({ runId, agent: task.agent, input: task.input, parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
     const heartbeat = this.store
       ? setInterval(() => {
@@ -170,6 +176,29 @@ export class AgentRuntime {
     await this.store?.appendEvent(event.runId, event);
     await this.store?.update(event.runId, { updatedAt: event.timestamp });
     await this.onEvent?.(event);
+  }
+
+  /** Restart a persisted failed/cancelled execution as a new run linked to the original. */
+  async resume(ai: AIClient, runId: string, options: AgentResumeOptions = {}): Promise<AgentRunResult & { runId: string }> {
+    if (!this.store) throw new Error("Execution store is required for execution resume");
+    const record = await this.store.get(runId);
+    if (!record) throw new Error("Execution not found: " + runId);
+    if (record.status !== "failed" && record.status !== "cancelled") {
+      throw new Error("Only failed or cancelled executions can be resumed: " + runId);
+    }
+    if (record.input === undefined) {
+      throw new Error("Execution record does not contain input and cannot be resumed: " + runId);
+    }
+    return this.run(ai, {
+      agent: record.agent,
+      input: record.input,
+      parentRunId: record.runId,
+      sessionId: record.sessionId,
+      metadata: { ...record.metadata },
+      retry: options.retry,
+      approval: options.approval,
+      verify: options.verify,
+    });
   }
 
   async runParallel(ai: AIClient, tasks: AgentTask[]): Promise<Array<AgentRunResult & { runId: string }>> {
