@@ -347,9 +347,14 @@ export class FileExecutionStore implements ExecutionStore {
         } finally {
           await handle.close();
         }
+        const heartbeatMs = Math.max(1, Math.floor(this.lockStaleMs / 3));
+        const heartbeat = setInterval(() => {
+          void fs.utimes(lock, new Date(), new Date()).catch(() => undefined);
+        }, heartbeatMs);
         try {
           return await operation();
         } finally {
+          clearInterval(heartbeat);
           await fs.rm(lock, { force: true });
         }
       } catch (error) {
