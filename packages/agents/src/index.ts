@@ -439,3 +439,5 @@ export * from "./platform.js";
 export * from "./coding-loop.js";
 
 export * from "./browser.js";
+
+export * from "./project-context.js";
