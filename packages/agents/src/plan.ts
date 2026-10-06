@@ -1,6 +1,8 @@
 import type { AIClient } from "@woho/core";
 import type { AgentRunResult } from "./index.js";
 import type { AgentRuntime, AgentTask, AgentVerifier } from "./runtime.js";
+import type { WohoProjectContext } from "./project-context.js";
+import { mergeWohoProjectMetadata } from "./project-context.js";
 
 export interface AgentPlanContext {
   readonly completed: Readonly<Record<string, AgentRunResult & { runId: string }>>;
@@ -29,7 +31,7 @@ export async function runAgentPlan(
   runtime: AgentRuntime,
   ai: AIClient,
   plan: AgentPlan,
-  options: { readonly signal?: AbortSignal } = {},
+  options: { readonly signal?: AbortSignal; readonly projectContext?: WohoProjectContext } = {},
 ): Promise<AgentPlanResult> {
   const steps = new Map<string, AgentPlanStep>();
   for (const step of plan.steps) {
@@ -65,8 +67,8 @@ export async function runAgentPlan(
         const task: AgentTask = {
           agent: step.agent,
           input: typeof step.input === "function" ? step.input({ completed: results }) : step.input,
-          sessionId: step.sessionId,
-          metadata: step.metadata,
+          sessionId: step.sessionId ?? options.projectContext?.sessionId,
+          metadata: options.projectContext ? mergeWohoProjectMetadata(options.projectContext, step.metadata) : step.metadata,
           parentRunId: undefined,
           signal: options.signal,
           verify: step.verify,
