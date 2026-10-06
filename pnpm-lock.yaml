@@ -48,6 +48,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tools
 
+  apps/phone-agent:
+    dependencies:
+      '@woho/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@woho/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@woho/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+
   packages/agents:
     dependencies:
       '@woho/core':
