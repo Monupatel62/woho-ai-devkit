@@ -8,6 +8,8 @@ export interface MCPStdioTransportOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   maxMessageBytes?: number;
+  /** Inherit the parent process environment. Defaults to false. */
+  inheritEnvironment?: boolean;
 }
 
 export class MCPStdioTransport implements MCPTransport {
@@ -23,11 +25,17 @@ export class MCPStdioTransport implements MCPTransport {
     if (!options.command.trim()) throw new Error("MCP command is required");
     this.maxMessageBytes = options.maxMessageBytes ?? 1024 * 1024;
     this.timeoutMs = options.timeoutMs ?? 30_000;
+    const inheritEnvironment = options.inheritEnvironment ?? false;
     if (!Number.isInteger(this.maxMessageBytes) || this.maxMessageBytes < 1) throw new Error("maxMessageBytes must be a positive integer");
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new Error("timeoutMs must be a positive integer");
     this.process = spawn(options.command, options.args ?? [], {
       cwd: options.cwd,
-      env: { ...process.env, ...(options.env ?? {}) },
+      env: {
+        PATH: process.env.PATH ?? "",
+        ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
+        ...(options.env ?? {}),
+        ...(inheritEnvironment ? process.env : {}),
+      },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
     });
