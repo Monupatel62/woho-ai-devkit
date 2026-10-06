@@ -51,12 +51,12 @@ async function readErrorBody(response: Response, maxBytes: number): Promise<stri
   catch { return "Provider error response could not be read safely"; }
 }
 
-function mapError(status: number, body: string): Error {
+function mapError(status: number, _body: string): Error {
   if (status === 401) return new AuthenticationError("Invalid provider API key");
   if (status === 429) return new RateLimitError("Provider rate limit exceeded");
   if (status === 404) return new ModelNotFoundError("Model was not found");
-  if (status >= 400 && status < 500) return new InvalidRequestError(body || "Provider rejected the request");
-  return new NetworkError(body || "Provider returned HTTP " + status);
+  if (status >= 400 && status < 500) return new InvalidRequestError("Provider rejected the request");
+  return new NetworkError("Provider returned HTTP " + status);
 }
 
 async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
