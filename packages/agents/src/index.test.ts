@@ -185,6 +185,30 @@ const run = async () => {
   const record = executionStore.get(stored.runId);
   assert.equal(record?.status, "succeeded");
   assert.ok((record?.events.length ?? 0) >= 2);
+  const atomicStore = new InMemoryExecutionStore();
+  await atomicStore.create({
+    runId: "atomic-transition",
+    agent: "general",
+    input: "atomic",
+    metadata: {},
+    status: "running",
+    startedAt: 100,
+    updatedAt: 100,
+    attempts: 1,
+    events: [],
+  });
+  const atomicEvent = {
+    type: "run.completed" as const,
+    runId: "atomic-transition",
+    timestamp: 200,
+    data: { agent: "general", steps: 1, attempts: 1, verified: false },
+  };
+  atomicStore.transition("atomic-transition", { status: "succeeded", completedAt: 200 }, atomicEvent);
+  const atomicRecord = atomicStore.get("atomic-transition");
+  assert.equal(atomicRecord?.status, "succeeded");
+  assert.equal(atomicRecord?.updatedAt, 200);
+  assert.equal(atomicRecord?.events.at(-1)?.type, "run.completed");
+  assert.equal(atomicRecord?.events.at(-1)?.timestamp, 200);
   assert.throws(() => executionStore.update(stored.runId, { status: "running" }), /Invalid execution status transition: succeeded -> running/);
   assert.equal(executionStore.updateIf?.(stored.runId, record?.updatedAt ?? 0, { status: "running" }), false);
 
