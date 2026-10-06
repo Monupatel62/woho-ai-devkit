@@ -592,6 +592,53 @@ export class FileExecutionStore implements ExecutionStore {
   }
 
 
+  async claimToolExecution(runId: string, callId: string, fingerprint: string): Promise<ExecutionToolReceipt | undefined> {
+    validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) throw new Error("Execution not found: " + runId);
+      const existing = current.toolReceipts?.[callId];
+      if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return existing; }
+      const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
+      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: receipt.updatedAt }), true); return receipt;
+    }));
+  }
+
+  async completeToolExecution(runId: string, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): Promise<boolean> {
+    validateRunId(runId); validateCallId(callId);
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); const receipt = current?.toolReceipts?.[callId];
+      if (!current || !receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+      const updatedAt = patch.updatedAt ?? Date.now(); const nextReceipt = { ...receipt, ...patch, updatedAt };
+      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt }), true); return true;
+    }));
+  }
+
+  async acquireLease(runId: string, ownerId: string, ttlMs: number, now = Date.now()): Promise<ExecutionLease | undefined> {
+    validateRunId(runId); if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution lease request");
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) throw new Error("Execution not found: " + runId);
+      if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
+      const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
+      await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: now }), true); return lease;
+    }));
+  }
+
+  async renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): Promise<boolean> {
+    validateRunId(runId);
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
+      const lease = { ...current.lease, expiresAt: now + ttlMs }; await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: now }), true); return true;
+    }));
+  }
+
+  async releaseLease(runId: string, ownerId: string, fencingToken: number, now = Date.now()): Promise<boolean> {
+    validateRunId(runId);
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
+      await this.writeRecord(target, cloneRecord({ ...current, lease: undefined, updatedAt: now }), true); return true;
+    }));
+  }
+
   async resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): Promise<boolean> {
     validateRunId(runId);
     validateApprovalId(approvalId);
