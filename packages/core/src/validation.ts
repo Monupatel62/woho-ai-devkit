@@ -1,7 +1,13 @@
+import type { AIRequest } from "./types.js";
+
 export interface ValidationOptions {
   maxMessages?: number;
   maxMessageCharacters?: number;
   maxTotalCharacters?: number;
+  maxToolDefinitions?: number;
+  maxToolDefinitionBytes?: number;
+  maxToolCallsPerMessage?: number;
+  maxToolArgumentBytes?: number;
 }
 
 export function validateAIInput(messages: readonly { content: string }[], options: ValidationOptions = {}): void {
@@ -18,5 +24,42 @@ export function validateAIInput(messages: readonly { content: string }[], option
     if (message.content.length > maxMessageCharacters) throw new Error("AI message exceeds maxMessageCharacters");
     total += message.content.length;
     if (total > maxTotalCharacters) throw new Error("AI request exceeds maxTotalCharacters");
+  }
+}
+
+export function validateAIRequest(request: AIRequest, options: ValidationOptions = {}): void {
+  if (!request || typeof request !== "object") throw new Error("AI request is required");
+  validateAIInput(request.messages, options);
+
+  const maxToolDefinitions = options.maxToolDefinitions ?? 64;
+  const maxToolDefinitionBytes = options.maxToolDefinitionBytes ?? 256 * 1024;
+  const maxToolCallsPerMessage = options.maxToolCallsPerMessage ?? 32;
+  const maxToolArgumentBytes = options.maxToolArgumentBytes ?? 256 * 1024;
+
+  if (!Number.isInteger(maxToolDefinitions) || maxToolDefinitions < 1) throw new Error("maxToolDefinitions must be a positive integer");
+  if (!Number.isInteger(maxToolDefinitionBytes) || maxToolDefinitionBytes < 1) throw new Error("maxToolDefinitionBytes must be a positive integer");
+  if (!Number.isInteger(maxToolCallsPerMessage) || maxToolCallsPerMessage < 1) throw new Error("maxToolCallsPerMessage must be a positive integer");
+  if (!Number.isInteger(maxToolArgumentBytes) || maxToolArgumentBytes < 1) throw new Error("maxToolArgumentBytes must be a positive integer");
+
+  if (request.tools && request.tools.length > maxToolDefinitions) throw new Error("AI request exceeds maxToolDefinitions");
+  if (request.tools) {
+    let toolBytes = 0;
+    for (const tool of request.tools) {
+      if (!tool || typeof tool !== "object" || typeof tool.name !== "string" || typeof tool.description !== "string") {
+        throw new Error("AI tool definition is invalid");
+      }
+      if (!tool.name.trim()) throw new Error("AI tool name is required");
+      toolBytes += Buffer.byteLength(JSON.stringify(tool), "utf8");
+      if (toolBytes > maxToolDefinitionBytes) throw new Error("AI request exceeds maxToolDefinitionBytes");
+    }
+  }
+
+  for (const message of request.messages) {
+    if (!message || typeof message !== "object") throw new Error("AI message is invalid");
+    if (message.toolCalls && message.toolCalls.length > maxToolCallsPerMessage) throw new Error("AI message exceeds maxToolCallsPerMessage");
+    for (const call of message.toolCalls ?? []) {
+      if (!call || typeof call !== "object" || typeof call.arguments !== "string") throw new Error("AI tool call is invalid");
+      if (Buffer.byteLength(call.arguments, "utf8") > maxToolArgumentBytes) throw new Error("AI tool call exceeds maxToolArgumentBytes");
+    }
   }
 }
