@@ -180,6 +180,8 @@ const approvalRun = {
   attempts: 1,
   events: [],
   approval: {
+    approvalId: "approval-1",
+    callId: "call-1",
     status: "pending" as const,
     tool: "project_write",
     capability: "file",
@@ -190,10 +192,12 @@ const approvalRun = {
 };
 approvalStore.create(approvalRun);
 assert.equal(approvalStore.get("approval-audit-run")?.approval?.status, "pending");
-approvalStore.update("approval-audit-run", {
-  approval: { ...approvalRun.approval, status: "approved", decidedAt: 3 },
-});
+assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "wrong-id", true), false);
+assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1", true, "owner approved", 3), true);
+assert.equal(approvalStore.get("approval-audit-run")?.approval?.status, "approved");
 assert.equal(approvalStore.get("approval-audit-run")?.approval?.decidedAt, 3);
+assert.equal(approvalStore.get("approval-audit-run")?.status, "running");
+assert.equal(approvalStore.resolveApproval?.("approval-audit-run", "approval-1", false), false);
 assert.throws(() => approvalStore.update("approval-audit-run", {
   approval: { ...approvalRun.approval, status: "pending", decidedAt: 3 },
 }), /Pending approval cannot have decidedAt/);

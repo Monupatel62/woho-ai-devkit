@@ -4,6 +4,10 @@ import path from "node:path";
 import type { ExecutionEvent, ExecutionStatus } from "@woho/core";
 
 export interface ExecutionApprovalRecord {
+  /** Unique request identity; decisions must target this exact approval. */
+  readonly approvalId: string;
+  /** Model/tool call identity that triggered the approval. */
+  readonly callId: string;
   readonly status: "pending" | "approved" | "denied";
   readonly tool: string;
   readonly capability: string;
@@ -47,6 +51,8 @@ export interface ExecutionStore {
   updateIf?(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean | Promise<boolean>;
   /** Atomically claim a single child run for resuming a failed/cancelled execution. */
   claimResume?(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined | Promise<string | undefined>;
+  /** Atomically resolve the currently pending approval for a run. */
+  resolveApproval?(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt?: number): boolean | Promise<boolean>;
   /** Atomically apply a record patch and append its lifecycle event. */
   transition?(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void | Promise<void>;
 }
@@ -92,6 +98,16 @@ function validateRecoveryOptions(options: RecoverStaleExecutionsOptions): void {
 
 function cloneRecord(record: ExecutionRecord): ExecutionRecord {
   return { ...record, metadata: { ...record.metadata }, events: [...record.events] };
+}
+
+function validateApprovalId(approvalId: string): void {
+  if (typeof approvalId !== "string" || !approvalId.trim()) throw new Error("Execution approvalId is required");
+  if (approvalId.length > 200) throw new Error("Execution approvalId is too long");
+}
+
+function validateCallId(callId: string): void {
+  if (typeof callId !== "string" || !callId.trim()) throw new Error("Execution approval callId is required");
+  if (callId.length > 200) throw new Error("Execution approval callId is too long");
 }
 
 function validateRunId(runId: string): void {
@@ -145,6 +161,8 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   if (!isRecord(record.metadata)) throw new Error("Invalid execution metadata");
   if (record.approval !== undefined) {
     if (!isRecord(record.approval)) throw new Error("Invalid execution approval");
+    validateApprovalId(record.approval.approvalId);
+    validateCallId(record.approval.callId);
     if (!["pending", "approved", "denied"].includes(record.approval.status)) throw new Error("Invalid execution approval status");
     for (const key of ["tool", "capability", "action"]) if (typeof record.approval[key] !== "string" || !record.approval[key].trim()) throw new Error("Invalid execution approval " + key);
     validateRequiredTimestamp(record.approval.requestedAt, "Execution approval requestedAt");
@@ -283,6 +301,31 @@ export class InMemoryExecutionStore implements ExecutionStore {
     try { validateExecutionTransition(current, patch.status); } catch { return false; }
     const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
     try { validateExecutionRecord(next); } catch { return false; }
+    this.records.set(runId, cloneRecord(next));
+    return true;
+  }
+
+
+  resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): boolean {
+    validateRunId(runId);
+    validateApprovalId(approvalId);
+    if (typeof approved !== "boolean") throw new Error("Approval decision must be boolean");
+    validateRequiredTimestamp(decidedAt, "Execution approval decidedAt");
+    const current = this.records.get(runId);
+    if (!current?.approval || current.approval.status !== "pending" || current.approval.approvalId !== approvalId) return false;
+    if (decidedAt < current.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
+    const next: ExecutionRecord = {
+      ...current,
+      approval: {
+        ...current.approval,
+        status: approved ? "approved" : "denied",
+        ...(reason ? { reason } : {}),
+        decidedAt,
+      },
+      status: current.status === "waiting" ? "running" : current.status,
+      updatedAt: decidedAt,
+    };
+    validateExecutionRecord(next);
     this.records.set(runId, cloneRecord(next));
     return true;
   }
@@ -442,6 +485,34 @@ export class FileExecutionStore implements ExecutionStore {
       try { validateExecutionTransition(current, patch.status); } catch { return false; }
       const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
       try { validateExecutionRecord(next); } catch { return false; }
+      await this.writeRecord(target, cloneRecord(next), true);
+      return true;
+    }));
+  }
+
+
+  async resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): Promise<boolean> {
+    validateRunId(runId);
+    validateApprovalId(approvalId);
+    if (typeof approved !== "boolean") throw new Error("Approval decision must be boolean");
+    validateRequiredTimestamp(decidedAt, "Execution approval decidedAt");
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current?.approval || current.approval.status !== "pending" || current.approval.approvalId !== approvalId) return false;
+      if (decidedAt < current.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
+      const next: ExecutionRecord = {
+        ...current,
+        approval: {
+          ...current.approval,
+          status: approved ? "approved" : "denied",
+          ...(reason ? { reason } : {}),
+          decidedAt,
+        },
+        status: current.status === "waiting" ? "running" : current.status,
+        updatedAt: decidedAt,
+      };
+      validateExecutionRecord(next);
       await this.writeRecord(target, cloneRecord(next), true);
       return true;
     }));

@@ -36,6 +36,20 @@ export interface AgentRuntimeOptions {
   readonly maxErrorMessageBytes?: number;
   /** Persist approval request/decision state for durable audit. */
   readonly persistApprovalAudit?: boolean;
+  /** Poll interval used when a run has a durable approval but no in-process approval handler. */
+  readonly approvalPollIntervalMs?: number;
+}
+
+export interface PendingApproval {
+  readonly runId: string;
+  readonly projectId?: string;
+  readonly approvalId: string;
+  readonly callId: string;
+  readonly tool: string;
+  readonly capability: string;
+  readonly action: string;
+  readonly reason?: string;
+  readonly requestedAt: number;
 }
 
 export interface AgentResumeOptions {
@@ -73,6 +87,7 @@ export class AgentRuntime {
   private readonly maxInputBytes: number;
   private readonly maxErrorMessageBytes: number;
   private readonly persistApprovalAudit: boolean;
+  private readonly approvalPollIntervalMs: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -89,10 +104,12 @@ export class AgentRuntime {
     this.maxInputBytes = options.maxInputBytes ?? 1_048_576;
     this.maxErrorMessageBytes = options.maxErrorMessageBytes ?? 4 * 1024;
     this.persistApprovalAudit = options.persistApprovalAudit ?? true;
+    this.approvalPollIntervalMs = options.approvalPollIntervalMs ?? 250;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
     if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
     if (!Number.isInteger(this.maxErrorMessageBytes) || this.maxErrorMessageBytes < 1) throw new Error("maxErrorMessageBytes must be a positive integer");
+    if (!Number.isInteger(this.approvalPollIntervalMs) || this.approvalPollIntervalMs < 10) throw new Error("approvalPollIntervalMs must be at least 10ms");
   }
 
   register(definition: AgentDefinition, factory?: (ai: AIClient, definition: AgentDefinition) => Agent): this {
@@ -138,51 +155,41 @@ export class AgentRuntime {
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
           const approvalHandler = task.approval ?? this.approval;
-          const auditedApproval = approvalHandler && this.persistApprovalAudit && this.store
-            ? async (request: Parameters<NonNullable<typeof approvalHandler>>[0]): Promise<boolean> => {
+          const auditedApproval = this.persistApprovalAudit && this.store
+            ? async (request: Parameters<NonNullable<AgentApprovalHandler>>[0]): Promise<boolean> => {
+                const approvalId = randomUUID();
                 const requestedAt = Date.now();
                 const reason = request.reason ? this.sanitizeError(request.reason) : undefined;
-                await this.store?.update(runId, {
-                  approval: {
-                    status: "pending",
-                    tool: request.tool,
-                    capability: request.capability,
-                    action: request.action,
-                    ...(reason ? { reason } : {}),
-                    requestedAt,
-                  },
-                  updatedAt: requestedAt,
-                });
+                const approval = {
+                  approvalId,
+                  callId: request.callId,
+                  status: "pending" as const,
+                  tool: request.tool,
+                  capability: request.capability,
+                  action: request.action,
+                  ...(reason ? { reason } : {}),
+                  requestedAt,
+                };
+                await this.store?.update(runId, { approval, status: "waiting", updatedAt: requestedAt });
+                const durableRequest = { ...request, approvalId };
                 try {
-                  const approved = await approvalHandler(request);
+                  const approved = approvalHandler
+                    ? await approvalHandler(durableRequest)
+                    : await this.waitForApproval(runId, approvalId, task.signal);
                   const decidedAt = Date.now();
                   await this.store?.update(runId, {
-                    approval: {
-                      status: approved ? "approved" : "denied",
-                      tool: request.tool,
-                      capability: request.capability,
-                      action: request.action,
-                      ...(reason ? { reason } : {}),
-                      requestedAt,
-                      decidedAt,
-                    },
+                    approval: { ...approval, status: approved ? "approved" : "denied", decidedAt },
+                    status: "running",
                     updatedAt: decidedAt,
                   });
                   return approved;
                 } catch (approvalError) {
                   const decidedAt = Date.now();
-                  await this.store?.update(runId, {
-                    approval: {
-                      status: "denied",
-                      tool: request.tool,
-                      capability: request.capability,
-                      action: request.action,
-                      ...(reason ? { reason } : {}),
-                      requestedAt,
-                      decidedAt,
-                    },
+                  await Promise.resolve().then(() => this.store?.update(runId, {
+                    approval: { ...approval, status: "denied", decidedAt },
+                    status: "running",
                     updatedAt: decidedAt,
-                  });
+                  })).catch(() => undefined);
                   throw approvalError;
                 }
               }
@@ -282,6 +289,45 @@ export class AgentRuntime {
       await this.store?.update(event.runId, { updatedAt: event.timestamp });
     }
     await this.onEvent?.(event);
+  }
+
+  /** Return durable approvals that are still waiting for an owner decision. */
+  async listPendingApprovals(options: { projectId?: string; limit?: number } = {}): Promise<PendingApproval[]> {
+    if (!this.store) throw new Error("Execution store is required for approval recovery");
+    const records = await this.store.list({ status: "waiting", projectId: options.projectId, limit: options.limit });
+    return records
+      .filter((record) => record.approval?.status === "pending")
+      .map((record) => ({
+        runId: record.runId,
+        ...(record.projectId ? { projectId: record.projectId } : {}),
+        approvalId: record.approval!.approvalId,
+        callId: record.approval!.callId,
+        tool: record.approval!.tool,
+        capability: record.approval!.capability,
+        action: record.approval!.action,
+        ...(record.approval!.reason ? { reason: record.approval!.reason } : {}),
+        requestedAt: record.approval!.requestedAt,
+      }));
+  }
+
+  /** Atomically resolve one exact durable approval request. */
+  async resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string): Promise<boolean> {
+    if (!this.store?.resolveApproval) throw new Error("Execution store does not support durable approval resolution");
+    if (typeof approved !== "boolean") throw new Error("Approval decision must be boolean");
+    const sanitizedReason = reason ? this.sanitizeError(reason) : undefined;
+    return this.store.resolveApproval(runId, approvalId, approved, sanitizedReason);
+  }
+
+  private async waitForApproval(runId: string, approvalId: string, signal?: AbortSignal): Promise<boolean> {
+    while (true) {
+      if (signal?.aborted) throw signal.reason ?? new Error("Approval wait aborted");
+      const record = await this.store?.get(runId);
+      const approval = record?.approval;
+      if (!approval || approval.approvalId !== approvalId) throw new AIError("Durable approval request disappeared", "APPROVAL_STATE_LOST");
+      if (approval.status === "approved") return true;
+      if (approval.status === "denied") return false;
+      await this.sleep(this.approvalPollIntervalMs, signal);
+    }
   }
 
   /** Restart a persisted failed/cancelled execution as a new run linked to the original. */
