@@ -101,6 +101,19 @@ const run = async () => {
   assert.equal(listing.entries[0]?.name, "hello.txt");
   await assert.rejects(() => workspace.execute({ operation: "read", path: "../escape.txt" }), /Parent traversal/);
   await assert.rejects(() => workspace.execute({ operation: "write", path: "/tmp/escape.txt", content: "x" }), /Absolute paths/);
+  const outsideRoot = await mkdtemp(join(tmpdir(), "woho-workspace-outside-"));
+  await writeFile(join(outsideRoot, "secret.txt"), "secret", "utf8");
+  const symlinkPath = join(root, "linked");
+  try {
+    await (await import("node:fs/promises")).symlink(outsideRoot, symlinkPath, "dir");
+    await assert.rejects(() => workspace.execute({ operation: "write", path: "linked/new.txt", content: "blocked" }), /Symbolic link ancestors/);
+    await assert.rejects(() => workspace.execute({ operation: "mkdir", path: "linked/new-dir" }), /Symbolic link ancestors/);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EPERM" && (error as NodeJS.ErrnoException).code !== "EACCES") throw error;
+  } finally {
+    await rm(outsideRoot, { recursive: true, force: true });
+    await rm(symlinkPath, { recursive: true, force: true });
+  }
   assert.deepEqual(await workspace.execute({ operation: "move", path: "src/hello.txt", destination: "hello.txt" }), { from: "src/hello.txt", to: "hello.txt", moved: true });
   assert.deepEqual(await workspace.execute({ operation: "delete", path: "hello.txt" }), { path: "hello.txt", deleted: true });
   await rm(workspaceRoot, { recursive: true, force: true });
