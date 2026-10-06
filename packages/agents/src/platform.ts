@@ -1,5 +1,5 @@
 import type { AIClient } from "@woho/core";
-import type { AgentTool, AgentRunResult } from "./index.js";
+import { Agent, type AgentTool, type AgentRunResult } from "./index.js";
 import { AgentRuntime, type AgentRuntimeOptions, type AgentTask } from "./runtime.js";
 import { AgentRegistry, type AgentDefinition, type AgentRole } from "./definition.js";
 import { createAgentDelegationTool, type AgentDelegationPolicy } from "./delegation.js";
@@ -96,9 +96,6 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
     const id = agentId(role);
     if (registry.get(id)) continue;
     const tools = [...commonTools, ...(options.toolsByRole?.[role] ?? [])];
-    if (role === "orchestrator") {
-      tools.push(createAgentDelegationTool(runtime, undefined as never, registry, options.delegation));
-    }
     registry.register({
       id,
       name: `WoHo ${role[0]!.toUpperCase() + role.slice(1)} Agent`,
@@ -109,11 +106,9 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
       permissions: options.permissionsByRole?.[role],
     }, ({ ai, definition }) => {
       const finalTools = definition.id === agentId("orchestrator")
-        ? definition.tools?.map((tool) => tool.name === "delegate_agent"
-          ? createAgentDelegationTool(runtime, ai, registry, options.delegation)
-          : tool)
+        ? [...(definition.tools ?? []), createAgentDelegationTool(runtime, ai, registry, options.delegation)]
         : definition.tools;
-      return new (requireAgent())(ai, {
+      return new Agent(ai, {
         name: definition.name,
         role: definition.role,
         instructions: definition.instructions,
@@ -154,8 +149,3 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
   return { registry, runtime, plan, runPlan, run, runAgent: (ai, task) => runtime.run(ai, task) };
 }
 
-function requireAgent(): typeof import("./index.js").Agent {
-  // Avoid a static import cycle while keeping platform creation in the orchestration layer.
-  return (globalThis as { __wohoAgentCtor?: typeof import("./index.js").Agent }).__wohoAgentCtor
-    ?? (() => { throw new Error("WoHo Agent constructor is unavailable"); }) as never;
-}
