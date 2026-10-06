@@ -256,3 +256,40 @@ assert.equal(
 {
   assert.throws(() => createAI({ provider: createMockProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
 }
+
+
+await assert.rejects(
+  () => ai.chat({
+    messages: [{ role: "user", content: "x" }],
+    tools: Array.from({ length: 65 }, (_, index) => ({ name: "tool-" + index, description: "tool" })),
+  }),
+  /AI request exceeds maxToolDefinitions/,
+);
+
+await assert.rejects(
+  () => ai.chat({
+    messages: [{ role: "user", content: "x", toolCalls: [{ id: "call-1", name: "tool", arguments: "x".repeat(256 * 1024 + 1) }] }],
+  }),
+  /AI tool call exceeds maxToolArgumentBytes/,
+);
+
+await assert.rejects(
+  () => ai.chat({
+    messages: [{
+      role: "user",
+      content: "x",
+      toolCalls: Array.from({ length: 33 }, (_, index) => ({ id: "call-" + index, name: "tool", arguments: "{}" })),
+    }],
+  }),
+  /AI message exceeds maxToolCallsPerMessage/,
+);
+
+await assert.rejects(
+  () => ai.chat({
+    messages: [{ role: "user", content: "x" }],
+    tools: [{ name: "tool", description: "x".repeat(256 * 1024) }],
+  }),
+  /AI request exceeds maxToolDefinitionBytes/,
+);
+
+console.log("core request resource-bound tests passed");

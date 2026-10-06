@@ -1,6 +1,6 @@
 import type { AIConfig, AIRequest, AIResponse, AIStreamChunk, AIObservability } from "./types.js";
 import { AIError, TimeoutError } from "./errors.js";
-import { validateAIInput } from "./validation.js";
+import { validateAIRequest } from "./validation.js";
 
 const sleep = (ms: number, signal?: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -48,7 +48,7 @@ function redactRequest(request: AIRequest): AIRequest {
 
 function validate(request: AIRequest) {
   if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");
-  try { validateAIInput(request.messages); }
+  try { validateAIRequest(request); }
   catch (error) { throw new AIError(error instanceof Error ? error.message : String(error), "INVALID_REQUEST_ERROR"); }
 }
 
