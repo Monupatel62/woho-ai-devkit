@@ -49,4 +49,30 @@ try {
   rejected = error instanceof Error && error.message.includes("unavailable");
 }
 assert.equal(rejected, true);
+
+const invalidPlanner = createAI({ provider: {
+  name: "invalid-planner",
+  async chat() {
+    return { id: "invalid", text: JSON.stringify({ steps: [
+      { id: "x", agent: "woho-coding", input: "do it", dependsOn: ["x", "x"] },
+    ] }), model: "invalid" };
+  },
+}});
+let invalidRejected = false;
+try { await platform.plan(invalidPlanner, "validate dependencies"); } catch (error) {
+  invalidRejected = error instanceof Error && error.message.includes("self dependency");
+}
+assert.equal(invalidRejected, true);
+
+const boundedPlanner = createAI({ provider: {
+  name: "bounded-planner",
+  async chat() {
+    return { id: "bounded", text: JSON.stringify({ steps: [{ id: "x", agent: "woho-coding", input: "12345" }] }), model: "bounded" };
+  },
+}});
+let boundedRejected = false;
+try { await createWohoAgentPlatform({ maxPlanStepInputBytes: 4 }).plan(boundedPlanner, "bounded input"); } catch (error) {
+  boundedRejected = error instanceof Error && error.message.includes("maxPlanStepInputBytes");
+}
+assert.equal(boundedRejected, true);
 console.log("WoHo agent platform tests passed");
