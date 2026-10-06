@@ -18,7 +18,19 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 
-function redactRequest(request: AIRequest): AIRequest {\n  return {\n    ...request,\n    messages: request.messages.map((message) => ({\n      ...message,\n      content: "[REDACTED]",\n      toolCalls: message.toolCalls?.map((call) => ({ ...call, arguments: "[REDACTED]" })),\n    })),\n    tools: request.tools?.map((tool) => ({ ...tool, description: "[REDACTED]", parameters: undefined })),\n  };\n}\n\nfunction validate(request: AIRequest) {
+function redactRequest(request: AIRequest): AIRequest {
+  return {
+    ...request,
+    messages: request.messages.map((message) => ({
+      ...message,
+      content: "[REDACTED]",
+      toolCalls: message.toolCalls?.map((call) => ({ ...call, arguments: "[REDACTED]" })),
+    })),
+    tools: request.tools?.map((tool) => ({ ...tool, description: "[REDACTED]", parameters: undefined })),
+  };
+}
+
+function validate(request: AIRequest) {
   if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");
   try { validateAIInput(request.messages); }
   catch (error) { throw new AIError(error instanceof Error ? error.message : String(error), "INVALID_REQUEST_ERROR"); }
