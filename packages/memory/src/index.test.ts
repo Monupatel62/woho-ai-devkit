@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { searchMemory } from "./search.js";
 import { tmpdir } from "node:os";
+import { utimes, writeFile } from "node:fs/promises";
 
 const run = async () => {
   const store = createInMemoryStore({ maxMessages: 2 });
@@ -52,6 +53,33 @@ const run = async () => {
   await fileStore.add({ id: "c", role: "user", content: "three", timestamp: 3 });
   assert.deepEqual((await fileStore.list()).map((m) => m.id), ["pb", "c"]);
   await assert.rejects(() => fileStore.list({ before: Number.NaN }), /finite number/);
+  const sharedPath = join(dir, "shared.json");
+  const sharedA = createJsonFileStore({ filePath: sharedPath });
+  const sharedB = createJsonFileStore({ filePath: sharedPath });
+  await Promise.all([
+    sharedA.add({ id: "shared-a", role: "user", content: "a" }),
+    sharedB.add({ id: "shared-b", role: "user", content: "b" }),
+  ]);
+  assert.deepEqual((await sharedA.list()).map((m) => m.id).sort(), ["shared-a", "shared-b"]);
+
+  assert.throws(() => createJsonFileStore({ filePath: join(dir, "invalid-lock.json"), lockTimeoutMs: 0 }), /lockTimeoutMs/);
+  assert.throws(() => createJsonFileStore({ filePath: join(dir, "invalid-lock.json"), lockRetryMs: 0 }), /lockRetryMs/);
+  assert.throws(() => createJsonFileStore({ filePath: join(dir, "invalid-lock.json"), lockStaleMs: 1, lockRetryMs: 25 }), /lockStaleMs/);
+
+  const lockedPath = join(dir, "locked.json");
+  const lockedStore = createJsonFileStore({ filePath: lockedPath, lockTimeoutMs: 30, lockRetryMs: 5, lockStaleMs: 1000 });
+  await writeFile(lockedPath + ".lock", "active", { mode: 0o600 });
+  await assert.rejects(() => lockedStore.add({ id: "locked", role: "user", content: "x" }), /lock acquisition timed out/);
+  await rm(lockedPath + ".lock", { force: true });
+
+  const stalePath = join(dir, "stale.json");
+  const staleStore = createJsonFileStore({ filePath: stalePath, lockTimeoutMs: 100, lockRetryMs: 5, lockStaleMs: 20 });
+  await writeFile(stalePath + ".lock", "stale", { mode: 0o600 });
+  const old = new Date(Date.now() - 1000);
+  await utimes(stalePath + ".lock", old, old);
+  await staleStore.add({ id: "stale", role: "user", content: "recovered" });
+  assert.equal((await staleStore.list())[0]?.id, "stale");
+
   await fileStore.clear();
   assert.equal((await fileStore.list()).length, 0);
   await import("node:fs/promises").then(({ writeFile }) => writeFile(join(dir, "invalid.json"), JSON.stringify([{ id: "", role: "user", content: "bad" }])));
