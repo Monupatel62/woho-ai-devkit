@@ -77,6 +77,26 @@ function validateRunId(runId: string): void {
   if (runId.length > 200) throw new Error("Execution runId is too long");
 }
 
+const EXECUTION_TRANSITIONS: Readonly<Record<ExecutionStatus, readonly ExecutionStatus[]>> = {
+  queued: ["queued", "running", "cancelled", "failed"],
+  running: ["running", "waiting", "succeeded", "failed", "cancelled"],
+  waiting: ["waiting", "running", "succeeded", "failed", "cancelled"],
+  succeeded: ["succeeded"],
+  failed: ["failed"],
+  cancelled: ["cancelled"],
+};
+
+export function isValidExecutionTransition(from: ExecutionStatus, to: ExecutionStatus): boolean {
+  return EXECUTION_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+function validateExecutionTransition(current: ExecutionRecord, next: ExecutionStatus | undefined): void {
+  if (next === undefined || next === current.status) return;
+  if (!isValidExecutionTransition(current.status, next)) {
+    throw new Error("Invalid execution status transition: " + current.status + " -> " + next);
+  }
+}
+
 function validateLimit(limit: number | undefined): void {
   if (limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
     throw new Error("Execution list limit must be a non-negative integer");
@@ -96,6 +116,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
+    validateExecutionTransition(current, patch.status);
     this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
   }
 
@@ -129,6 +150,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current || current.updatedAt !== expectedUpdatedAt) return false;
+    try { validateExecutionTransition(current, patch.status); } catch { return false; }
     this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
     return true;
   }
@@ -185,6 +207,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
+      validateExecutionTransition(current, patch.status);
       await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
     });
   }
@@ -239,6 +262,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
+      try { validateExecutionTransition(current, patch.status); } catch { return false; }
       await this.writeRecord(target, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }), true);
       return true;
     });
