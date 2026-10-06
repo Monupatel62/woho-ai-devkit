@@ -214,8 +214,12 @@ export class AgentRuntime {
   }
 
   private async recordAgentEvent(event: ExecutionEvent): Promise<void> {
-    await this.store?.appendEvent(event.runId, event);
-    await this.store?.update(event.runId, { updatedAt: event.timestamp });
+    if (this.store?.transition) {
+      await this.store.transition(event.runId, {}, event, undefined);
+    } else {
+      await this.store?.appendEvent(event.runId, event);
+      await this.store?.update(event.runId, { updatedAt: event.timestamp });
+    }
     await this.onEvent?.(event);
   }
 
