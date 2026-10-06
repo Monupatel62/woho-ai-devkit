@@ -21,15 +21,50 @@ export interface MemoryStore {
 
 export interface MemoryOptions {
   maxMessages?: number;
+  maxMetadataBytes?: number;
+  maxMetadataDepth?: number;
+}
+
+function validateMetadata(metadata: Record<string, unknown> | undefined, maxBytes: number, maxDepth: number): void {
+  if (metadata === undefined) return;
+  const seen = new WeakSet<object>();
+  let bytes = 2;
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > maxDepth) throw new Error("Memory metadata exceeds maxMetadataDepth");
+    if (value === null) { bytes += 4; return; }
+    if (typeof value === "string") { bytes += Buffer.byteLength(JSON.stringify(value), "utf8"); return; }
+    if (typeof value === "number" || typeof value === "boolean") { bytes += Buffer.byteLength(JSON.stringify(value), "utf8"); return; }
+    if (typeof value !== "object") throw new Error("Memory metadata contains an unsupported value");
+    if (seen.has(value)) throw new Error("Memory metadata must not contain circular references");
+    seen.add(value);
+    if (Array.isArray(value)) {
+      for (const item of value) { bytes += 1; visit(item, depth + 1); }
+    } else {
+      for (const [key, item] of Object.entries(value)) {
+        bytes += Buffer.byteLength(JSON.stringify(key), "utf8") + 1;
+        visit(item, depth + 1);
+      }
+    }
+    seen.delete(value);
+    if (bytes > maxBytes) throw new Error("Memory metadata exceeds maxMetadataBytes");
+  };
+  visit(metadata, 0);
+  if (bytes > maxBytes) throw new Error("Memory metadata exceeds maxMetadataBytes");
 }
 
 export class InMemoryStore implements MemoryStore {
   private readonly messages: MemoryMessage[] = [];
   private readonly maxMessages: number;
+  private readonly maxMetadataBytes: number;
+  private readonly maxMetadataDepth: number;
 
   constructor(options: MemoryOptions = {}) {
     this.maxMessages = options.maxMessages ?? 100;
+    this.maxMetadataBytes = options.maxMetadataBytes ?? 256 * 1024;
+    this.maxMetadataDepth = options.maxMetadataDepth ?? 10;
     if (!Number.isInteger(this.maxMessages) || this.maxMessages < 1) throw new Error("maxMessages must be a positive integer");
+    if (!Number.isInteger(this.maxMetadataBytes) || this.maxMetadataBytes < 1) throw new Error("maxMetadataBytes must be a positive integer");
+    if (!Number.isInteger(this.maxMetadataDepth) || this.maxMetadataDepth < 1) throw new Error("maxMetadataDepth must be a positive integer");
   }
 
   async add(message: MemoryMessage): Promise<void> {
@@ -38,6 +73,7 @@ export class InMemoryStore implements MemoryStore {
     if (typeof message.content !== "string") throw new Error("Memory message content is required");
     if (!["system", "user", "assistant", "tool"].includes(message.role)) throw new Error("Memory message role is invalid");
     if (message.timestamp !== undefined && !Number.isFinite(message.timestamp)) throw new Error("Memory message timestamp must be finite");
+    validateMetadata(message.metadata, this.maxMetadataBytes, this.maxMetadataDepth);
     this.messages.push({ ...message, metadata: message.metadata ? { ...message.metadata } : undefined });
     while (this.messages.length > this.maxMessages) this.messages.shift();
   }
