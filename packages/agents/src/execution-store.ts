@@ -15,6 +15,8 @@ export interface ExecutionApprovalRecord {
 
 export interface ExecutionRecord {
   readonly runId: string;
+  /** Stable project scope for execution history and authorization boundaries. */
+  readonly projectId?: string;
   readonly agent: string;
   /** Original task input; optional for backward compatibility with older records. */
   readonly input?: string;
@@ -40,7 +42,7 @@ export interface ExecutionStore {
   update(runId: string, patch: Partial<ExecutionRecord>): void | Promise<void>;
   appendEvent(runId: string, event: ExecutionEvent): void | Promise<void>;
   get(runId: string): ExecutionRecord | undefined | Promise<ExecutionRecord | undefined>;
-  list(options?: { status?: ExecutionStatus; limit?: number }): ExecutionRecord[] | Promise<ExecutionRecord[]>;
+  list(options?: { status?: ExecutionStatus; projectId?: string; limit?: number }): ExecutionRecord[] | Promise<ExecutionRecord[]>;
   remove?(runId: string): boolean | Promise<boolean>;
   updateIf?(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean | Promise<boolean>;
   /** Atomically claim a single child run for resuming a failed/cancelled execution. */
@@ -133,6 +135,8 @@ function validateExecutionStatus(status: unknown): asserts status is ExecutionSt
 function validateExecutionRecord(record: ExecutionRecord): void {
   if (!isRecord(record)) throw new Error("Invalid execution record");
   validateRunId(record.runId);
+  if (record.projectId !== undefined && (typeof record.projectId !== "string" || !record.projectId.trim())) throw new Error("Invalid execution projectId");
+  if (record.projectId !== undefined && record.projectId.length > 200) throw new Error("Execution projectId is too long");
   if (typeof record.agent !== "string" || !record.agent.trim()) throw new Error("Invalid execution agent");
   if (record.input !== undefined && typeof record.input !== "string") throw new Error("Invalid execution input");
   if (record.resumeRunId !== undefined) validateRunId(record.resumeRunId);
@@ -262,6 +266,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateLimit(options.limit);
     const records = [...this.records.values()]
       .filter((record) => options.status === undefined || record.status === options.status)
+      .filter((record) => options.projectId === undefined || record.projectId === options.projectId)
       .sort((a, b) => b.updatedAt - a.updatedAt);
     return records.slice(0, options.limit ?? records.length).map(cloneRecord);
   }
