@@ -210,9 +210,10 @@ export class AgentRuntime {
             approval: auditedApproval,
             checkpoint: task.checkpoint,
             onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
+              const sanitizedCheckpoint = this.sanitizeCheckpoint(checkpoint);
               let serialized: string;
               try {
-                serialized = JSON.stringify(checkpoint);
+                serialized = JSON.stringify(sanitizedCheckpoint);
               } catch {
                 throw new AIError("Execution checkpoint is not serializable", "CHECKPOINT_INVALID");
               }
@@ -220,8 +221,8 @@ export class AgentRuntime {
                 throw new AIError("Execution checkpoint exceeds maxCheckpointBytes", "CHECKPOINT_TOO_LARGE");
               }
               await this.store?.update(runId, {
-                checkpoint,
-                updatedAt: checkpoint.updatedAt,
+                checkpoint: sanitizedCheckpoint,
+                updatedAt: sanitizedCheckpoint.updatedAt,
               });
             } : undefined,
           });
@@ -449,6 +450,27 @@ export class AgentRuntime {
       else high = mid - 1;
     }
     return redacted.slice(0, low) + suffix;
+  }
+
+  private sanitizeCheckpoint(checkpoint: AgentExecutionCheckpoint): AgentExecutionCheckpoint {
+    const sanitizeText = (value: string): string => this.sanitizeError(value);
+    const messages = checkpoint.messages.map((message) => ({
+      ...message,
+      ...(typeof message.content === "string" ? { content: sanitizeText(message.content) } : {}),
+      ...(message.toolCalls
+        ? {
+            toolCalls: message.toolCalls.map((call) => ({
+              ...call,
+              arguments: sanitizeText(call.arguments),
+            })),
+          }
+        : {}),
+    }));
+    return {
+      ...checkpoint,
+      messages,
+      ...(checkpoint.inFlightToolCallId ? { inFlightToolCallId: sanitizeText(checkpoint.inFlightToolCallId) } : {}),
+    };
   }
 
   private validateInput(input: string): void {
