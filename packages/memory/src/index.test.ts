@@ -17,6 +17,25 @@ const run = async () => {
   await store.clear();
   assert.equal((await store.list()).length, 0);
   assert.throws(() => createInMemoryStore({ maxMessages: 0 }), /positive integer/);
+  assert.throws(() => createInMemoryStore({ maxMetadataBytes: 0 }), /maxMetadataBytes/);
+  assert.throws(() => createInMemoryStore({ maxMetadataDepth: 0 }), /maxMetadataDepth/);
+  const oversizedMetadataStore = createInMemoryStore({ maxMetadataBytes: 50 });
+  const oversizedMetadata = { secret: "x".repeat(100) };
+  await assert.rejects(
+    () => oversizedMetadataStore.add({ id: "oversized-meta", role: "user", content: "x", metadata: oversizedMetadata }),
+    /maxMetadataBytes/,
+  );
+  const deepMetadata = { level: { level: { level: { value: true } } } };
+  await assert.rejects(
+    () => createInMemoryStore({ maxMetadataDepth: 2 }).add({ id: "deep-meta", role: "user", content: "x", metadata: deepMetadata }),
+    /maxMetadataDepth/,
+  );
+  const circularMetadata: Record<string, unknown> = {};
+  circularMetadata.self = circularMetadata;
+  await assert.rejects(
+    () => store.add({ id: "circular-meta", role: "user", content: "x", metadata: circularMetadata }),
+    /circular references/,
+  );
   await assert.rejects(() => store.add({ id: "bad-role", role: "invalid" as never, content: "x" }), /role is invalid/);
   await assert.rejects(() => store.add(null as never), /message is required/);
   await assert.rejects(() => store.add({ id: "bad-time", role: "user", content: "x", timestamp: Number.NaN }), /timestamp must be finite/);
@@ -40,6 +59,13 @@ const run = async () => {
   const dir = await mkdtemp(join(tmpdir(), "woho-memory-"));
   const fileStore = createJsonFileStore({ filePath: join(dir, "memory.json"), maxMessages: 10, maxFileBytes: 1024 });
   assert.throws(() => createJsonFileStore({ filePath: join(dir, "x.json"), maxFileBytes: 0 }), /positive integer/);
+  assert.throws(() => createJsonFileStore({ filePath: join(dir, "meta.json"), maxMetadataBytes: 0 }), /maxMetadataBytes/);
+  assert.throws(() => createJsonFileStore({ filePath: join(dir, "meta-depth.json"), maxMetadataDepth: 0 }), /maxMetadataDepth/);
+  const boundedMetadataStore = createJsonFileStore({ filePath: join(dir, "bounded-meta.json"), maxMetadataBytes: 50 });
+  await assert.rejects(
+    () => boundedMetadataStore.add({ id: "meta", role: "user", content: "x", metadata: { payload: "x".repeat(100) } }),
+    /maxMetadataBytes/,
+  );
   const boundedStore = createJsonFileStore({ filePath: join(dir, "bounded.json"), maxFileBytes: 40 });
   await assert.rejects(() => boundedStore.add({ id: "large", role: "user", content: "x".repeat(100) }), /exceeds maxFileBytes/);
   const persistentA = createConversation({ sessionId: "a", store: fileStore });
