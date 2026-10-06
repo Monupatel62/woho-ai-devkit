@@ -178,6 +178,8 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
         input,
         runId: runnerOptions?.runId ?? runId,
         signal: runnerOptions?.signal,
+        sessionId: projectContext?.sessionId,
+        metadata: projectContext ? mergeWohoProjectMetadata(projectContext) : undefined,
       }),
       { goal, verify: codingOptions.verify },
       options.codingLoop,
