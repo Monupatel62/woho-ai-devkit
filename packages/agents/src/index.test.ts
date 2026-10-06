@@ -116,7 +116,7 @@ const run = async () => {
         return { id: "call", text: "", model: "large-result", finishReason: "tool_call", toolCalls: [{ id: "large-1", name: "large", arguments: "{}" }] };
       },
     },
-  }), { name: "large-result-agent", maxToolResultChars: 20, tools: [{ name: "large", description: "Large result", execute: async () => "abcdefghijklmnopqrstuvwxyz" }] });
+  }), { name: "large-result-agent", maxToolResultChars: 40, tools: [{ name: "large", description: "Large result", execute: async () => "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" }] });
   const largeResult = await limitedTool.run("run");
   assert.equal(largeResult.text, "done");
   assert.ok((largeResult.messages.at(-2)?.content ?? "").includes("[tool result truncated]"));
@@ -162,6 +162,28 @@ const run = async () => {
   const abortingResult = await abortingTool.run("run");
   assert.equal(abortingResult.text, "done");
   assert.equal(toolAborted, true);
+  const hugeToolResult = createAgent(createAI({
+    provider: {
+      name: "huge-result",
+      async chat(request) {
+        if (request.messages.at(-1)?.role === "tool") return { id: "done", text: "done", model: "huge-result" };
+        return { id: "call", text: "", model: "huge-result", finishReason: "tool_call", toolCalls: [{ id: "huge-1", name: "huge", arguments: "{}" }] };
+      },
+    },
+  }), {
+    name: "huge-result-agent",
+    maxToolResultChars: 128,
+    tools: [{
+      name: "huge",
+      description: "Huge result",
+      execute: async () => ({ values: Array.from({ length: 1_000_000 }, (_, index) => index) }),
+    }],
+  });
+  const hugeResult = await hugeToolResult.run("bounded result");
+  const hugeToolMessage = hugeResult.messages.find((message) => message.role === "tool");
+  assert.ok((hugeToolMessage?.content.length ?? 0) <= 128);
+  assert.match(hugeToolMessage?.content ?? "", /truncated/);
+
   const calling = createSpecializedAgent(createAI({ provider: createMockProvider({ response: "calling-role" }) }), "calling");
   assert.equal(calling.role, "calling");
   assert.ok(calling.capabilities.includes("calling"));

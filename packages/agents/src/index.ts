@@ -103,14 +103,81 @@ async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promis
 }
 
 function serializeToolResult(value: unknown, maxChars: number): string {
-  let text: string;
-  if (typeof value === "string") text = value;
-  else {
-    try { text = JSON.stringify(value); }
-    catch { text = String(value); }
+  const suffix = "\n[tool result truncated]";
+  const payloadLimit = Math.max(0, maxChars - suffix.length);
+  if (typeof value === "string") {
+    return value.length <= maxChars ? value : value.slice(0, payloadLimit) + suffix.slice(0, maxChars - payloadLimit);
   }
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + "\n[tool result truncated]";
+
+  const seen = new WeakSet<object>();
+  let output = "";
+  let truncated = false;
+
+  const append = (text: string): void => {
+    if (output.length >= payloadLimit) {
+      truncated = true;
+      return;
+    }
+    const remaining = payloadLimit - output.length;
+    if (text.length > remaining) {
+      output += text.slice(0, remaining);
+      truncated = true;
+      return;
+    }
+    output += text;
+  };
+
+  const write = (input: unknown, depth: number): void => {
+    if (output.length >= payloadLimit) {
+      truncated = true;
+      return;
+    }
+    if (depth > 6) {
+      append("[MaxDepth]");
+      return;
+    }
+    if (input === null) return append("null");
+    if (typeof input === "string") return append(JSON.stringify(input));
+    if (typeof input === "number" || typeof input === "boolean") return append(String(input));
+    if (typeof input === "bigint") return append(JSON.stringify(String(input)) + "n");
+    if (typeof input === "undefined") return append("undefined");
+    if (typeof input === "function" || typeof input === "symbol") return append("[" + typeof input + "]");
+    if (seen.has(input)) return append("[Circular]");
+    seen.add(input);
+
+    if (Array.isArray(input)) {
+      append("[");
+      for (let i = 0; i < input.length && output.length < payloadLimit; i += 1) {
+        if (i > 0) append(", ");
+        write(input[i], depth + 1);
+      }
+      if (output.length < payloadLimit && input.length > 0 && truncated) append(", …");
+      append("]");
+      return;
+    }
+
+    append("{");
+    let first = true;
+    for (const key of Object.keys(input as Record<string, unknown>)) {
+      if (output.length >= payloadLimit) break;
+      if (!first) append(", ");
+      first = false;
+      append(JSON.stringify(key) + ": ");
+      try {
+        write((input as Record<string, unknown>)[key], depth + 1);
+      } catch {
+        append("[unreadable]");
+      }
+    }
+    append("}");
+  };
+
+  try {
+    write(value, 0);
+  } catch {
+    return "[tool result unavailable]".slice(0, maxChars);
+  }
+  return truncated ? output + suffix.slice(0, maxChars - output.length) : output;
 }
 
 function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
