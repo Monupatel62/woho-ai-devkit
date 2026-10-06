@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AIError, type AIClient, type ExecutionContext, type ExecutionEvent } from "@woho/core";
-import { Agent, type AgentApprovalHandler, type AgentRunResult } from "./index.js";
+import { Agent, type AgentApprovalHandler, type AgentExecutionCheckpoint, type AgentRunResult } from "./index.js";
 import { AgentRegistry, type AgentDefinition } from "./definition.js";
 import {
   recoverStaleExecutions,
@@ -38,6 +38,8 @@ export interface AgentRuntimeOptions {
   readonly persistApprovalAudit?: boolean;
   /** Poll interval used when a run has a durable approval but no in-process approval handler. */
   readonly approvalPollIntervalMs?: number;
+  /** Maximum UTF-8 bytes retained in a durable execution checkpoint. Defaults to 512 KiB. */
+  readonly maxCheckpointBytes?: number;
 }
 
 export interface PendingApproval {
@@ -72,6 +74,8 @@ export interface AgentTask {
   readonly retry?: AgentRetryPolicy;
   readonly approval?: AgentApprovalHandler;
   readonly verify?: AgentVerifier;
+  /** Optional durable checkpoint used to continue a safe recovery. */
+  readonly checkpoint?: AgentExecutionCheckpoint;
 }
 
 export class AgentRuntime {
@@ -88,6 +92,7 @@ export class AgentRuntime {
   private readonly maxErrorMessageBytes: number;
   private readonly persistApprovalAudit: boolean;
   private readonly approvalPollIntervalMs: number;
+  private readonly maxCheckpointBytes: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -105,11 +110,13 @@ export class AgentRuntime {
     this.maxErrorMessageBytes = options.maxErrorMessageBytes ?? 4 * 1024;
     this.persistApprovalAudit = options.persistApprovalAudit ?? true;
     this.approvalPollIntervalMs = options.approvalPollIntervalMs ?? 250;
+    this.maxCheckpointBytes = options.maxCheckpointBytes ?? 512 * 1024;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
     if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
     if (!Number.isInteger(this.maxErrorMessageBytes) || this.maxErrorMessageBytes < 1) throw new Error("maxErrorMessageBytes must be a positive integer");
     if (!Number.isInteger(this.approvalPollIntervalMs) || this.approvalPollIntervalMs < 10) throw new Error("approvalPollIntervalMs must be at least 10ms");
+    if (!Number.isInteger(this.maxCheckpointBytes) || this.maxCheckpointBytes < 1024) throw new Error("maxCheckpointBytes must be at least 1024 bytes");
   }
 
   register(definition: AgentDefinition, factory?: (ai: AIClient, definition: AgentDefinition) => Agent): this {
@@ -201,6 +208,22 @@ export class AgentRuntime {
               await this.recordAgentEvent(event);
             },
             approval: auditedApproval,
+            checkpoint: task.checkpoint,
+            onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
+              let serialized: string;
+              try {
+                serialized = JSON.stringify(checkpoint);
+              } catch {
+                throw new AIError("Execution checkpoint is not serializable", "CHECKPOINT_INVALID");
+              }
+              if (Buffer.byteLength(serialized, "utf8") > this.maxCheckpointBytes) {
+                throw new AIError("Execution checkpoint exceeds maxCheckpointBytes", "CHECKPOINT_TOO_LARGE");
+              }
+              await this.store?.update(runId, {
+                checkpoint,
+                updatedAt: checkpoint.updatedAt,
+              });
+            } : undefined,
           });
           const verification = task.verify ?? this.verify;
           if (verification) {
@@ -341,6 +364,12 @@ export class AgentRuntime {
     if (record.input === undefined) {
       throw new Error("Execution record does not contain input and cannot be resumed: " + runId);
     }
+    if (record.checkpoint?.inFlightToolCallId) {
+      throw new AIError(
+        "Execution checkpoint contains an in-flight tool call and cannot be resumed automatically: " + record.checkpoint.inFlightToolCallId,
+        "CHECKPOINT_SIDE_EFFECT_AMBIGUOUS",
+      );
+    }
     if (record.resumeRunId) {
       throw new Error("Execution resume is already claimed: " + runId);
     }
@@ -362,6 +391,13 @@ export class AgentRuntime {
       retry: options.retry,
       approval: options.approval,
       verify: options.verify,
+      checkpoint: record.checkpoint
+        ? {
+            step: record.checkpoint.step,
+            messages: record.checkpoint.messages,
+            updatedAt: record.checkpoint.updatedAt,
+          }
+        : undefined,
     });
   }
 

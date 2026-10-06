@@ -364,6 +364,77 @@ const run = async () => {
   assert.notEqual(resumed.runId, "failed-resumable");
   assert.equal(resumableStore.get(resumed.runId)?.parentRunId, "failed-resumable");
   assert.equal(resumableStore.get(resumed.runId)?.input, "resume this task");
+  const checkpointStore = new InMemoryExecutionStore();
+  await checkpointStore.create({
+    runId: "checkpoint-resumable",
+    agent: "general",
+    input: "continue after crash",
+    projectId: "checkpoint-project",
+    sessionId: "checkpoint-session",
+    metadata: { source: "checkpoint-test" },
+    status: "failed",
+    startedAt: 100,
+    updatedAt: 200,
+    completedAt: 200,
+    attempts: 1,
+    events: [],
+    checkpoint: {
+      step: 1,
+      messages: [
+        { role: "user", content: "continue after crash" },
+        { role: "assistant", content: "", toolCalls: [{ id: "completed-call", name: "echo", arguments: "{}" }] },
+        { role: "tool", content: "completed result", toolCallId: "completed-call", name: "echo" },
+      ],
+      updatedAt: 200,
+    },
+  });
+  const checkpointRuntime = new AgentRuntime({ store: checkpointStore }, registry);
+  const checkpointResumed = await checkpointRuntime.resume(
+    createAI({ provider: createMockProvider({ response: "checkpoint-recovered" }) }),
+    "checkpoint-resumable",
+  );
+  assert.equal(checkpointResumed.text, "checkpoint-recovered");
+  const checkpointChild = checkpointStore.get(checkpointResumed.runId);
+  assert.equal(checkpointChild?.parentRunId, "checkpoint-resumable");
+  assert.equal(checkpointChild?.projectId, "checkpoint-project");
+  assert.equal(checkpointChild?.sessionId, "checkpoint-session");
+  assert.equal(checkpointChild?.metadata.source, "checkpoint-test");
+
+  const ambiguousCheckpointStore = new InMemoryExecutionStore();
+  await ambiguousCheckpointStore.create({
+    runId: "ambiguous-checkpoint",
+    agent: "general",
+    input: "unsafe resume",
+    metadata: {},
+    status: "failed",
+    startedAt: 100,
+    updatedAt: 200,
+    completedAt: 200,
+    attempts: 1,
+    events: [],
+    checkpoint: {
+      step: 1,
+      messages: [{ role: "user", content: "unsafe resume" }],
+      inFlightToolCallId: "side-effect-call",
+      updatedAt: 200,
+    },
+  });
+  const ambiguousRuntime = new AgentRuntime({ store: ambiguousCheckpointStore }, registry);
+  await assert.rejects(
+    () => ambiguousRuntime.resume(createAI({ provider: createMockProvider({ response: "must-not-run" }) }), "ambiguous-checkpoint"),
+    (error) => error instanceof AIError && error.code === "CHECKPOINT_SIDE_EFFECT_AMBIGUOUS",
+  );
+
+  const checkpointCaptureStore = new InMemoryExecutionStore();
+  const checkpointRuntimeCapture = new AgentRuntime({ store: checkpointCaptureStore }, registry);
+  const checkpointCaptureResult = await checkpointRuntimeCapture.run(
+    createAI({ provider: createMockProvider({ response: "checkpointed" }) }),
+    { agent: "general", input: "capture checkpoint", projectId: "capture-project" },
+  );
+  const capturedRecord = checkpointCaptureStore.get(checkpointCaptureResult.runId);
+  assert.equal(capturedRecord?.checkpoint?.step, 1);
+  assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
+
   await resumableStore.create({
     runId: "legacy-failed",
     agent: "general",
