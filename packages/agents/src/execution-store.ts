@@ -176,7 +176,7 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   if (!isRecord(record.metadata)) throw new Error("Invalid execution metadata");
   if (record.checkpoint !== undefined) {
     if (!isRecord(record.checkpoint)) throw new Error("Invalid execution checkpoint");
-    if (!Number.isInteger(record.checkpoint.step) || record.checkpoint.step < 1) throw new Error("Invalid execution checkpoint step");
+    if (!Number.isInteger(record.checkpoint.step) || record.checkpoint.step < 0) throw new Error("Invalid execution checkpoint step");
     if (!Array.isArray(record.checkpoint.messages)) throw new Error("Invalid execution checkpoint messages");
     if (record.checkpoint.inFlightToolCallId !== undefined && (typeof record.checkpoint.inFlightToolCallId !== "string" || !record.checkpoint.inFlightToolCallId.trim())) {
       throw new Error("Invalid execution checkpoint inFlightToolCallId");
