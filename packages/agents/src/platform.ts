@@ -6,9 +6,11 @@ import { AgentRegistry, type AgentDefinition, type AgentRole } from "./definitio
 import { createAgentDelegationTool, type AgentDelegationPolicy } from "./delegation.js";
 import { runAgentPlan, type AgentPlan, type AgentPlanResult } from "./plan.js";
 import { runCodingLoop, type CodingLoopPolicy, type CodingLoopResult } from "./coding-loop.js";
+import { createWohoProjectContext, mergeWohoProjectMetadata, type WohoProjectContext, type WohoProjectContextOptions } from "./project-context.js";
 
 export interface WohoAgentPlatformOptions {
   readonly runtime?: AgentRuntimeOptions;
+  readonly projectContext?: WohoProjectContext | WohoProjectContextOptions;
   readonly registry?: AgentRegistry;
   readonly commonTools?: readonly AgentTool[];
   readonly toolsByRole?: Partial<Record<AgentRole, readonly AgentTool[]>>;
@@ -28,6 +30,7 @@ export interface WohoAgentPlatform {
   readonly runPlan: (ai: AIClient, plan: AgentPlan, options?: { signal?: AbortSignal }) => Promise<AgentPlanResult>;
   readonly run: (ai: AIClient, goal: string, options?: { signal?: AbortSignal; agent?: string }) => Promise<AgentPlanResult>;
   readonly runAgent: (ai: AIClient, task: AgentTask) => Promise<AgentRunResult & { runId: string }>;
+  readonly projectContext?: WohoProjectContext;
   readonly runCodingTask: (ai: AIClient, goal: string, options?: { signal?: AbortSignal; verify?: string; runId?: string }) => Promise<CodingLoopResult>;
 }
 
@@ -94,6 +97,11 @@ function validatePlan(value: unknown, allowedAgents: ReadonlySet<string>, maxSte
 
 export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}): WohoAgentPlatform {
   const registry = options.registry ?? new AgentRegistry();
+  const projectContext = options.projectContext
+    ? ("sessionId" in options.projectContext && typeof options.projectContext.sessionId === "string"
+      ? options.projectContext
+      : createWohoProjectContext(options.projectContext))
+    : undefined;
   const runtime = new AgentRuntime(options.runtime, registry);
   const commonTools = [...(options.commonTools ?? [])];
   const maxPlanSteps = options.maxPlanSteps ?? 16;
@@ -148,7 +156,7 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
   };
 
   const runPlan = (ai: AIClient, agentPlan: AgentPlan, runOptions: { signal?: AbortSignal } = {}) =>
-    runAgentPlan(runtime, ai, agentPlan, runOptions);
+    runAgentPlan(runtime, ai, agentPlan, { ...runOptions, projectContext });
 
   const run = async (ai: AIClient, goal: string, runOptions: { signal?: AbortSignal; agent?: string } = {}) => {
     const agent = runOptions.agent ?? agentId("orchestrator");
@@ -177,6 +185,10 @@ export function createWohoAgentPlatform(options: WohoAgentPlatformOptions = {}):
     );
   };
 
-  return { registry, runtime, plan, runPlan, run, runAgent: (ai, task) => runtime.run(ai, task), runCodingTask };
+  return { registry, runtime, plan, runPlan, run, runAgent: (ai, task) => runtime.run(ai, {
+    ...task,
+    sessionId: task.sessionId ?? projectContext?.sessionId,
+    metadata: projectContext ? mergeWohoProjectMetadata(projectContext, task.metadata) : task.metadata,
+  }), projectContext, runCodingTask };
 }
 
