@@ -8,6 +8,9 @@ export interface ValidationOptions {
   maxToolDefinitionBytes?: number;
   maxToolCallsPerMessage?: number;
   maxToolArgumentBytes?: number;
+  maxStopSequences?: number;
+  maxStopSequenceCharacters?: number;
+  maxStopSequenceTotalCharacters?: number;
 }
 
 export function validateAIInput(messages: readonly { content: string }[], options: ValidationOptions = {}): void {
@@ -35,11 +38,38 @@ export function validateAIRequest(request: AIRequest, options: ValidationOptions
   const maxToolDefinitionBytes = options.maxToolDefinitionBytes ?? 256 * 1024;
   const maxToolCallsPerMessage = options.maxToolCallsPerMessage ?? 32;
   const maxToolArgumentBytes = options.maxToolArgumentBytes ?? 256 * 1024;
+  const maxStopSequences = options.maxStopSequences ?? 16;
+  const maxStopSequenceCharacters = options.maxStopSequenceCharacters ?? 4096;
+  const maxStopSequenceTotalCharacters = options.maxStopSequenceTotalCharacters ?? 16 * 1024;
 
   if (!Number.isInteger(maxToolDefinitions) || maxToolDefinitions < 1) throw new Error("maxToolDefinitions must be a positive integer");
   if (!Number.isInteger(maxToolDefinitionBytes) || maxToolDefinitionBytes < 1) throw new Error("maxToolDefinitionBytes must be a positive integer");
   if (!Number.isInteger(maxToolCallsPerMessage) || maxToolCallsPerMessage < 1) throw new Error("maxToolCallsPerMessage must be a positive integer");
   if (!Number.isInteger(maxToolArgumentBytes) || maxToolArgumentBytes < 1) throw new Error("maxToolArgumentBytes must be a positive integer");
+  if (!Number.isInteger(maxStopSequences) || maxStopSequences < 1) throw new Error("maxStopSequences must be a positive integer");
+  if (!Number.isInteger(maxStopSequenceCharacters) || maxStopSequenceCharacters < 1) throw new Error("maxStopSequenceCharacters must be a positive integer");
+  if (!Number.isInteger(maxStopSequenceTotalCharacters) || maxStopSequenceTotalCharacters < 1) throw new Error("maxStopSequenceTotalCharacters must be a positive integer");
+
+  if (request.temperature !== undefined && (!Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2)) {
+    throw new Error("temperature must be a finite number between 0 and 2");
+  }
+  if (request.topP !== undefined && (!Number.isFinite(request.topP) || request.topP <= 0 || request.topP > 1)) {
+    throw new Error("topP must be a finite number greater than 0 and at most 1");
+  }
+  if (request.maxTokens !== undefined && (!Number.isInteger(request.maxTokens) || request.maxTokens < 1)) {
+    throw new Error("maxTokens must be a positive integer");
+  }
+  if (request.stop !== undefined) {
+    if (!Array.isArray(request.stop)) throw new Error("stop must be an array");
+    if (request.stop.length > maxStopSequences) throw new Error("AI request exceeds maxStopSequences");
+    let stopTotal = 0;
+    for (const sequence of request.stop) {
+      if (typeof sequence !== "string") throw new Error("stop sequences must be strings");
+      if (sequence.length > maxStopSequenceCharacters) throw new Error("AI stop sequence exceeds maxStopSequenceCharacters");
+      stopTotal += sequence.length;
+      if (stopTotal > maxStopSequenceTotalCharacters) throw new Error("AI request exceeds maxStopSequenceTotalCharacters");
+    }
+  }
 
   if (request.tools && request.tools.length > maxToolDefinitions) throw new Error("AI request exceeds maxToolDefinitions");
   if (request.tools) {
