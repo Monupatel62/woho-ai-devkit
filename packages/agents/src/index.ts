@@ -423,6 +423,7 @@ export * from "./runtime.js";
 export * from "./execution-store.js";
 export * from "./plan.js";
 export * from "./specialized.js";
+export * from "./delegation.js";
 
 export function createAgent(ai: AIClient, options: AgentOptions): Agent {
   return new Agent(ai, options);
