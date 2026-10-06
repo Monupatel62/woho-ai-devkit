@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { searchMemory } from "./search.js";
 import { tmpdir } from "node:os";
-import { chmod, utimes, writeFile } from "node:fs/promises";
+import { utimes, writeFile } from "node:fs/promises";
 
 const run = async () => {
   const store = createInMemoryStore({ maxMessages: 2 });
@@ -79,7 +79,6 @@ const run = async () => {
   await utimes(stalePath + ".lock", old, old);
   await staleStore.add({ id: "stale", role: "user", content: "recovered" });
   assert.equal((await staleStore.list())[0]?.id, "stale");
-  assert.equal((await import("node:fs/promises")).stat ? true : true, true);
 
   await fileStore.clear();
   assert.equal((await fileStore.list()).length, 0);
