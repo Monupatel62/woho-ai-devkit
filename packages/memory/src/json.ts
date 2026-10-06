@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { MemoryMessage, MemoryQuery, MemoryStore } from "./index.js";
@@ -7,12 +7,18 @@ export interface JsonFileStoreOptions {
   filePath: string;
   maxMessages?: number;
   maxFileBytes?: number;
+  lockTimeoutMs?: number;
+  lockRetryMs?: number;
+  lockStaleMs?: number;
 }
 
 export class JsonFileStore implements MemoryStore {
   private readonly filePath: string;
   private readonly maxMessages: number;
   private readonly maxFileBytes: number;
+  private readonly lockTimeoutMs: number;
+  private readonly lockRetryMs: number;
+  private readonly lockStaleMs: number;
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: JsonFileStoreOptions) {
@@ -20,8 +26,14 @@ export class JsonFileStore implements MemoryStore {
     this.filePath = options.filePath;
     this.maxMessages = options.maxMessages ?? 1000;
     this.maxFileBytes = options.maxFileBytes ?? 10 * 1024 * 1024;
+    this.lockTimeoutMs = options.lockTimeoutMs ?? 10_000;
+    this.lockRetryMs = options.lockRetryMs ?? 25;
+    this.lockStaleMs = options.lockStaleMs ?? 30_000;
     if (!Number.isInteger(this.maxMessages) || this.maxMessages < 1) throw new Error("maxMessages must be a positive integer");
     if (!Number.isInteger(this.maxFileBytes) || this.maxFileBytes < 1) throw new Error("maxFileBytes must be a positive integer");
+    if (!Number.isInteger(this.lockTimeoutMs) || this.lockTimeoutMs < 1) throw new Error("lockTimeoutMs must be a positive integer");
+    if (!Number.isInteger(this.lockRetryMs) || this.lockRetryMs < 1) throw new Error("lockRetryMs must be a positive integer");
+    if (!Number.isInteger(this.lockStaleMs) || this.lockStaleMs < this.lockRetryMs) throw new Error("lockStaleMs must be at least lockRetryMs");
   }
 
   private async load(): Promise<MemoryMessage[]> {
@@ -32,7 +44,9 @@ export class JsonFileStore implements MemoryStore {
           throw new Error("Memory file contains an invalid message");
         }
       }
-      return value as MemoryMessage[];
+      const messages = value as MemoryMessage[];
+      if (messages.length > this.maxMessages) return messages.slice(-this.maxMessages);
+      return messages;
     };
     try {
       const { stat } = await import("node:fs/promises");
@@ -51,7 +65,8 @@ export class JsonFileStore implements MemoryStore {
     const serialized = JSON.stringify(messages);
     const bytes = Buffer.byteLength(serialized, "utf8");
     if (bytes > this.maxFileBytes) throw new Error("Memory file exceeds maxFileBytes");
-    await mkdir(dirname(this.filePath), { recursive: true });
+    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+    try { await import("node:fs/promises").then(({ chmod }) => chmod(dirname(this.filePath), 0o700)); } catch { /* best effort */ }
     const temp = this.filePath + ".tmp-" + process.pid + "-" + randomUUID();
     try {
       await writeFile(temp, serialized, { encoding: "utf8", mode: 0o600 });
@@ -62,8 +77,41 @@ export class JsonFileStore implements MemoryStore {
     }
   }
 
+  private async withFileLock<T>(operation: () => Promise<T>): Promise<T> {
+    await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+    const lockPath = this.filePath + ".lock";
+    const started = Date.now();
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
+    while (!handle) {
+      try {
+        handle = await open(lockPath, "wx", 0o600);
+        await handle.writeFile(JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }), "utf8");
+        await handle.sync();
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        try {
+          const info = await stat(lockPath);
+          if (Date.now() - info.mtimeMs > this.lockStaleMs) await rm(lockPath, { force: true });
+        } catch (staleError) {
+          if ((staleError as NodeJS.ErrnoException).code !== "ENOENT") throw staleError;
+        }
+        if (Date.now() - started >= this.lockTimeoutMs) throw new Error("Memory store lock acquisition timed out");
+        await new Promise((resolve) => setTimeout(resolve, this.lockRetryMs));
+      }
+    }
+    const heartbeatMs = Math.max(1, Math.floor(this.lockStaleMs / 3));
+    const heartbeat = setInterval(() => { void utimes(lockPath, new Date(), new Date()).catch(() => undefined); }, heartbeatMs);
+    try {
+      return await operation();
+    } finally {
+      clearInterval(heartbeat);
+      await handle.close().catch(() => undefined);
+      await rm(lockPath, { force: true });
+    }
+  }
+
   private enqueueWrite(operation: () => Promise<void>): Promise<void> {
-    const run = this.writeQueue.catch(() => undefined).then(operation);
+    const run = this.writeQueue.catch(() => undefined).then(() => this.withFileLock(operation));
     this.writeQueue = run.catch(() => undefined);
     return run;
   }
