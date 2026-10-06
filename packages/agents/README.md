@@ -94,6 +94,8 @@ console.log("recovered:", recovered.map((run) => run.runId));
 
 Failed or cancelled persisted runs can be restarted with `runtime.resume(ai, runId)`. Resume creates a new run linked to the original through `parentRunId`, so the original failure remains part of the history. Older records created before input persistence cannot be resumed automatically.
 
+By default, the runtime persists task input to support durable resume, bounded to 1 MiB of UTF-8 data. For workloads where prompts may contain secrets or personal data, disable input persistence with `persistInput: false`; those runs remain observable but cannot be resumed after process restart. You can lower or raise the bound with `maxInputBytes` when your storage and data policy allow it. Lifecycle events do not include the original task input.
+
 Execution history is never deleted automatically. Use `pruneExecutionHistory` or `runtime.pruneHistory` with an age and/or count policy when retention cleanup is explicitly desired.
 
 ```ts
