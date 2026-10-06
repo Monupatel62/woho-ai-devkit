@@ -9,7 +9,8 @@ test("--help is available without an API key", async () => {
   try {
     assert.equal(await runCli(["--help"]), 0);
     assert.match(output, /WoHo AI CLI/);
-    assert.match(output, /File writes and command execution are not enabled/);
+    assert.match(output, /--allow-write/);
+    assert.match(output, /--allow-command/);
   } finally { process.stdout.write = original; }
 });
 
@@ -36,4 +37,14 @@ test("empty invocation prints help", async () => {
     assert.equal(await runCli([]), 0);
     assert.match(output, /Usage:/);
   } finally { process.stdout.write = original; }
+});
+
+test("invalid capability flag arguments fail closed", async () => {
+  const original = process.stderr.write;
+  let output = "";
+  process.stderr.write = ((chunk: string | Uint8Array) => { output += String(chunk); return true; }) as typeof process.stderr.write;
+  try {
+    assert.equal(await runCli(["--allow-command"]), 2);
+    assert.match(output, /--allow-command requires/);
+  } finally { process.stderr.write = original; }
 });
