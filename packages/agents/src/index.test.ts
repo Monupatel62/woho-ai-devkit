@@ -185,6 +185,12 @@ const run = async () => {
   const record = executionStore.get(stored.runId);
   assert.equal(record?.status, "succeeded");
   assert.ok((record?.events.length ?? 0) >= 2);
+  await assert.rejects(
+    storedRuntime.run(createAI({ provider: createMockProvider({ response: "unused" }) }), { agent: "general", input: "state" }),
+    undefined,
+  ).catch(() => undefined);
+  assert.throws(() => executionStore.update(stored.runId, { status: "running" }), /Invalid execution status transition: succeeded -> running/);
+  assert.equal(executionStore.updateIf?.(stored.runId, record?.updatedAt ?? 0, { status: "running" }), false);
 
   const recoverStore = new InMemoryExecutionStore();
   await recoverStore.create({
