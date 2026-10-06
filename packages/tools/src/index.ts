@@ -55,7 +55,7 @@ function isPrivateAddress(address: string): boolean {
 
 async function assertPublicHttpAddress(hostname: string, allowPrivateAddresses: boolean): Promise<void> {
   if (allowPrivateAddresses) return;
-  const addresses = isIP(hostname) ? [hostname] : (await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true }).map((entry) => entry.address);
+  const addresses = isIP(hostname) ? [hostname] : (await (await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true })).map((entry) => entry.address);
   if (!addresses.length) throw new Error("Hostname did not resolve");
   if (addresses.some(isPrivateAddress)) throw new Error("URL resolves to a private or reserved address");
 }
