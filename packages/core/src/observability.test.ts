@@ -146,3 +146,33 @@ assert.equal(iteratorReturned, true);
 
 const router = createModelRouter({ routes: [{ provider: createMockProvider({ response: "routed" }), models: ["router-test"] }] });
 assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "user", content: "route" }], model: "router-test" })).text, "routed");
+
+
+test("redacts request content from observability by default", async () => {
+  const events: AILogEvent[] = [];
+  const provider = new MockAIProvider();
+  const client = createAI({ provider, observability: { onEvent: (event) => { events.push(event); } } });
+  await client.chat({
+    messages: [{ role: "user", content: "secret prompt", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"secret\":\"value\"}" }] }],
+    tools: [{ name: "secret-tool", description: "private tool", parameters: { secret: true } }],
+  });
+  const event = events.find((item) => item.type === "request.start");
+  assert.equal(event?.type, "request.start");
+  assert.equal(event.request.messages[0]?.content, "[REDACTED]");
+  assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");
+  assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");
+});
+
+test("allows request content observability only when explicitly enabled", async () => {
+  const events: AILogEvent[] = [];
+  const provider = new MockAIProvider();
+  const client = createAI({ provider, includeRequestContentInObservability: true, observability: { onEvent: (event) => { events.push(event); } } });
+  await client.chat({ messages: [{ role: "user", content: "visible prompt" }] });
+  const event = events.find((item) => item.type === "request.start");
+  assert.equal(event?.type, "request.start");
+  assert.equal(event.request.messages[0]?.content, "visible prompt");
+});
+
+test("rejects invalid observability content configuration", () => {
+  assert.throws(() => createAI({ provider: new MockAIProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
+});
