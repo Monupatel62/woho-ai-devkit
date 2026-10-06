@@ -1,4 +1,4 @@
-import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition, type AIUsage, type PermissionAction, type PermissionPolicy } from "@woho/core";
+import { AIError, type AIClient, type AIMessage, type AIToolCall, type AIToolDefinition, type AIUsage, type PermissionAction, type PermissionPolicy, type PermissionRequest } from "@woho/core";
 import { createConversation, type MemoryStore, type MemoryMessage, type MemorySummarizer } from "@woho/memory";
 import type { MCPClient } from "@woho/mcp";
 import type { ExecutionEvent } from "@woho/core";
@@ -13,6 +13,8 @@ export interface AgentTool {
   description: string;
   capability?: string;
   action?: PermissionAction;
+  /** Resolve the permission request from the actual tool input. */
+  authorize?: (input: unknown) => PermissionRequest | Promise<PermissionRequest>;
   parameters?: Record<string, unknown>;
   execute(input: unknown, context?: AgentToolExecutionContext): Promise<unknown>;
 }
@@ -343,18 +345,21 @@ export class Agent {
         try {
           const parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
-          if (tool.capability) {
+          if (tool.capability || tool.authorize) {
             if (!this.permissions) {
               throw new AIError("Tool capability requires a permission policy: " + tool.name, "PERMISSION_POLICY_REQUIRED");
             }
-            const decision = await this.permissions.check({
-              capability: tool.capability,
-              action: tool.action ?? "execute",
-            });
+            const permission = tool.authorize
+              ? await tool.authorize(parsed)
+              : { capability: tool.capability as string, action: tool.action ?? "execute" };
+            if (!permission.capability || !permission.action) {
+              throw new AIError("Tool authorization must return capability and action: " + tool.name, "INVALID_TOOL_CONFIG");
+            }
+            const decision = await this.permissions.check(permission);
             if (!decision.allowed) {
               if (decision.requiresApproval) {
-                await runEvent(runOptions, { type: "run.waiting", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { reason: "approval", tool: tool.name, capability: tool.capability, action: tool.action ?? "execute" } });
-                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, tool: tool.name, capability: tool.capability, action: tool.action ?? "execute", input: parsed, reason: decision.reason });
+                await runEvent(runOptions, { type: "run.waiting", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { reason: "approval", tool: tool.name, capability: permission.capability, action: permission.action } });
+                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, tool: tool.name, capability: permission.capability, action: permission.action, input: parsed, reason: decision.reason });
                 if (!approved) throw new AIError(decision.reason ?? "Tool action was not approved", "APPROVAL_REQUIRED");
               } else {
                 throw new AIError(decision.reason ?? "Tool action denied by permission policy", "PERMISSION_DENIED");

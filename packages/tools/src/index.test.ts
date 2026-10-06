@@ -141,6 +141,8 @@ const run = async () => {
 
   const workspaceRoot = await mkdtemp(join(tmpdir(), "woho-workspace-"));
   const workspace = (await import("./workspace.js")).workspaceTool({ root: workspaceRoot, allowWrite: true, allowDelete: true, allowMove: true, maxFileBytes: 10_000 });
+  assert.deepEqual(workspace.authorize?.({ operation: "read", path: "src/hello.txt" }), { capability: "file", action: "read", resource: "src/hello.txt" });
+  assert.deepEqual(workspace.authorize?.({ operation: "write", path: "src/hello.txt" }), { capability: "file", action: "write", resource: "src/hello.txt" });
   assert.deepEqual(await workspace.execute({ operation: "write", path: "src/hello.txt", content: "hello" }), { path: "src/hello.txt", bytes: 5 });
   assert.deepEqual(await workspace.execute({ operation: "read", path: "src/hello.txt" }), { path: "src/hello.txt", content: "hello" });
   assert.deepEqual(await workspace.execute({ operation: "edit", path: "src/hello.txt", oldText: "hello", newText: "hello woho" }), { path: "src/hello.txt", bytes: 10, changed: true });
@@ -176,6 +178,8 @@ const run = async () => {
   (await import("node:child_process")).execFileSync("git", ["config", "user.name", "WoHo Test"], { cwd: gitRoot });
   const git = (await import("./git.js")).gitTool({ root: gitRoot, allowWrite: true });
   const status = await git.execute({ operation: "status" }) as { stdout: string };
+  assert.deepEqual(git.authorize?.({ operation: "status" }), { capability: "git", action: "read" });
+  assert.deepEqual(git.authorize?.({ operation: "commit" }), { capability: "git", action: "write" });
 
   const isolatedGit = (await import("./git.js")).gitTool({
     root: gitRoot,

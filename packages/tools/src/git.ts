@@ -85,7 +85,13 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
     name: "git",
     description: "Run a constrained Git operation inside one fixed repository root.",
     capability: "git",
-    action: allowWrite ? "execute" : "read",
+    action: "read",
+    authorize(input) {
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
+      const operation = (input as Record<string, unknown>).operation;
+      if (typeof operation !== "string") throw new Error("operation is required");
+      return { capability: "git", action: writeOperations.has(operation) ? "write" : "read" };
+    },
     parameters: {
       type: "object",
       properties: {

@@ -514,6 +514,38 @@ const run = async () => {
   const usageRuntime = new AgentRuntime({ store: usageStore }, registry);
   const usageRuntimeResult = await usageRuntime.run(usageAI, { agent: "general", input: "usage" });
   assert.deepEqual(usageStore.get(usageRuntimeResult.runId)?.usage, usageRuntimeResult.usage);
+  const permissionRequests: Array<{ capability: string; action: string; resource?: string }> = [];
+  const permissionAI = createAI({
+    provider: createMockProvider({
+      response: "authorized",
+      toolCall: { name: "dynamic-tool", arguments: JSON.stringify({ operation: "write", path: "src/app.ts" }) },
+    }),
+  });
+  const dynamicAgent = createAgent(permissionAI, {
+    name: "dynamic-permission-agent",
+    permissions: {
+      check(request) {
+        permissionRequests.push(request);
+        return { allowed: request.action === "write" && request.resource === "src/app.ts" };
+      },
+    },
+    tools: [{
+      name: "dynamic-tool",
+      description: "Tool with operation-level permissions",
+      capability: "file",
+      action: "read",
+      parameters: { type: "object" },
+      authorize(input) {
+        const value = input as { operation: string; path: string };
+        return { capability: "file", action: value.operation === "write" ? "write" : "read", resource: value.path };
+      },
+      async execute() { return { ok: true }; },
+    }],
+    maxSteps: 3,
+  });
+  const dynamicResult = await dynamicAgent.run("write the file");
+  assert.equal(dynamicResult.text, "authorized");
+  assert.deepEqual(permissionRequests, [{ capability: "file", action: "write", resource: "src/app.ts" }]);
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
