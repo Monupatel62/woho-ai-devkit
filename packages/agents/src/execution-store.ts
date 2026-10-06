@@ -6,6 +6,8 @@ import type { ExecutionEvent, ExecutionStatus } from "@woho/core";
 export interface ExecutionRecord {
   readonly runId: string;
   readonly agent: string;
+  /** Original task input; optional for backward compatibility with older records. */
+  readonly input?: string;
   readonly parentRunId?: string;
   readonly sessionId?: string;
   readonly metadata: Readonly<Record<string, unknown>>;
