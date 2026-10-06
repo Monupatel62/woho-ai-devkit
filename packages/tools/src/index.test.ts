@@ -97,6 +97,8 @@ const run = async () => {
   assert.throws(() => createBraveSearchProvider({ apiKey: " " }), /apiKey is required/);
 
   const command = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], timeoutMs: 2_000, maxOutputBytes: 10_000 });
+  assert.equal(command.capability, "command");
+  assert.equal(command.action, "execute");
   const commandResult = await command.execute({ command: process.execPath, args: ["-e", "process.stdout.write('woho-command-ok')"], cwd: process.cwd() }) as { stdout: string };
 
   const previousSecret = process.env.WOHO_TOOLS_TEST_SECRET;

@@ -28,6 +28,8 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
   if (!Number.isInteger(maxArgBytes) || maxArgBytes < 1) throw new Error("maxArgBytes must be a positive integer");
   return {
     name: "command",
+    capability: "command",
+    action: "execute",
     description: "Run an explicitly allowlisted local command inside an explicitly allowed working directory.",
     parameters: {
       type: "object",
