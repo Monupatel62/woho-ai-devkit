@@ -8,6 +8,8 @@ export interface GitToolPolicy {
   allowWrite?: boolean;
   timeoutMs?: number;
   maxOutputBytes?: number;
+  maxPaths?: number;
+  maxPathBytes?: number;
 }
 
 const readOperations = new Set(["status", "diff", "log", "branch", "show"]);
@@ -30,12 +32,18 @@ function assertGitPath(value: string): void {
   if (normalized.split("/").some((part) => part === "..")) throw new Error("Git parent traversal is not allowed");
 }
 
-function normalizeArgs(operation: string, input: Record<string, unknown>): string[] {
+function normalizeArgs(operation: string, input: Record<string, unknown>, maxPaths: number, maxPathBytes: number): string[] {
   const pathArgs = input.paths;
   if (pathArgs !== undefined && (!Array.isArray(pathArgs) || pathArgs.some((item) => typeof item !== "string"))) {
     throw new Error("paths must be an array of strings");
   }
   const paths = (pathArgs as string[] | undefined) ?? [];
+  if (paths.length > maxPaths) throw new Error("Git paths exceed maxPaths");
+  let pathBytes = 0;
+  for (const value of paths) {
+    pathBytes += Buffer.byteLength(value, "utf8");
+    if (pathBytes > maxPathBytes) throw new Error("Git paths exceed maxPathBytes");
+  }
   paths.forEach(assertGitPath);
   if (operation === "status") return ["status", "--short", "--branch"];
   if (operation === "diff") return ["-c", "core.pager=cat", "diff", "--no-ext-diff", "--", ...paths];
@@ -63,6 +71,10 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
   const allowWrite = inputPolicy.allowWrite ?? false;
   const timeoutMs = inputPolicy.timeoutMs ?? 15_000;
   const maxOutputBytes = inputPolicy.maxOutputBytes ?? 1_000_000;
+  const maxPaths = inputPolicy.maxPaths ?? 256;
+  const maxPathBytes = inputPolicy.maxPathBytes ?? 64 * 1024;
+  positiveInteger(maxPaths, "maxPaths");
+  positiveInteger(maxPathBytes, "maxPathBytes");
   positiveInteger(timeoutMs, "timeoutMs");
   positiveInteger(maxOutputBytes, "maxOutputBytes");
 
@@ -89,7 +101,7 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
       if (!readOperations.has(operation) && !writeOperations.has(operation)) throw new Error("Unsupported git operation");
       if (writeOperations.has(operation) && !allowWrite) throw new Error("Git write operations are disabled by policy");
       const cwd = await safeRoot(inputPolicy.root);
-      const args = normalizeArgs(operation, value);
+      const args = normalizeArgs(operation, value, maxPaths, maxPathBytes);
 
       return new Promise((resolve, reject) => {
         const child = spawn("git", args, {
