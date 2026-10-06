@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import {
+  FileExecutionStore,
   InMemoryExecutionStore,
   pruneExecutionHistory,
   recoverStaleExecutions,
@@ -67,6 +71,21 @@ const run = async () => {
     /does not support history removal/,
   );
   await assert.rejects(() => pruneExecutionHistory(store, {}), /requires olderThanMs or maxRecords/);
+  const fileRoot = await mkdtemp(path.join(os.tmpdir(), "woho-execution-maintenance-"));
+  try {
+    const fileStore = new FileExecutionStore({ directory: fileRoot });
+    await fileStore.create(makeRecord("file-stale", "running", 100));
+    const fileRecovered = await recoverStaleExecutions(fileStore, { staleAfterMs: 50, now: 200 });
+    assert.equal(fileRecovered.length, 1);
+    assert.equal((await fileStore.get("file-stale"))?.status, "failed");
+    const fileNewer = makeRecord("file-newer", "succeeded", 300);
+    await fileStore.create(fileNewer);
+    const fileRemoved = await pruneExecutionHistory(fileStore, { maxRecords: 1, status: "succeeded" });
+    assert.equal(fileRemoved.length, 0);
+    assert.notEqual(await fileStore.get("file-newer"), undefined);
+  } finally {
+    await rm(fileRoot, { recursive: true, force: true });
+  }
   await assert.rejects(() => recoverStaleExecutions(store, { staleAfterMs: 0 }), /staleAfterMs/);
   await assert.rejects(() => recoverStaleExecutions(store, { staleAfterMs: 1, now: -1 }), /now/);
   console.log("execution maintenance tests passed");
