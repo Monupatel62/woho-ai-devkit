@@ -116,7 +116,7 @@ const run = async () => {
         return { id: "call", text: "", model: "large-result", finishReason: "tool_call", toolCalls: [{ id: "large-1", name: "large", arguments: "{}" }] };
       },
     },
-  }), { name: "large-result-agent", maxToolResultChars: 64, tools: [{ name: "large", description: "Large result", execute: async () => "abcdefghijklmnopqrstuvwxyz" }] });
+  }), { name: "large-result-agent", maxToolResultChars: 40, tools: [{ name: "large", description: "Large result", execute: async () => "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ" }] });
   const largeResult = await limitedTool.run("run");
   assert.equal(largeResult.text, "done");
   assert.ok((largeResult.messages.at(-2)?.content ?? "").includes("[tool result truncated]"));
