@@ -26,6 +26,8 @@ export interface AgentRuntimeOptions {
   readonly approval?: AgentApprovalHandler;
   readonly store?: ExecutionStore;
   readonly verify?: AgentVerifier;
+  /** Persist a heartbeat while an execution is actively running. */
+  readonly heartbeatIntervalMs?: number;
 }
 
 export interface AgentTask {
@@ -48,6 +50,7 @@ export class AgentRuntime {
   private readonly store?: ExecutionStore;
   private readonly approval?: AgentApprovalHandler;
   private readonly verify?: AgentVerifier;
+  private readonly heartbeatIntervalMs: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -59,7 +62,9 @@ export class AgentRuntime {
     this.store = options.store;
     this.approval = options.approval;
     this.verify = options.verify;
+    this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
+    if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
   }
 
   register(definition: AgentDefinition, factory?: (ai: AIClient, definition: AgentDefinition) => Agent): this {
@@ -91,6 +96,11 @@ export class AgentRuntime {
     const startedAt = Date.now();
     await this.store?.create({ runId, agent: task.agent, parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [] });
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
+    const heartbeat = this.store
+      ? setInterval(() => {
+          void this.store?.update(runId, { updatedAt: Date.now() }).catch(() => undefined);
+        }, this.heartbeatIntervalMs)
+      : undefined;
 
     try {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
@@ -98,7 +108,14 @@ export class AgentRuntime {
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
-          const result = await agent.run(task.input, { signal: context.signal, runId, onEvent: this.onEvent, approval: task.approval ?? this.approval });
+          const result = await agent.run(task.input, {
+            signal: context.signal,
+            runId,
+            onEvent: async (event) => {
+              await this.recordAgentEvent(event);
+            },
+            approval: task.approval ?? this.approval,
+          });
           const verification = task.verify ?? this.verify;
           if (verification) {
             const verdict = await verification(result, task);
@@ -144,8 +161,15 @@ export class AgentRuntime {
       }
       throw error;
     } finally {
+      if (heartbeat) clearInterval(heartbeat);
       this.release();
     }
+  }
+
+  private async recordAgentEvent(event: ExecutionEvent): Promise<void> {
+    await this.store?.appendEvent(event.runId, event);
+    await this.store?.update(event.runId, { updatedAt: event.timestamp });
+    await this.onEvent?.(event);
   }
 
   async runParallel(ai: AIClient, tasks: AgentTask[]): Promise<Array<AgentRunResult & { runId: string }>> {
