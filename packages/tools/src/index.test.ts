@@ -112,7 +112,10 @@ const run = async () => {
   await assert.rejects(() => git.execute({ operation: "add", paths: ["../outside"] }), /parent traversal/);
   assert.match(status.stdout, /README/);
   await git.execute({ operation: "add", paths: ["README.md"] });
+  const hookPath = join(gitRoot, ".git", "hooks", "pre-commit");
+  await writeFile(hookPath, "#!/bin/sh\necho hook-ran > ../hook-ran.txt\nexit 1\n", { encoding: "utf8", mode: 0o755 });
   await git.execute({ operation: "commit", message: "test: workspace git" });
+  await assert.rejects(() => import("node:fs/promises").then(({ access }) => access(join(gitRoot, ".git", "hook-ran.txt"))), /ENOENT/);
   const branch = await git.execute({ operation: "branch" }) as { stdout: string };
   assert.ok(branch.stdout.trim().length > 0);
   await rm(gitRoot, { recursive: true, force: true });
