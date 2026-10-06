@@ -50,15 +50,6 @@ export function validateAIRequest(request: AIRequest, options: ValidationOptions
   if (!Number.isInteger(maxStopSequenceCharacters) || maxStopSequenceCharacters < 1) throw new Error("maxStopSequenceCharacters must be a positive integer");
   if (!Number.isInteger(maxStopSequenceTotalCharacters) || maxStopSequenceTotalCharacters < 1) throw new Error("maxStopSequenceTotalCharacters must be a positive integer");
 
-  if (request.temperature !== undefined && (!Number.isFinite(request.temperature) || request.temperature < 0 || request.temperature > 2)) {
-    throw new Error("temperature must be a finite number between 0 and 2");
-  }
-  if (request.topP !== undefined && (!Number.isFinite(request.topP) || request.topP < 0 || request.topP > 1)) {
-    throw new Error("topP must be a finite number between 0 and 1");
-  }
-  if (request.maxTokens !== undefined && (!Number.isInteger(request.maxTokens) || request.maxTokens < 1)) {
-    throw new Error("maxTokens must be a positive integer");
-  }
   if (request.stop !== undefined) {
     if (!Array.isArray(request.stop)) throw new Error("stop must be an array");
     if (request.stop.length > maxStopSequences) throw new Error("AI request exceeds maxStopSequences");
