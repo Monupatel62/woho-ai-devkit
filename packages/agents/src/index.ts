@@ -103,28 +103,32 @@ async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promis
 }
 
 function serializeToolResult(value: unknown, maxChars: number): string {
+  const suffix = "\n[tool result truncated]";
+  const payloadLimit = Math.max(0, maxChars - suffix.length);
   if (typeof value === "string") {
-    return value.length <= maxChars ? value : value.slice(0, maxChars) + "\n[tool result truncated]";
+    return value.length <= maxChars ? value : value.slice(0, payloadLimit) + suffix.slice(0, maxChars - payloadLimit);
   }
 
   const seen = new WeakSet<object>();
-  let used = 0;
+  let output = "";
   let truncated = false;
 
   const append = (text: string): void => {
-    if (used >= maxChars) {
+    if (output.length >= payloadLimit) {
       truncated = true;
       return;
     }
-    const remaining = maxChars - used;
+    const remaining = payloadLimit - output.length;
     if (text.length > remaining) {
+      output += text.slice(0, remaining);
+      truncated = true;
       return;
     }
-    used += text.length;
+    output += text;
   };
 
   const write = (input: unknown, depth: number): void => {
-    if (used >= maxChars) {
+    if (output.length >= payloadLimit) {
       truncated = true;
       return;
     }
@@ -132,43 +136,22 @@ function serializeToolResult(value: unknown, maxChars: number): string {
       append("[MaxDepth]");
       return;
     }
-    if (input === null) {
-      append("null");
-      return;
-    }
-    if (typeof input === "string") {
-      append(JSON.stringify(input));
-      return;
-    }
-    if (typeof input === "number" || typeof input === "boolean") {
-      append(String(input));
-      return;
-    }
-    if (typeof input === "bigint") {
-      append(JSON.stringify(String(input)) + "n");
-      return;
-    }
-    if (typeof input === "undefined") {
-      append("undefined");
-      return;
-    }
-    if (typeof input === "function" || typeof input === "symbol") {
-      append("[" + typeof input + "]");
-      return;
-    }
-    if (seen.has(input)) {
-      append("[Circular]");
-      return;
-    }
+    if (input === null) return append("null");
+    if (typeof input === "string") return append(JSON.stringify(input));
+    if (typeof input === "number" || typeof input === "boolean") return append(String(input));
+    if (typeof input === "bigint") return append(JSON.stringify(String(input)) + "n");
+    if (typeof input === "undefined") return append("undefined");
+    if (typeof input === "function" || typeof input === "symbol") return append("[" + typeof input + "]");
+    if (seen.has(input)) return append("[Circular]");
     seen.add(input);
 
     if (Array.isArray(input)) {
       append("[");
-      for (let i = 0; i < input.length && used < maxChars; i += 1) {
+      for (let i = 0; i < input.length && output.length < payloadLimit; i += 1) {
         if (i > 0) append(", ");
         write(input[i], depth + 1);
       }
-      if (used < maxChars && input.length > 0 && truncated) append(", …");
+      if (output.length < payloadLimit && input.length > 0 && truncated) append(", …");
       append("]");
       return;
     }
@@ -176,7 +159,7 @@ function serializeToolResult(value: unknown, maxChars: number): string {
     append("{");
     let first = true;
     for (const key of Object.keys(input as Record<string, unknown>)) {
-      if (used >= maxChars) break;
+      if (output.length >= payloadLimit) break;
       if (!first) append(", ");
       first = false;
       append(JSON.stringify(key) + ": ");
@@ -192,10 +175,9 @@ function serializeToolResult(value: unknown, maxChars: number): string {
   try {
     write(value, 0);
   } catch {
-    return "[tool result unavailable]";
+    return "[tool result unavailable]".slice(0, maxChars);
   }
-  if (truncated || used >= maxChars) return "[tool result truncated]";
-  return JSON.stringify(value) ?? String(value);
+  return truncated ? output + suffix.slice(0, maxChars - output.length) : output;
 }
 
 function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
