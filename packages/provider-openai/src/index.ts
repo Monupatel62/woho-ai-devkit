@@ -139,12 +139,12 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     name: "openai",
     async chat(request: AIRequest): Promise<AIResponse> {
       let response: Response;
-      const body = serializeRequest(requestBody(request));
+      const requestBodyJson = serializeRequest(requestBody(request));
       try {
         response = await fetch(baseUrl + "/chat/completions", {
           method: "POST",
           headers: headers(),
-          body,
+          body: requestBodyJson,
           signal: request.signal,
         });
       } catch (error) {
@@ -176,12 +176,12 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
     },
     async *stream(request: AIRequest): AsyncIterable<AIStreamChunk> {
       let response: Response;
-      const body = serializeRequest(requestBody(request, true));
+      const requestBodyJson = serializeRequest(requestBody(request, true));
       try {
         response = await fetch(baseUrl + "/chat/completions", {
           method: "POST",
           headers: headers(),
-          body,
+          body: requestBodyJson,
           signal: request.signal,
         });
       } catch (error) {
