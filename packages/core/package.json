@@ -1,6 +1,6 @@
 {
   "name": "@woho/core",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "description": "Core abstractions for WoHo AI DevKit.",
   "license": "Apache-2.0",
   "type": "module",
