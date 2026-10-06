@@ -39,6 +39,26 @@ const run = async () => {
   assert.throws(() => server.registerTool({ definition: { name: " echo " }, execute: async () => null }), /surrounding whitespace/);
   await assert.rejects(() => server.callTool("missing", {}), /Unknown/);
 
+  const secretServer = createMCPServer({
+    name: "secret-server",
+    version: "1.0.0",
+    tools: [{ definition: { name: "fail-tool" }, execute: async () => { throw new Error("secret tool credential"); } }],
+    resources: [{ definition: { uri: "secret://resource" }, read: async () => { throw new Error("secret resource credential"); } }],
+    prompts: [{ definition: { name: "fail-prompt" }, get: async () => { throw new Error("secret prompt credential"); } }],
+  });
+  await assert.rejects(
+    () => secretServer.callTool("fail-tool", {}),
+    (error) => error instanceof Error && error.message === "MCP tool execution failed" && !error.message.includes("secret tool credential"),
+  );
+  await assert.rejects(
+    () => secretServer.readResource("secret://resource"),
+    (error) => error instanceof Error && error.message === "MCP resource read failed" && !error.message.includes("secret resource credential"),
+  );
+  await assert.rejects(
+    () => secretServer.getPrompt("fail-prompt"),
+    (error) => error instanceof Error && error.message === "MCP prompt execution failed" && !error.message.includes("secret prompt credential"),
+  );
+
   assert.throws(() => createMCPClient({ transport, clientName: " " }), /clientName is required/);
   assert.throws(() => createMCPClient({ transport, clientVersion: " " }), /clientVersion is required/);
   assert.throws(() => createMCPClient({ transport, protocolVersion: " " }), /protocolVersion is required/);

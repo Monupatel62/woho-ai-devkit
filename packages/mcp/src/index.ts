@@ -53,7 +53,11 @@ export class MCPServer {
   async readResource(uri: string): Promise<MCPResourceContent[]> {
     const resource = this.resources.get(uri);
     if (!resource) throw new Error("Unknown MCP resource: " + uri);
-    return resource.read();
+    try {
+      return await resource.read();
+    } catch {
+      throw new MCPError("MCP resource read failed", "resources/read");
+    }
   }
   registerPrompt(prompt: MCPPrompt): void {
     if (!prompt.definition.name.trim()) throw new Error("MCP prompt name is required");
@@ -65,12 +69,20 @@ export class MCPServer {
   async getPrompt(name: string, promptArguments?: Record<string, string>): Promise<unknown> {
     const prompt = this.prompts.get(name);
     if (!prompt) throw new Error("Unknown MCP prompt: " + name);
-    return prompt.get(promptArguments);
+    try {
+      return await prompt.get(promptArguments);
+    } catch {
+      throw new MCPError("MCP prompt execution failed", "prompts/get");
+    }
   }
   async callTool(name: string, input: unknown): Promise<unknown> {
     const tool = this.tools.get(name);
     if (!tool) throw new Error("Unknown MCP tool: " + name);
-    return tool.execute(input);
+    try {
+      return await tool.execute(input);
+    } catch {
+      throw new MCPError("MCP tool execution failed", "tools/call");
+    }
   }
 }
 
