@@ -32,6 +32,8 @@ export interface AgentRuntimeOptions {
   readonly persistInput?: boolean;
   /** Maximum UTF-8 byte length of task input accepted by the runtime. Defaults to 1 MiB. */
   readonly maxInputBytes?: number;
+  /** Maximum UTF-8 byte length of persisted lifecycle error messages. Defaults to 4 KiB. */
+  readonly maxErrorMessageBytes?: number;
 }
 
 export interface AgentResumeOptions {
@@ -65,6 +67,7 @@ export class AgentRuntime {
   private readonly heartbeatIntervalMs: number;
   private readonly persistInput: boolean;
   private readonly maxInputBytes: number;
+  private readonly maxErrorMessageBytes: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -79,9 +82,11 @@ export class AgentRuntime {
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? 15_000;
     this.persistInput = options.persistInput ?? true;
     this.maxInputBytes = options.maxInputBytes ?? 1_048_576;
+    this.maxErrorMessageBytes = options.maxErrorMessageBytes ?? 4 * 1024;
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
     if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
+    if (!Number.isInteger(this.maxErrorMessageBytes) || this.maxErrorMessageBytes < 1) throw new Error("maxErrorMessageBytes must be a positive integer");
   }
 
   register(definition: AgentDefinition, factory?: (ai: AIClient, definition: AgentDefinition) => Agent): this {
@@ -191,7 +196,7 @@ export class AgentRuntime {
         }
       } else {
         const failedAt = Date.now();
-        const failureMessage = error instanceof Error ? error.message : String(error);
+        const failureMessage = this.sanitizeError(error);
         const failedEvent: ExecutionEvent = {
           type: "run.failed",
           runId,
@@ -280,6 +285,19 @@ export class AgentRuntime {
   async pruneHistory(options: PruneExecutionHistoryOptions): Promise<ExecutionRecord[]> {
     if (!this.store) throw new Error("Execution store is required for history pruning");
     return pruneExecutionHistory(this.store, options);
+  }
+
+  private sanitizeError(error: unknown): string {
+    const raw = error instanceof Error ? error.message : String(error);
+    const redacted = raw
+      .replace(/\\bBearer\\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+      .replace(/\\b(?:sk|rk|pk)-[A-Za-z0-9_-]{12,}\\b/g, "[REDACTED_KEY]")
+      .replace(/\\bgh[pousr]_[A-Za-z0-9_]{20,}\\b/g, "[REDACTED_TOKEN]")
+      .replace(/\\bnpm_[A-Za-z0-9]{20,}\\b/g, "[REDACTED_TOKEN]")
+      .replace(/\\bAKIA[0-9A-Z]{16}\\b/g, "[REDACTED_AWS_KEY]");
+    const suffix = redacted.length > this.maxErrorMessageBytes ? "…[truncated]" : "";
+    const limit = Math.max(0, this.maxErrorMessageBytes - suffix.length);
+    return redacted.length > this.maxErrorMessageBytes ? redacted.slice(0, limit) + suffix : redacted;
   }
 
   private validateInput(input: string): void {
