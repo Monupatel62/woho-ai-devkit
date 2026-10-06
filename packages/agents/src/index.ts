@@ -425,6 +425,9 @@ export class Agent {
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
+          if (runOptions.onCheckpoint) {
+            await runOptions.onCheckpoint({ step, messages: [...messages], updatedAt: Date.now() });
+          }
         } catch (error) {
           const errorCode = error instanceof AIError ? error.code : "TOOL_EXECUTION_ERROR";
           await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: false, errorCode } });
@@ -433,6 +436,9 @@ export class Agent {
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
           if (conversation) await conversation.add({ id: `tool-${call.id}`, ...toolMessage, timestamp: Date.now() });
+          if (runOptions.onCheckpoint) {
+            await runOptions.onCheckpoint({ step, messages: [...messages], updatedAt: Date.now() });
+          }
         }
       }
     }
