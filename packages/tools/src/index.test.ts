@@ -10,6 +10,7 @@ const run = async () => {
   assert.deepEqual(await calculatorTool().execute({ expression: "(2 + 3) * 4 - 6 / 2" }), { expression: "(2 + 3) * 4 - 6 / 2", result: 17 });
   assert.deepEqual(await calculatorTool().execute({ expression: "10 % 3" }), { expression: "10 % 3", result: 1 });
   assert.deepEqual(await calculatorTool().execute({ expression: "-5 + 2" }), { expression: "-5 + 2", result: -3 });
+  assert.deepEqual(await calculatorTool().execute({ expression: "(-5 + 2) * 3" }), { expression: "(-5 + 2) * 3", result: -9 });
   await assert.rejects(() => calculatorTool().execute({ expression: "1 / 0" }), /finite number/);
   await assert.rejects(() => calculatorTool().execute({ expression: "1 + process.exit()" }), /Invalid expression/);
   validateToolInput({ type: "object", properties: { x: { type: "number" } }, required: ["x"], additionalProperties: false }, { x: 1 });
