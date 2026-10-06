@@ -78,6 +78,7 @@ function validateRunId(runId: string): void {
 }
 
 const EXECUTION_TRANSITIONS: Readonly<Record<ExecutionStatus, readonly ExecutionStatus[]>> = {
+  queued: ["queued", "running", "cancelled", "failed"],
   running: ["running", "waiting", "succeeded", "failed", "cancelled"],
   waiting: ["waiting", "running", "succeeded", "failed", "cancelled"],
   succeeded: ["succeeded"],
