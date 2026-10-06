@@ -41,11 +41,11 @@ export async function runCodingLoop(
       ],
       signal: options.signal,
     });
-    if (/^PASS\\b/i.test(verification.text.trim())) {
+    if (/^PASS\b/i.test(verification.text.trim())) {
       return { attempts: attempt, results, final: result };
     }
     if (attempt < maxAttempts) {
-      instruction = `${task.goal}\\n\\nPrevious attempt did not verify successfully. Diagnose and fix the failure before finishing.\\nVerification feedback:\n${verification.text.slice(0, 12_000)}`;
+      instruction = `${task.goal}\n\nPrevious attempt did not verify successfully. Diagnose and fix the failure before finishing.\nVerification feedback:\n${verification.text.slice(0, 12_000)}`;
     }
   }
   throw new Error("Coding loop exhausted without verified completion");
