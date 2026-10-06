@@ -314,9 +314,6 @@ export class Agent {
       if (conversation) await conversation.add({ id: `user-${Date.now()}-${Math.random()}`, role: "user", content: input, timestamp: Date.now() });
     }
     const initialStep = runOptions.checkpoint?.step ?? 0;
-    if (runOptions.onCheckpoint) {
-      await runOptions.onCheckpoint({ step: initialStep, messages: [...messages], updatedAt: Date.now() });
-    }
 
     for (let step = initialStep + 1; step <= this.maxSteps; step += 1) {
       const response = await this.ai.chat({
