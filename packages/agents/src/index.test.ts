@@ -106,7 +106,7 @@ const run = async () => {
   }), { name: "timeout-agent", maxToolResultChars: 100, toolTimeoutMs: 5, tools: [{ name: "slow", description: "Slow", execute: async () => { await new Promise((resolve) => setTimeout(resolve, 30)); return "late"; } }] });
   const timeoutResult = await timeoutTool.run("run");
   assert.equal(timeoutResult.text, "done");
-  assert.match(String(timeoutResult.toolResults["slow-1"] && (timeoutResult.toolResults["slow-1"] as { error: string }).error), /timed out/);
+  assert.equal((timeoutResult.toolResults["slow-1"] as { error?: unknown }).error, "TOOL_TIMEOUT");
 
   const limitedTool = createAgent(createAI({
     provider: {
