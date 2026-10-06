@@ -452,7 +452,10 @@ const run = async () => {
             toolCalls: [{ id: "retry-tool-1", name: "retry-safe-tool", arguments: "{}" }],
           };
         }
-        if (request.messages.at(-1)?.role === "tool") {
+        if (retryModelCalls === 2) {
+          throw new Error("provider-failure-after-tool");
+        }
+        if (retryModelCalls === 3 && request.messages.at(-1)?.role === "tool") {
           return { id: "retry-done", text: "retry-recovered", model: "checkpoint-retry" };
         }
         throw new Error("unexpected replay");
@@ -481,6 +484,7 @@ const run = async () => {
   const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
   assert.equal(checkpointRetryResult.text, "retry-recovered");
   assert.equal(retryToolExecutions, 1);
+  assert.equal(retryModelCalls, 3);
   const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
   assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
   assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "tool");
