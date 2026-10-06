@@ -29,6 +29,24 @@ assert.ok(platform.registry.get("woho-browser"));
 assert.ok(platform.registry.get("woho-security"));
 assert.ok(platform.registry.get("woho-orchestrator"));
 
+const projectTool = {
+  name: "project_context_probe",
+  description: "Probe the authorized project context.",
+  capability: "file",
+  action: "read" as const,
+  parameters: { type: "object", properties: {}, additionalProperties: false },
+  async execute() { return { ok: true }; },
+};
+const projectContextPlatform = createWohoAgentPlatform({ projectTools: [projectTool] });
+assert.ok(projectContextPlatform.registry.get("woho-coding")?.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-file")?.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-testing")?.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-git")?.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-security")?.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.ok(projectContextPlatform.registry.get("woho-documentation")?.tools?.some((tool) => tool.name === "project_context_probe"));
+assert.equal(projectContextPlatform.registry.get("woho-orchestrator")?.tools?.some((tool) => tool.name === "project_context_probe"), false);
+assert.equal(projectContextPlatform.registry.get("woho-planner")?.tools?.some((tool) => tool.name === "project_context_probe"), false);
+
 const ai = createAI({ provider });
 const plan = await platform.plan(ai, "Build the requested software change.");
 assert.deepEqual(plan.steps.map((step) => step.agent), ["woho-research", "woho-coding"]);
