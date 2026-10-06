@@ -171,6 +171,31 @@ const run = async () => {
   }), /cycle or unknown dependency/);
   assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);
   assert.throws(() => new AgentRuntime({ heartbeatIntervalMs: 0 }), /heartbeatIntervalMs/);
+  assert.throws(() => new AgentRuntime({ maxInputBytes: 0 }), /maxInputBytes/);
+
+  const boundedInputStore = new InMemoryExecutionStore();
+  const boundedInputRuntime = new AgentRuntime({ store: boundedInputStore, maxInputBytes: 8 }, registry);
+  await assert.rejects(
+    () => boundedInputRuntime.run(createAI({ provider: createMockProvider({ response: "ok" }) }), { agent: "general", input: "123456789" }),
+    /Agent input exceeds maxInputBytes/,
+  );
+
+  const privateInputStore = new InMemoryExecutionStore();
+  const privateInputRuntime = new AgentRuntime({ store: privateInputStore, persistInput: false }, registry);
+  const privateRun = await privateInputRuntime.run(
+    createAI({ provider: createMockProvider({ response: "private-ok" }) }),
+    { agent: "general", input: "super-secret prompt" },
+  );
+  const privateRecord = privateInputStore.get(privateRun.runId);
+  assert.equal(privateRecord?.input, undefined);
+  assert.ok(!privateRecord?.events.some((event) => JSON.stringify(event).includes("super-secret prompt")));
+
+  const utf8InputStore = new InMemoryExecutionStore();
+  const utf8InputRuntime = new AgentRuntime({ store: utf8InputStore, maxInputBytes: 4 }, registry);
+  await assert.rejects(
+    () => utf8InputRuntime.run(createAI({ provider: createMockProvider({ response: "ok" }) }), { agent: "general", input: "😀😀" }),
+    /Agent input exceeds maxInputBytes/,
+  );
   let retryCount = 0;
   const retryRegistry = new AgentRegistry();
   retryRegistry.register({ id: "retry", name: "Retry", role: "general" }, ({ ai }) => createAgent(ai, { name: "Retry" }));
