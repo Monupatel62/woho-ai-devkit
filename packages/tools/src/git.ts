@@ -134,7 +134,7 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
           if (terminated && bytes > maxOutputBytes) return reject(new Error("Git output exceeds maxOutputBytes"));
           if (terminated && context?.signal?.aborted) return reject(new Error("Git operation aborted"));
           if (terminated) return reject(new Error("Git operation timed out"));
-          if (code !== 0) return reject(new Error(stderr.trim() || "Git operation failed"));
+          if (code !== 0) return reject(new Error("Git operation failed"));
           resolve({ operation, args, code, signal, stdout, stderr });
         });
       });
