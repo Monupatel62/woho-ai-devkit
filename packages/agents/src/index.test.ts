@@ -424,12 +424,13 @@ const run = async () => {
       tools: [{ name: "secret-tool", description: "Secret tool", execute: async () => { throw new Error("super-secret-provider-token"); } }],
     },
   );
-  await secretErrorAgent.run("test", { runId: "secret-error-run", onEvent: (event) => { toolErrorEvents.push(event); } });
+  const secretErrorResult = await secretErrorAgent.run("test", { runId: "secret-error-run", onEvent: (event) => { toolErrorEvents.push(event); } });
   const failedToolEvent = toolErrorEvents.find((event) => event.type === "tool.completed" && event.data?.success === false);
   assert.equal(failedToolEvent?.data?.errorCode, "TOOL_EXECUTION_ERROR");
   assert.ok(!JSON.stringify(failedToolEvent).includes("super-secret-provider-token"));
-  const toolFailureResult = secretErrorAgent;
-  assert.ok(toolFailureResult);
+  assert.equal(secretErrorResult.toolResults["mock-call-1"]?.error, "TOOL_EXECUTION_ERROR");
+  assert.ok(!JSON.stringify(secretErrorResult.toolResults).includes("super-secret-provider-token"));
+  assert.ok(!JSON.stringify(secretErrorResult.messages).includes("super-secret-provider-token"));
 
 
   let verificationAttempts = 0;
