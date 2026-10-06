@@ -78,6 +78,16 @@ const run = async () => {
   await client.close();
   await assert.rejects(() => client.listTools(), /client is closed/);
 
+  const secretTransport: MCPTransport = {
+    async request() { throw new Error("secret custom transport credential"); },
+  };
+  const secretClient = createMCPClient({ transport: secretTransport });
+  await assert.rejects(
+    () => secretClient.listTools(),
+    (error) => error instanceof Error && error.message === "MCP transport request failed" && !error.message.includes("secret custom transport credential"),
+  );
+  await secretClient.close();
+
   const slowTransport: MCPTransport = {
     async request() { await new Promise((resolve) => setTimeout(resolve, 30)); return { ok: true }; },
   };
