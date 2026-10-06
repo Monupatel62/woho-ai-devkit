@@ -75,4 +75,57 @@ try { await createWohoAgentPlatform({ maxPlanStepInputBytes: 4 }).plan(boundedPl
   boundedRejected = error instanceof Error && error.message.includes("maxPlanStepInputBytes");
 }
 assert.equal(boundedRejected, true);
+
+let codingCalls = 0;
+let codingToolRuns = 0;
+const codingProvider: AIProvider = {
+  name: "coding-platform-test",
+  async chat(request) {
+    if (request.messages.some((message) => message.role === "system" && message.content.includes("strict software verification agent"))) {
+      return { id: "verify", text: "PASS verified implementation and test result", model: "coding-platform-test" };
+    }
+    codingCalls += 1;
+    if (request.messages.at(-1)?.role === "tool") {
+      return { id: "coding-done", text: "implemented after inspecting project tool output", model: "coding-platform-test" };
+    }
+    return {
+      id: "coding-tool-call",
+      text: "",
+      model: "coding-platform-test",
+      finishReason: "tool_call",
+      toolCalls: [{ id: "inspect-1", name: "project_inspect", arguments: JSON.stringify({ path: "src/app.ts" }) }],
+    };
+  },
+};
+
+const projectInspectTool = {
+  name: "project_inspect",
+  description: "Inspect an authorized project file.",
+  capability: "file",
+  action: "read" as const,
+  parameters: {
+    type: "object",
+    properties: { path: { type: "string" } },
+    required: ["path"],
+    additionalProperties: false,
+  },
+  async execute(input: unknown) {
+    codingToolRuns += 1;
+    return { inspected: (input as { path: string }).path, content: "verified project state" };
+  },
+};
+const codingPlatform = createWohoAgentPlatform({
+  toolsByRole: { coding: [projectInspectTool] },
+  permissionsByRole: { coding: { check: (request) => request.capability === "file" && request.action === "read" ? { allowed: true } : { allowed: false } } },
+  codingLoop: { maxAttempts: 2 },
+});
+const codingResult = await codingPlatform.runCodingTask(
+  createAI({ provider: codingProvider }),
+  "Inspect src/app.ts and implement the requested coding change.",
+  { verify: "The project inspection must be performed and the implementation must be verified." },
+);
+assert.equal(codingResult.attempts, 1);
+assert.equal(codingResult.final.text, "implemented after inspecting project tool output");
+assert.equal(codingToolRuns, 1);
+assert.ok(codingCalls >= 2);
 console.log("WoHo agent platform tests passed");
