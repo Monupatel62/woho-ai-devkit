@@ -119,6 +119,24 @@ const run = async () => {
   assert.deepEqual(await stdio.request("ping"), { ok: true });
   await stdio.close();
 
+  const secretCircular: Record<string, unknown> = {};
+  secretCircular.self = secretCircular;
+  const circularStdio = createMCPStdioTransport({ command: execPath, args: ["-e", "process.stdin.resume();"], timeoutMs: 1000 });
+  await assert.rejects(
+    () => circularStdio.request("ping", secretCircular),
+    (error) => error instanceof Error && error.message === "MCP request is not serializable" && !error.message.includes("secret"),
+  );
+  await circularStdio.close();
+
+  const secretNotifyCircular: Record<string, unknown> = {};
+  secretNotifyCircular.self = secretNotifyCircular;
+  const notifyCircularStdio = createMCPStdioTransport({ command: execPath, args: ["-e", "process.stdin.resume();"], timeoutMs: 1000 });
+  await assert.rejects(
+    () => notifyCircularStdio.notify("secret-notify", secretNotifyCircular),
+    (error) => error instanceof Error && error.message === "MCP notification is not serializable" && !error.message.includes("secret"),
+  );
+  await notifyCircularStdio.close();
+
   const malformedStdioScript = 'process.stdin.setEncoding("utf8"); process.stdin.on("data",()=>process.stdout.write(JSON.stringify({jsonrpc:"1.0",id:1,result:{ok:true}})+"\\n"));';
   const malformedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", malformedStdioScript], timeoutMs: 1000 });
   await assert.rejects(() => malformedStdio.request("ping"), /Invalid MCP JSON-RPC response/);
