@@ -262,7 +262,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     return record ? cloneRecord(record) : undefined;
   }
 
-  list(options: { status?: ExecutionStatus; limit?: number } = {}): ExecutionRecord[] {
+  list(options: { status?: ExecutionStatus; projectId?: string; limit?: number } = {}): ExecutionRecord[] {
     validateLimit(options.limit);
     const records = [...this.records.values()]
       .filter((record) => options.status === undefined || record.status === options.status)
@@ -403,7 +403,7 @@ export class FileExecutionStore implements ExecutionStore {
     return this.readRecord(this.filePath(runId));
   }
 
-  async list(options: { status?: ExecutionStatus; limit?: number } = {}): Promise<ExecutionRecord[]> {
+  async list(options: { status?: ExecutionStatus; projectId?: string; limit?: number } = {}): Promise<ExecutionRecord[]> {
     validateLimit(options.limit);
     await this.ensureDirectory();
     const entries = await fs.readdir(this.directory, { withFileTypes: true });
@@ -413,6 +413,7 @@ export class FileExecutionStore implements ExecutionStore {
       const record = await this.readRecord(path.join(this.directory, entry.name));
       if (!record) continue;
       if (options.status !== undefined && record.status !== options.status) continue;
+      if (options.projectId !== undefined && record.projectId !== options.projectId) continue;
       records.push(record);
     }
     records.sort((a, b) => b.updatedAt - a.updatedAt);
