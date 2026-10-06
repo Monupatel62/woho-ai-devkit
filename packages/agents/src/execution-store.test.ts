@@ -37,6 +37,14 @@ try {
     /Execution attempts must be a non-negative integer/,
   );
   assert.throws(
+    () => store.create({ ...record, runId: "missing-started-at", startedAt: undefined as never }),
+    /Execution startedAt must be a non-negative finite number/,
+  );
+  assert.throws(
+    () => store.create({ ...record, runId: "missing-updated-at", updatedAt: undefined as never }),
+    /Execution updatedAt must be a non-negative finite number/,
+  );
+  assert.throws(
     () => store.create({
       ...record,
       runId: "invalid-event",
@@ -59,6 +67,14 @@ try {
       timestamp: 2,
     }),
     /does not match execution record/,
+  );
+  await assert.rejects(
+    () => store.appendEvent(record.runId, {
+      type: "run.completed",
+      runId: record.runId,
+      timestamp: undefined as never,
+    }),
+    /Execution event timestamp must be a non-negative finite number/,
   );
   const malformedPath = path.join(root, Buffer.from("malformed-persisted", "utf8").toString("base64url") + ".json");
   await writeFile(malformedPath, JSON.stringify({
