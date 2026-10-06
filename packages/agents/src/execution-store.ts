@@ -33,6 +33,8 @@ export interface ExecutionStore {
   updateIf?(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean | Promise<boolean>;
   /** Atomically claim a single child run for resuming a failed/cancelled execution. */
   claimResume?(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined | Promise<string | undefined>;
+  /** Atomically apply a record patch and append its lifecycle event. */
+  transition?(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent): void | Promise<void>;
 }
 
 export interface RecoverStaleExecutionsOptions {
@@ -127,6 +129,19 @@ export class InMemoryExecutionStore implements ExecutionStore {
     this.records.set(runId, { ...current, updatedAt: event.timestamp, events: [...current.events, event] });
   }
 
+  transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent): void {
+    validateRunId(runId);
+    const current = this.records.get(runId);
+    if (!current) throw new Error("Execution not found: " + runId);
+    validateExecutionTransition(current, patch.status);
+    this.records.set(runId, cloneRecord({
+      ...current,
+      ...patch,
+      updatedAt: event.timestamp,
+      events: [...current.events, event],
+    }));
+  }
+
   get(runId: string): ExecutionRecord | undefined {
     validateRunId(runId);
     const record = this.records.get(runId);
@@ -219,6 +234,22 @@ export class FileExecutionStore implements ExecutionStore {
       const current = await this.readRecord(target);
       if (!current) return;
       await this.writeRecord(target, { ...current, updatedAt: event.timestamp, events: [...current.events, event] }, true);
+    });
+  }
+
+  async transition(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent): Promise<void> {
+    validateRunId(runId);
+    await this.enqueue(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current) throw new Error("Execution not found: " + runId);
+      validateExecutionTransition(current, patch.status);
+      await this.writeRecord(target, {
+        ...current,
+        ...patch,
+        updatedAt: event.timestamp,
+        events: [...current.events, event],
+      }, true);
     });
   }
 

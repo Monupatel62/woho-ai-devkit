@@ -131,41 +131,70 @@ export class AgentRuntime {
               throw new AIError(typeof verdict === "string" ? verdict : "Agent result verification failed", "VERIFICATION_FAILED");
             }
           }
-          await this.store?.update(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt: Date.now(), updatedAt: Date.now() });
-          await this.emit({
+          const completedAt = Date.now();
+          const completedEvent: ExecutionEvent = {
             type: "run.completed",
             runId,
-            timestamp: Date.now(),
+            timestamp: completedAt,
             data: { agent: task.agent, steps: result.steps, attempts: attempt, verified: Boolean(verification) },
-          });
+          };
+          if (this.store?.transition) {
+            await this.store.transition(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt }, completedEvent);
+            await this.onEvent?.(completedEvent);
+          } else {
+            await this.store?.update(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt, updatedAt: completedAt });
+            await this.emit(completedEvent);
+          }
           return { ...result, runId };
         } catch (error) {
           if (task.signal?.aborted) throw error;
           if (attempt >= retry.maxAttempts) throw error;
           const delay = retry.delayMs * Math.pow(retry.backoff, attempt - 1);
-          await this.store?.update(runId, { status: "waiting", attempts: attempt, updatedAt: Date.now() });
-          await this.emit({
+          const waitingAt = Date.now();
+          const waitingEvent: ExecutionEvent = {
             type: "run.waiting",
             runId,
-            timestamp: Date.now(),
+            timestamp: waitingAt,
             data: { agent: task.agent, attempt, nextAttempt: attempt + 1, delayMs: delay },
-          });
+          };
+          if (this.store?.transition) {
+            await this.store.transition(runId, { status: "waiting", attempts: attempt }, waitingEvent);
+            await this.onEvent?.(waitingEvent);
+          } else {
+            await this.store?.update(runId, { status: "waiting", attempts: attempt, updatedAt: waitingAt });
+            await this.emit(waitingEvent);
+          }
           await this.sleep(delay, task.signal);
         }
       }
       throw new Error("Agent runtime exhausted retry loop");
     } catch (error) {
       if (task.signal?.aborted) {
-        await this.store?.update(runId, { status: "cancelled", completedAt: Date.now(), updatedAt: Date.now() });
-        await this.emit({ type: "run.cancelled", runId, timestamp: Date.now(), data: { agent: task.agent } });
+        const cancelledAt = Date.now();
+        const cancelledEvent: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { agent: task.agent } };
+        if (this.store?.transition) {
+          await this.store.transition(runId, { status: "cancelled", completedAt: cancelledAt }, cancelledEvent);
+          await this.onEvent?.(cancelledEvent);
+        } else {
+          await this.store?.update(runId, { status: "cancelled", completedAt: cancelledAt, updatedAt: cancelledAt });
+          await this.emit(cancelledEvent);
+        }
       } else {
-        await this.store?.update(runId, { status: "failed", completedAt: Date.now(), updatedAt: Date.now(), error: error instanceof Error ? error.message : String(error) });
-        await this.emit({
+        const failedAt = Date.now();
+        const failureMessage = error instanceof Error ? error.message : String(error);
+        const failedEvent: ExecutionEvent = {
           type: "run.failed",
           runId,
-          timestamp: Date.now(),
-          data: { agent: task.agent, error: error instanceof Error ? error.message : String(error) },
-        });
+          timestamp: failedAt,
+          data: { agent: task.agent, error: failureMessage },
+        };
+        if (this.store?.transition) {
+          await this.store.transition(runId, { status: "failed", completedAt: failedAt, error: failureMessage }, failedEvent);
+          await this.onEvent?.(failedEvent);
+        } else {
+          await this.store?.update(runId, { status: "failed", completedAt: failedAt, updatedAt: failedAt, error: failureMessage });
+          await this.emit(failedEvent);
+        }
       }
       throw error;
     } finally {
