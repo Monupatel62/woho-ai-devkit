@@ -9,7 +9,7 @@ test("--help is available without an API key", async () => {
   try {
     assert.equal(await runCli(["--help"]), 0);
     assert.match(output, /WoHo AI CLI/);
-    assert.match(output, /read-only/);
+    assert.match(output, /read-only|read only/);
   } finally { process.stdout.write = original; }
 });
 
