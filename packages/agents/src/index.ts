@@ -103,14 +103,99 @@ async function runEvent(options: AgentRunOptions, event: ExecutionEvent): Promis
 }
 
 function serializeToolResult(value: unknown, maxChars: number): string {
-  let text: string;
-  if (typeof value === "string") text = value;
-  else {
-    try { text = JSON.stringify(value); }
-    catch { text = String(value); }
+  if (typeof value === "string") {
+    return value.length <= maxChars ? value : value.slice(0, maxChars) + "\n[tool result truncated]";
   }
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + "\n[tool result truncated]";
+
+  const seen = new WeakSet<object>();
+  let used = 0;
+  let truncated = false;
+
+  const append = (text: string): void => {
+    if (used >= maxChars) {
+      truncated = true;
+      return;
+    }
+    const remaining = maxChars - used;
+    if (text.length > remaining) {
+      return;
+    }
+    used += text.length;
+  };
+
+  const write = (input: unknown, depth: number): void => {
+    if (used >= maxChars) {
+      truncated = true;
+      return;
+    }
+    if (depth > 6) {
+      append("[MaxDepth]");
+      return;
+    }
+    if (input === null) {
+      append("null");
+      return;
+    }
+    if (typeof input === "string") {
+      append(JSON.stringify(input));
+      return;
+    }
+    if (typeof input === "number" || typeof input === "boolean") {
+      append(String(input));
+      return;
+    }
+    if (typeof input === "bigint") {
+      append(JSON.stringify(String(input)) + "n");
+      return;
+    }
+    if (typeof input === "undefined") {
+      append("undefined");
+      return;
+    }
+    if (typeof input === "function" || typeof input === "symbol") {
+      append("[" + typeof input + "]");
+      return;
+    }
+    if (seen.has(input)) {
+      append("[Circular]");
+      return;
+    }
+    seen.add(input);
+
+    if (Array.isArray(input)) {
+      append("[");
+      for (let i = 0; i < input.length && used < maxChars; i += 1) {
+        if (i > 0) append(", ");
+        write(input[i], depth + 1);
+      }
+      if (used < maxChars && input.length > 0 && truncated) append(", …");
+      append("]");
+      return;
+    }
+
+    append("{");
+    let first = true;
+    for (const key of Object.keys(input as Record<string, unknown>)) {
+      if (used >= maxChars) break;
+      if (!first) append(", ");
+      first = false;
+      append(JSON.stringify(key) + ": ");
+      try {
+        write((input as Record<string, unknown>)[key], depth + 1);
+      } catch {
+        append("[unreadable]");
+      }
+    }
+    append("}");
+  };
+
+  try {
+    write(value, 0);
+  } catch {
+    return "[tool result unavailable]";
+  }
+  if (truncated || used >= maxChars) return "[tool result truncated]";
+  return JSON.stringify(value) ?? String(value);
 }
 
 function limitContext(history: MemoryMessage[], maxMessages?: number, maxChars?: number): MemoryMessage[] {
