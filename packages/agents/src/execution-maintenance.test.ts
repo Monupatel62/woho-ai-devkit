@@ -24,11 +24,13 @@ const run = async () => {
   await store.create(makeRecord("fresh", "running", 950));
   await store.create(makeRecord("done", "succeeded", 50));
 
+  await store.create(makeRecord("waiting-stale", "waiting", 100));
   const recovered = await recoverStaleExecutions(store, { staleAfterMs: 500, now: 1000 });
-  assert.equal(recovered.length, 1);
-  assert.equal(recovered[0]?.runId, "stale");
+  assert.equal(recovered.length, 2);
+  assert.deepEqual(recovered.map((record) => record.runId).sort(), ["stale", "waiting-stale"]);
   assert.equal(store.get("stale")?.status, "failed");
   assert.equal(store.get("fresh")?.status, "running");
+  assert.equal(store.get("waiting-stale")?.status, "failed");
   assert.equal(store.get("done")?.status, "succeeded");
   assert.equal(store.get("stale")?.events.at(-1)?.type, "run.failed");
   assert.deepEqual(store.get("stale")?.events.at(-1)?.data, { reason: "stale", staleAfterMs: 500 });
