@@ -6,6 +6,9 @@
   "type": "module",
   "bin": { "woho": "./dist/index.js" },
   "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test dist/index.test.js" },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
+  },
   "dependencies": {
     "@woho/agents": "workspace:*",
     "@woho/core": "workspace:*",
