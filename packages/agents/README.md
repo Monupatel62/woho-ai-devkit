@@ -92,6 +92,8 @@ const recovered = await runtime.recoverStale({ staleAfterMs: 60_000 });
 console.log("recovered:", recovered.map((run) => run.runId));
 ```
 
+Failed or cancelled persisted runs can be restarted with `runtime.resume(ai, runId)`. Resume creates a new run linked to the original through `parentRunId`, so the original failure remains part of the history. Older records created before input persistence cannot be resumed automatically.
+
 Execution history is never deleted automatically. Use `pruneExecutionHistory` or `runtime.pruneHistory` with an age and/or count policy when retention cleanup is explicitly desired.
 
 ```ts
