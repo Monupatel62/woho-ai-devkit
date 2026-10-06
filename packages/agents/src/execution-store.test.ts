@@ -94,7 +94,7 @@ try {
   await store.appendEvent(record.runId, event);
   await store.update(record.runId, { status: "succeeded", completedAt: 2, updatedAt: 2 });
 
-  const boundedRecordSeed = { ...record, runId: "bounded-file" };
+  const boundedRecordSeed = { ...record, runId: "bounded-file", projectId: "project-bounded" };
   const bounded = new FileExecutionStore({ directory: root, maxEvents: 2 });
   await bounded.create(boundedRecordSeed);
   await bounded.appendEvent(boundedRecordSeed.runId, { type: "tool.started", runId: boundedRecordSeed.runId, timestamp: 3, data: { step: 1 } });
