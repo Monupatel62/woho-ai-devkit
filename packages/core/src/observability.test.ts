@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createAI, createMockProvider, createModelRouter, RateLimitError, TimeoutError } from "./index.js";
+import { createAI, createMockProvider, createModelRouter, RateLimitError, TimeoutError, type AILogEvent } from "./index.js";
 
 const requestEvents: string[] = [];
 const ai = createAI({
@@ -146,3 +146,33 @@ assert.equal(iteratorReturned, true);
 
 const router = createModelRouter({ routes: [{ provider: createMockProvider({ response: "routed" }), models: ["router-test"] }] });
 assert.equal((await createAI({ provider: router }).chat({ messages: [{ role: "user", content: "route" }], model: "router-test" })).text, "routed");
+
+
+{
+  const events: AILogEvent[] = [];
+  const provider = createMockProvider();
+  const client = createAI({ provider, observability: { onEvent: (event) => { events.push(event); } } });
+  await client.chat({
+    messages: [{ role: "user", content: "secret prompt", toolCalls: [{ id: "call-1", name: "secret-tool", arguments: "{\"secret\":\"value\"}" }] }],
+    tools: [{ name: "secret-tool", description: "private tool", parameters: { secret: true } }],
+  });
+  const event = events.find((item) => item.type === "request.start");
+  assert.equal(event?.type, "request.start");
+  assert.equal(event.request.messages[0]?.content, "[REDACTED]");
+  assert.equal(event.request.messages[0]?.toolCalls?.[0]?.arguments, "[REDACTED]");
+  assert.equal(event.request.tools?.[0]?.description, "[REDACTED]");
+}
+
+{
+  const events: AILogEvent[] = [];
+  const provider = createMockProvider();
+  const client = createAI({ provider, includeRequestContentInObservability: true, observability: { onEvent: (event) => { events.push(event); } } });
+  await client.chat({ messages: [{ role: "user", content: "visible prompt" }] });
+  const event = events.find((item) => item.type === "request.start");
+  assert.equal(event?.type, "request.start");
+  assert.equal(event.request.messages[0]?.content, "visible prompt");
+}
+
+{
+  assert.throws(() => createAI({ provider: createMockProvider(), includeRequestContentInObservability: "yes" as never }), /must be a boolean/);
+}

@@ -18,6 +18,18 @@ const sleep = (ms: number, signal?: AbortSignal) =>
     signal?.addEventListener("abort", onAbort, { once: true });
   });
 
+function redactRequest(request: AIRequest): AIRequest {
+  return {
+    ...request,
+    messages: request.messages.map((message) => ({
+      ...message,
+      content: "[REDACTED]",
+      toolCalls: message.toolCalls?.map((call) => ({ ...call, arguments: "[REDACTED]" })),
+    })),
+    tools: request.tools?.map((tool) => ({ ...tool, description: "[REDACTED]", parameters: undefined })),
+  };
+}
+
 function validate(request: AIRequest) {
   if (!request.messages.length) throw new AIError("At least one message is required", "INVALID_REQUEST_ERROR");
   try { validateAIInput(request.messages); }
@@ -67,6 +79,7 @@ export class AIClient {
   private readonly retries: number;
   private readonly retryDelayMs: number;
   private readonly observability?: AIObservability;
+  private readonly includeRequestContentInObservability: boolean;
 
   constructor(config: AIConfig) {
     this.provider = config.provider;
@@ -74,6 +87,8 @@ export class AIClient {
     this.retries = config.retries ?? 2;
     this.retryDelayMs = config.retryDelayMs ?? 250;
     this.observability = config.observability;
+    this.includeRequestContentInObservability = config.includeRequestContentInObservability ?? false;
+    if (typeof this.includeRequestContentInObservability !== "boolean") throw new AIError("includeRequestContentInObservability must be a boolean", "INVALID_CONFIG");
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new AIError("timeoutMs must be a positive integer", "INVALID_CONFIG");
     if (!Number.isInteger(this.retries) || this.retries < 0) throw new AIError("retries must be a non-negative integer", "INVALID_CONFIG");
     if (!Number.isInteger(this.retryDelayMs) || this.retryDelayMs < 0) throw new AIError("retryDelayMs must be a non-negative integer", "INVALID_CONFIG");
@@ -84,7 +99,7 @@ export class AIClient {
     let attempt = 0;
     while (true) {
       const started = Date.now();
-      await this.observability?.onEvent?.({ type: "request.start", request, attempt });
+      await this.observability?.onEvent?.({ type: "request.start", request: this.includeRequestContentInObservability ? request : redactRequest(request), attempt });
       const merged = mergeSignals(request.signal, this.timeoutMs);
       try {
         if (merged.signal.aborted) throw merged.signal.reason ?? new Error("Aborted");
@@ -108,7 +123,7 @@ export class AIClient {
     validate(request);
     if (!this.provider.stream) throw new AIError("Provider does not support streaming", "STREAMING_NOT_SUPPORTED");
     const started = Date.now();
-    await this.observability?.onEvent?.({ type: "stream.start", request });
+    await this.observability?.onEvent?.({ type: "stream.start", request: this.includeRequestContentInObservability ? request : redactRequest(request) });
     const merged = mergeSignals(request.signal, this.timeoutMs);
     try {
       if (merged.signal.aborted) throw merged.signal.reason ?? new Error("Aborted");
