@@ -118,7 +118,6 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
-    if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
     validateExecutionTransition(current, patch.status);
     this.records.set(runId, cloneRecord({ ...current, ...patch, events: patch.events ? [...patch.events] : current.events }));
   }
@@ -134,6 +133,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
+    if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
     validateExecutionTransition(current, patch.status);
     this.records.set(runId, cloneRecord({
       ...current,
