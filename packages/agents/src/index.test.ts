@@ -434,6 +434,61 @@ const run = async () => {
   const capturedRecord = checkpointCaptureStore.get(checkpointCaptureResult.runId);
   assert.equal(capturedRecord?.checkpoint?.step, 1);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
+
+  const retryCheckpointStore = new InMemoryExecutionStore();
+  let retryToolExecutions = 0;
+  let retryModelCalls = 0;
+  const checkpointRetryAI = createAI({
+    provider: {
+      name: "checkpoint-retry",
+      async chat(request) {
+        retryModelCalls += 1;
+        if (retryModelCalls === 1) {
+          return {
+            id: "retry-tool-call",
+            text: "",
+            model: "checkpoint-retry",
+            finishReason: "tool_call",
+            toolCalls: [{ id: "retry-tool-1", name: "retry-safe-tool", arguments: "{}" }],
+          };
+        }
+        if (retryModelCalls === 2) {
+          throw new Error("provider-failure-after-tool");
+        }
+        if (retryModelCalls === 3 && request.messages.at(-1)?.role === "tool") {
+          return { id: "retry-done", text: "retry-recovered", model: "checkpoint-retry" };
+        }
+        throw new Error("unexpected replay");
+      },
+    },
+  });
+  const retryAgentRegistry = new AgentRegistry();
+  retryAgentRegistry.register(
+    { id: "retry-agent", name: "Retry Agent", role: "general" },
+    ({ ai }) => createAgent(ai, {
+      name: "Retry Agent",
+      tools: [{
+        name: "retry-safe-tool",
+        description: "Side effect used to verify durable retry recovery",
+        execute: async () => {
+          retryToolExecutions += 1;
+          return "side-effect-complete";
+        },
+      }],
+    }),
+  );
+  const checkpointRetryRuntime = new AgentRuntime({
+    store: retryCheckpointStore,
+    retry: { maxAttempts: 2, delayMs: 0 },
+  }, retryAgentRegistry);
+  const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
+  assert.equal(checkpointRetryResult.text, "retry-recovered");
+  assert.equal(retryToolExecutions, 1);
+  assert.equal(retryModelCalls, 3);
+  const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
+  assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
+  assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
+  assert.ok(retryRecord?.checkpoint?.messages.some((message) => message.role === "tool" && message.toolCallId === "retry-tool-1"));
   const secretCheckpointStore = new InMemoryExecutionStore();
   const secretCheckpointRuntime = new AgentRuntime({ store: secretCheckpointStore }, registry);
   const secretCheckpointResult = await secretCheckpointRuntime.run(

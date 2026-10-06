@@ -155,6 +155,7 @@ export class AgentRuntime {
         }, this.heartbeatIntervalMs)
       : undefined;
 
+    let latestCheckpoint = task.checkpoint;
     try {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
         try {
@@ -208,9 +209,10 @@ export class AgentRuntime {
               await this.recordAgentEvent(event);
             },
             approval: auditedApproval,
-            checkpoint: task.checkpoint,
+            checkpoint: latestCheckpoint,
             onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
               const sanitizedCheckpoint = this.sanitizeCheckpoint(checkpoint);
+              latestCheckpoint = sanitizedCheckpoint;
               let serialized: string;
               try {
                 serialized = JSON.stringify(sanitizedCheckpoint);
