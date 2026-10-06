@@ -388,22 +388,34 @@ export async function recoverStaleExecutions(
         completedAt: now,
         updatedAt: now,
       };
-      let claimed = false;
-      if (store.updateIf) {
-        claimed = await store.updateIf(candidate.runId, candidate.updatedAt, patch);
-      } else {
-        const latest = await store.get(candidate.runId);
-        if (!latest || latest.status !== status || latest.updatedAt !== candidate.updatedAt) continue;
-        await store.update(candidate.runId, patch);
-        claimed = true;
-      }
-      if (!claimed) continue;
-      await store.appendEvent(candidate.runId, {
+      const event: ExecutionEvent = {
         type: "run.failed",
         runId: candidate.runId,
         timestamp: now,
         data: { reason: "stale", staleAfterMs: options.staleAfterMs },
-      });
+      };
+      let claimed = false;
+      if (store.transition) {
+        try {
+          await store.transition(candidate.runId, { ...patch, updatedAt: undefined }, event);
+          claimed = true;
+        } catch (error) {
+          if (error instanceof Error && (error.message.includes("Execution not found") || error.message.includes("Invalid execution status transition"))) {
+            continue;
+          }
+          throw error;
+        }
+      } else if (store.updateIf) {
+        claimed = await store.updateIf(candidate.runId, candidate.updatedAt, patch);
+        if (claimed) await store.appendEvent(candidate.runId, event);
+      } else {
+        const latest = await store.get(candidate.runId);
+        if (!latest || latest.status !== status || latest.updatedAt !== candidate.updatedAt) continue;
+        await store.update(candidate.runId, patch);
+        await store.appendEvent(candidate.runId, event);
+        claimed = true;
+      }
+      if (!claimed) continue;
       const record = await store.get(candidate.runId);
       if (record) recovered.push(record);
     }
