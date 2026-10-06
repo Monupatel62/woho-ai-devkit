@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AIError, type AIClient, type ExecutionContext, type ExecutionEvent } from "@woho/core";
 import { Agent, type AgentApprovalHandler, type AgentExecutionCheckpoint, type AgentRunResult } from "./index.js";
 import { AgentRegistry, type AgentDefinition } from "./definition.js";
@@ -40,6 +40,10 @@ export interface AgentRuntimeOptions {
   readonly approvalPollIntervalMs?: number;
   /** Maximum UTF-8 bytes retained in a durable execution checkpoint. Defaults to 512 KiB. */
   readonly maxCheckpointBytes?: number;
+  /** Maximum serialized tool receipt size retained for idempotent replay. */
+  readonly maxToolReceiptBytes?: number;
+  /** Lease duration for stores that support fenced execution ownership. */
+  readonly executionLeaseTtlMs?: number;
 }
 
 export interface PendingApproval {
@@ -93,6 +97,8 @@ export class AgentRuntime {
   private readonly persistApprovalAudit: boolean;
   private readonly approvalPollIntervalMs: number;
   private readonly maxCheckpointBytes: number;
+  private readonly maxToolReceiptBytes: number;
+  private readonly executionLeaseTtlMs: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -111,6 +117,10 @@ export class AgentRuntime {
     this.persistApprovalAudit = options.persistApprovalAudit ?? true;
     this.approvalPollIntervalMs = options.approvalPollIntervalMs ?? 250;
     this.maxCheckpointBytes = options.maxCheckpointBytes ?? 512 * 1024;
+    this.maxToolReceiptBytes = options.maxToolReceiptBytes ?? 512 * 1024;
+    this.executionLeaseTtlMs = options.executionLeaseTtlMs ?? 30_000;
+    if (!Number.isInteger(this.maxToolReceiptBytes) || this.maxToolReceiptBytes < 1) throw new Error("maxToolReceiptBytes must be a positive integer");
+    if (!Number.isInteger(this.executionLeaseTtlMs) || this.executionLeaseTtlMs < 1) throw new Error("executionLeaseTtlMs must be a positive integer");
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
     if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
@@ -148,10 +158,21 @@ export class AgentRuntime {
     };
     const startedAt = Date.now();
     await this.store?.create({ runId, projectId: task.projectId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [], ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
+    const leaseOwnerId = randomUUID();
+    const lease = this.store?.acquireLease ? await this.store.acquireLease(runId, leaseOwnerId, this.executionLeaseTtlMs, startedAt) : undefined;
+    if (this.store?.acquireLease && !lease) throw new AIError("Execution is already owned by another worker", "EXECUTION_LEASE_CONFLICT");
+    let leaseLost = false;
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
     const heartbeat = this.store
       ? setInterval(() => {
-          void Promise.resolve(this.store?.update(runId, { updatedAt: Date.now() })).catch(() => undefined);
+          void (async () => {
+            const now = Date.now();
+            if (lease && this.store?.renewLease) {
+              const renewed = await this.store.renewLease(runId, leaseOwnerId, lease.fencingToken, this.executionLeaseTtlMs, now);
+              if (!renewed) { leaseLost = true; return; }
+            }
+            await this.store?.update(runId, { updatedAt: now });
+          })().catch(() => undefined);
         }, this.heartbeatIntervalMs)
       : undefined;
 
@@ -159,6 +180,7 @@ export class AgentRuntime {
     try {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
         try {
+          if (leaseLost) throw new AIError("Execution lease was lost", "EXECUTION_LEASE_LOST");
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
           await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
           const agent = this.registry.create(task.agent, ai);
@@ -210,6 +232,25 @@ export class AgentRuntime {
             },
             approval: auditedApproval,
             checkpoint: latestCheckpoint,
+            onBeforeToolExecution: this.store?.claimToolExecution ? async ({ callId, tool, input }) => {
+              const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
+              const receipt = await this.store!.claimToolExecution!(runId, callId, fingerprint);
+              if (!receipt) return;
+              if (receipt.status === "in_flight") throw new AIError("Tool side effect is already in flight and cannot be replayed safely: " + callId, "TOOL_SIDE_EFFECT_AMBIGUOUS");
+              if (receipt.fingerprint !== fingerprint) throw new AIError("Tool execution fingerprint conflict: " + callId, "TOOL_IDEMPOTENCY_CONFLICT");
+              if (receipt.status === "failed") return { replay: true, result: { error: receipt.error ?? "TOOL_EXECUTION_ERROR" } };
+              if (receipt.result === undefined) throw new AIError("Completed tool receipt has no result: " + callId, "TOOL_RECEIPT_INVALID");
+              let replayResult: unknown;
+              try { replayResult = JSON.parse(receipt.result); } catch { throw new AIError("Completed tool receipt is not valid JSON: " + callId, "TOOL_RECEIPT_INVALID"); }
+              return { replay: true, result: replayResult };
+            } : undefined,
+            onToolExecutionComplete: this.store?.completeToolExecution ? async ({ callId, tool, input, result, error }) => {
+              const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
+              const payload = JSON.stringify(result);
+              if (Buffer.byteLength(payload, "utf8") > this.maxToolReceiptBytes) throw new AIError("Tool receipt exceeds maxToolReceiptBytes", "TOOL_RECEIPT_TOO_LARGE");
+              const completed = await this.store!.completeToolExecution!(runId, callId, fingerprint, error ? { status: "failed", error } : { status: "completed", result: payload });
+              if (!completed) throw new AIError("Tool receipt could not be committed safely: " + callId, "TOOL_RECEIPT_COMMIT_FAILED");
+            } : undefined,
             onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
               const sanitizedCheckpoint = this.sanitizeCheckpoint(checkpoint);
               latestCheckpoint = sanitizedCheckpoint;
@@ -303,6 +344,7 @@ export class AgentRuntime {
       throw error;
     } finally {
       if (heartbeat) clearInterval(heartbeat);
+      if (lease && this.store?.releaseLease) await this.store.releaseLease(runId, leaseOwnerId, lease.fencingToken).catch(() => false);
       this.release();
     }
   }
