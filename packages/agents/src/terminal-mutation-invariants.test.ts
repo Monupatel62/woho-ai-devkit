@@ -33,12 +33,12 @@ for (const createStore of [
     await store.update(runId, { status: "succeeded", completedAt: 30, updatedAt: 30 });
 
     await assert.rejects(
-      () => Promise.resolve(store.appendEvent(runId, { type: "tool.completed", runId, timestamp: 31 })),
+      () => Promise.resolve().then(() => store.appendEvent(runId, { type: "tool.completed", runId, timestamp: 31 })),
       /terminal execution/,
     );
 
     await assert.rejects(
-      () => Promise.resolve(store.appendEventFenced!(runId, lease.fencingToken, { type: "tool.completed", runId, timestamp: 31 })),
+      () => Promise.resolve().then(() => store.appendEventFenced!(runId, lease.fencingToken, { type: "tool.completed", runId, timestamp: 31 })),
       /terminal execution/,
     );
 
