@@ -64,7 +64,14 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
         argBytes += Buffer.byteLength(arg, "utf8");
         if (argBytes > maxArgBytes) throw new Error("Command arguments exceed maxArgBytes");
       }
-      if (!allowedCommands.includes(basename(command).toLowerCase())) throw new Error("Command is not allowed by policy");
+      const normalizedCommand = normalizedCommandPath(command);
+      const commandBase = basename(command).toLowerCase();
+      const allowed = allowedCommands.some((entry) => {
+        const normalizedEntry = normalizedCommandPath(entry);
+        if (normalizedEntry.includes("/")) return normalizedCommand === normalizedEntry;
+        return !normalizedCommand.includes("/") && commandBase === normalizedEntry;
+      });
+      if (!allowed) throw new Error("Command is not allowed by policy");
       if (typeof cwd !== "undefined" && typeof cwd !== "string") throw new Error("cwd must be a string");
       if (policy.allowedDirectories.length) {
         if (!cwd) throw new Error("cwd is required when allowedDirectories are configured");
