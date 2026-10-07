@@ -53,8 +53,6 @@ importers:
         specifier: workspace:*
         version: link:../../packages/tools
 
-  apps/woho-ai-desktop: {}
-
   apps/phone-agent:
     devDependencies:
       '@types/node':
