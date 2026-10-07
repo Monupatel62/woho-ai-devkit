@@ -163,6 +163,11 @@ const run = async () => {
   await assert.rejects(() => unserializableClient.listTools(), /not serializable/);
   await unserializableClient.close();
   const script = 'process.stdin.setEncoding("utf8"); let b=""; process.stdin.on("data",c=>{b+=c; const lines=b.split("\\n"); b=lines.pop()??""; for(const line of lines){if(!line.trim())continue; const m=JSON.parse(line); process.stdout.write(JSON.stringify({jsonrpc:"2.0",id:m.id,result:{ok:true}})+"\\n");}});';
+  const oversizedScript = 'process.stdout.write("x".repeat(2_000_000));';
+  const boundedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", oversizedScript], timeoutMs: 1000, maxMessageBytes: 1024 });
+  await assert.rejects(() => boundedStdio.request("oversized"), /maxMessageBytes/);
+  await boundedStdio.close();
+
   const stdio = createMCPStdioTransport({ command: execPath, args: ["-e", script], timeoutMs: 1000 });
   assert.deepEqual(await stdio.request("ping"), { ok: true });
   await stdio.close();
