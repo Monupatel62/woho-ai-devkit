@@ -492,7 +492,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
       ...current,
       status: "running",
       attempts: current.attempts + 1,
-      updatedAt: now,
+      updatedAt: Math.max(current.updatedAt, now),
       lease,
       availableAt: undefined,
     };
@@ -522,7 +522,8 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRequiredTimestamp(cancelledAt, "cancelledAt");
     const current = this.records.get(runId);
     if (!current || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return false;
-    const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { eventId: "cancel-" + cancelledAt, reason: reason.slice(0, 4096) } };
+    const effectiveCancelledAt = Math.max(current.updatedAt, cancelledAt);
+      const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: effectiveCancelledAt, data: { eventId: "cancel-" + effectiveCancelledAt, reason: reason.slice(0, 4096) } };
     const next: ExecutionRecord = {
       ...current,
       status: "cancelled",
@@ -802,7 +803,7 @@ export class FileExecutionStore implements ExecutionStore {
       }
       const recovered = current.status === "running";
       const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: now, lease, availableAt: undefined };
+      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: Math.max(current.updatedAt, now), lease, availableAt: undefined };
       validateExecutionRecord(next);
       await this.writeRecord(target, cloneRecord(next), true);
       return { record: cloneRecord(next), lease: { ...lease }, recovered };
@@ -849,8 +850,8 @@ export class FileExecutionStore implements ExecutionStore {
       const next: ExecutionRecord = {
         ...current,
         status: "cancelled",
-        completedAt: cancelledAt,
-        updatedAt: cancelledAt,
+        completedAt: effectiveCancelledAt,
+        updatedAt: effectiveCancelledAt,
         error: reason.slice(0, 4096),
         lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
         events: [...current.events, event],
@@ -881,7 +882,7 @@ export class FileExecutionStore implements ExecutionStore {
           decidedAt,
         },
         status: current.status === "waiting" ? "running" : current.status,
-        updatedAt: decidedAt,
+        updatedAt: Math.max(current.updatedAt, decidedAt),
       };
       validateExecutionRecord(next);
       await this.writeRecord(target, cloneRecord(next), true);
@@ -898,7 +899,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
       if (current.resumeRunId) return current.resumeRunId;
       if (current.updatedAt !== expectedUpdatedAt) return undefined;
-      await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }), true);
+      await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Math.max(current.updatedAt, Date.now()) }), true);
       return resumeRunId;
     }));
   }
