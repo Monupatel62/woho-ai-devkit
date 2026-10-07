@@ -886,3 +886,39 @@ test("tool execution receives project and session scope", async () => {
   assert.equal(result.text, "done");
   assert.deepEqual(observed, { projectId: "project-secure", sessionId: "session-secure" });
 });
+
+test("runtime rejects reuse of an active durable run id", async () => {
+  const store = new InMemoryExecutionStore();
+  const registry = new AgentRegistry();
+  registry.register({ id: "recovery-guard", name: "Recovery Guard", role: "general" }, () => ({
+    run: async () => ({ text: "ok", steps: 1, messages: [], toolResults: {} }),
+  } as unknown as Agent));
+  const runtime = new AgentRuntime({ store }, registry);
+  const task = { agent: "recovery-guard", input: "test", runId: "run-reuse", projectId: "project-a", sessionId: "session-a" };
+  const first = await runtime.run({} as never, task);
+  assert.equal(first.runId, "run-reuse");
+  await assert.rejects(
+    () => runtime.run({} as never, task),
+    (error) => error instanceof AIError && error.code === "EXECUTION_RUN_ID_CONFLICT",
+  );
+});
+
+test("runtime rejects recovery when project or session scope changes", async () => {
+  const store = new InMemoryExecutionStore();
+  const registry = new AgentRegistry();
+  registry.register({ id: "recovery-scope", name: "Recovery Scope", role: "general" }, () => ({
+    run: async () => { throw new Error("boom"); },
+  } as unknown as Agent));
+  const runtime = new AgentRuntime({ store }, registry);
+  await assert.rejects(() => runtime.run({} as never, {
+    agent: "recovery-scope", input: "test", runId: "run-scope", projectId: "project-a", sessionId: "session-a",
+  }));
+  const record = store.get("run-scope");
+  assert.ok(record);
+  await assert.rejects(
+    () => runtime.run({} as never, {
+      agent: "recovery-scope", input: "test", runId: "run-scope", projectId: "project-b", sessionId: "session-a",
+    }),
+    (error) => error instanceof AIError && error.code === "EXECUTION_RECOVERY_SCOPE_MISMATCH",
+  );
+});

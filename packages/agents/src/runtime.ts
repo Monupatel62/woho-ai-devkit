@@ -171,6 +171,17 @@ export class AgentRuntime {
       metadata: task.metadata ?? {},
     };
     const startedAt = Date.now();
+    if (this.store) {
+      const existing = await this.store.get(runId);
+      if (existing) {
+        if (existing.status !== "failed" && existing.status !== "cancelled") {
+          throw new AIError("Execution runId is already active or terminal: " + runId, "EXECUTION_RUN_ID_CONFLICT");
+        }
+        if (existing.projectId !== task.projectId || existing.sessionId !== task.sessionId) {
+          throw new AIError("Execution recovery scope does not match the original run", "EXECUTION_RECOVERY_SCOPE_MISMATCH");
+        }
+      }
+    }
     await this.store?.create({ runId, projectId: task.projectId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [], ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
     const leaseOwnerId = randomUUID();
     const lease = this.store?.acquireLease ? await this.store.acquireLease(runId, leaseOwnerId, this.executionLeaseTtlMs, startedAt) : undefined;
