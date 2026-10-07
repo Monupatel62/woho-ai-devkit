@@ -39,11 +39,8 @@ const run = async () => {
   assert.equal(store.get("stale")?.events.at(-1)?.type, "run.failed");
   assert.deepEqual(store.get("stale")?.events.at(-1)?.data, { reason: "stale", staleAfterMs: 500 });
 
-  await store.create(makeRecord("timestamp-guard", "running", 1000));
-  await assert.rejects(
-    () => store.update("timestamp-guard", { updatedAt: 900 }),
-    /Execution updatedAt cannot be before startedAt/,
-  );
+  await store.create({ ...makeRecord("timestamp-guard", "running", 100), updatedAt: 1000 });
+  await store.update("timestamp-guard", { updatedAt: 900 });
   assert.equal(store.get("timestamp-guard")?.updatedAt, 1000);
 
   await store.create({ ...makeRecord("leased-stale", "running", 100), lease: { ownerId: "worker-a", fencingToken: 1, expiresAt: 5000 } });
@@ -87,6 +84,9 @@ const run = async () => {
   const fileRoot = await mkdtemp(path.join(os.tmpdir(), "woho-execution-maintenance-"));
   try {
     const fileStore = new FileExecutionStore({ directory: fileRoot });
+    await fileStore.create({ ...makeRecord("file-timestamp-guard", "running", 100), updatedAt: 1000 });
+    await fileStore.update("file-timestamp-guard", { updatedAt: 900 });
+    assert.equal((await fileStore.get("file-timestamp-guard"))?.updatedAt, 1000);
     await fileStore.create(makeRecord("file-stale", "running", 100));
     const fileRecovered = await recoverStaleExecutions(fileStore, { staleAfterMs: 50, now: 200 });
     assert.equal(fileRecovered.length, 1);
