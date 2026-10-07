@@ -215,6 +215,27 @@ const run = async () => {
   });
   const isolatedGitStatus = await isolatedGit.execute({ operation: "status" }) as { stdout: string };
   assert.match(isolatedGitStatus.stdout, /README/);
+  const previousGitEnv = {
+    secret: process.env.WOHO_GIT_ENV_TEST,
+    count: process.env.GIT_CONFIG_COUNT,
+    key: process.env.GIT_CONFIG_KEY_0,
+    value: process.env.GIT_CONFIG_VALUE_0,
+  };
+  process.env.WOHO_GIT_ENV_TEST = "inherited-value";
+  process.env.GIT_CONFIG_COUNT = "1";
+  process.env.GIT_CONFIG_KEY_0 = "core.worktree";
+  process.env.GIT_CONFIG_VALUE_0 = join(gitRoot, "missing-worktree");
+  const inheritedGit = (await import("./git.js")).gitTool({
+    root: gitRoot,
+    inheritEnvironment: true,
+    environment: { WOHO_GIT_ENV_TEST: "explicit-value", GIT_CONFIG_COUNT: "0" },
+  });
+  const inheritedGitStatus = await inheritedGit.execute({ operation: "status" }) as { stdout: string };
+  assert.match(inheritedGitStatus.stdout, /README/);
+  if (previousGitEnv.secret === undefined) delete process.env.WOHO_GIT_ENV_TEST; else process.env.WOHO_GIT_ENV_TEST = previousGitEnv.secret;
+  if (previousGitEnv.count === undefined) delete process.env.GIT_CONFIG_COUNT; else process.env.GIT_CONFIG_COUNT = previousGitEnv.count;
+  if (previousGitEnv.key === undefined) delete process.env.GIT_CONFIG_KEY_0; else process.env.GIT_CONFIG_KEY_0 = previousGitEnv.key;
+  if (previousGitEnv.value === undefined) delete process.env.GIT_CONFIG_VALUE_0; else process.env.GIT_CONFIG_VALUE_0 = previousGitEnv.value;
   await assert.rejects(() => git.execute({ operation: "add", paths: ["../outside"] }), /parent traversal/);
   assert.match(status.stdout, /README/);
   await git.execute({ operation: "add", paths: ["README.md"] });

@@ -120,8 +120,8 @@ export function gitTool(inputPolicy: GitToolPolicy): AgentTool {
           env: {
             PATH: process.env.PATH ?? "",
             ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-            ...(inputPolicy.environment ?? {}),
             ...(inheritEnvironment ? process.env : {}),
+            ...(inputPolicy.environment ?? {}),
             GIT_CONFIG_NOSYSTEM: "1",
             GIT_CONFIG_GLOBAL: process.platform === "win32" ? "NUL" : "/dev/null",
             GIT_PAGER: "cat",
