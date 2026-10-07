@@ -5,6 +5,8 @@ import type { ExecutionEvent } from "@woho/core";
 
 export interface AgentToolExecutionContext {
   readonly runId?: string;
+  readonly projectId?: string;
+  readonly sessionId?: string;
   readonly signal?: AbortSignal;
 }
 
