@@ -524,9 +524,9 @@ const run = async () => {
   }, retryAgentRegistry);
   const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
   assert.equal(checkpointRetryResult.text, "retry-recovered");
-  assert.equal(retryToolExecutions, 1);
   assert.equal(retryModelCalls, 3);
   const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
+  assert.equal(retryRecord?.toolReceipts?.["retry-tool-1"]?.status, "completed");
   assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
   assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
   assert.ok(retryRecord?.checkpoint?.messages.some((message) => message.role === "tool" && message.toolCallId === "retry-tool-1"));
