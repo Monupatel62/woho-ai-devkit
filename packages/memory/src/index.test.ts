@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { searchMemory } from "./search.js";
 import { tmpdir } from "node:os";
-import { utimes, writeFile } from "node:fs/promises";
+import { symlink, utimes, writeFile } from "node:fs/promises";
 
 const run = async () => {
   const store = createInMemoryStore({ maxMessages: 2 });
@@ -68,6 +68,13 @@ const run = async () => {
   );
   const boundedStore = createJsonFileStore({ filePath: join(dir, "bounded.json"), maxFileBytes: 40 });
   await assert.rejects(() => boundedStore.add({ id: "large", role: "user", content: "x".repeat(100) }), /exceeds maxFileBytes/);
+  const symlinkTarget = join(dir, "symlink-target.json");
+  const symlinkPath = join(dir, "symlink.json");
+  await writeFile(symlinkTarget, JSON.stringify([{ id: "outside", role: "user", content: "outside" }]));
+  await symlink(symlinkTarget, symlinkPath);
+  const symlinkStore = createJsonFileStore({ filePath: symlinkPath });
+  await assert.rejects(() => symlinkStore.list(), /not a regular file/);
+
   const persistentA = createConversation({ sessionId: "a", store: fileStore });
   const persistentB = createConversation({ sessionId: "b", store: fileStore });
   await persistentA.add({ id: "pa", role: "user", content: "private a" });
