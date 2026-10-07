@@ -476,60 +476,59 @@ const run = async () => {
   assert.equal(capturedRecord?.checkpoint?.step, 1);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
 
-  const retryCheckpointStore = new InMemoryExecutionStore();
-  let retryToolExecutions = 0;
-  let retryModelCalls = 0;
-  const checkpointRetryAI = createAI({
-    provider: {
-      name: "checkpoint-retry",
-      async chat(request) {
-        retryModelCalls += 1;
-        if (retryModelCalls === 1) {
-          return {
-            id: "retry-tool-call",
-            text: "",
-            model: "checkpoint-retry",
-            finishReason: "tool_call",
-            toolCalls: [{ id: "retry-tool-1", name: "retry-safe-tool", arguments: "{}" }],
-          };
-        }
-        if (retryModelCalls === 2) {
-          throw new Error("provider-failure-after-tool");
-        }
-        if (retryModelCalls === 3 && request.messages.at(-1)?.role === "tool") {
-          return { id: "retry-done", text: "retry-recovered", model: "checkpoint-retry" };
-        }
-        throw new Error("unexpected replay");
+  const replayStore = new InMemoryExecutionStore();
+  const replayRunId = "durable-replay-run";
+  await replayStore.create({
+    runId: replayRunId,
+    agent: "replay-agent",
+    input: "replay safely",
+    metadata: {},
+    status: "running",
+    startedAt: 1,
+    updatedAt: 2,
+    attempts: 1,
+    events: [],
+    toolReceipts: {
+      "replay-tool-1": {
+        callId: "replay-tool-1",
+        fingerprint: "c529815d77cbc10c8c46cccf56423956eead42412b65bd8eaf0201eea27f3d6f",
+        status: "completed",
+        result: JSON.stringify("side-effect-complete"),
+        updatedAt: 2,
       },
     },
   });
-  const retryAgentRegistry = new AgentRegistry();
-  retryAgentRegistry.register(
-    { id: "retry-agent", name: "Retry Agent", role: "general" },
+  let replayExecutions = 0;
+  let replayModelCalls = 0;
+  const replayRegistry = new AgentRegistry();
+  replayRegistry.register(
+    { id: "replay-agent", name: "Replay Agent", role: "general" },
     ({ ai }) => createAgent(ai, {
-      name: "Retry Agent",
+      name: "Replay Agent",
       tools: [{
         name: "retry-safe-tool",
-        description: "Side effect used to verify durable retry recovery",
+        description: "Side effect used to verify durable replay recovery",
         execute: async () => {
-          retryToolExecutions += 1;
-          return "side-effect-complete";
+          replayExecutions += 1;
+          return "should-not-execute";
         },
       }],
     }),
   );
-  const checkpointRetryRuntime = new AgentRuntime({
-    store: retryCheckpointStore,
-    retry: { maxAttempts: 2, delayMs: 0 },
-  }, retryAgentRegistry);
-  const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
-  assert.equal(checkpointRetryResult.text, "retry-recovered");
-  assert.equal(retryModelCalls, 3);
-  const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
-  assert.equal(retryRecord?.toolReceipts?.["retry-tool-1"]?.status, "completed");
-  assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
-  assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
-  assert.ok(retryRecord?.checkpoint?.messages.some((message) => message.role === "tool" && message.toolCallId === "retry-tool-1"));
+  const replayAI = createAI({ provider: {
+    name: "durable-replay",
+    async chat(request) {
+      replayModelCalls += 1;
+      if (request.messages.at(-1)?.role === "tool") return { id: "replay-done", text: "replayed", model: "durable-replay" };
+      return { id: "replay-call", text: "", model: "durable-replay", finishReason: "tool_call", toolCalls: [{ id: "replay-tool-1", name: "retry-safe-tool", arguments: "{}" }] };
+    },
+  }});
+  const replayRuntime = new AgentRuntime({ store: replayStore }, replayRegistry);
+  const replayResult = await replayRuntime.run(replayAI, { agent: "replay-agent", input: "replay safely", runId: replayRunId });
+  assert.equal(replayResult.text, "replayed");
+  assert.equal(replayExecutions, 0);
+  assert.equal(replayModelCalls, 2);
+  assert.equal(replayResult.toolResults["replay-tool-1"], "side-effect-complete");
   const secretCheckpointStore = new InMemoryExecutionStore();
   const secretCheckpointRuntime = new AgentRuntime({ store: secretCheckpointStore }, registry);
   const secretCheckpointResult = await secretCheckpointRuntime.run(
