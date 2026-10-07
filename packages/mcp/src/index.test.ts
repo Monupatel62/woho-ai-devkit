@@ -174,7 +174,7 @@ const run = async () => {
   await isolatedStdio.close();
   process.env.WOHO_MCP_CUSTOM = "parent-value";
   const inheritedStdio = createMCPStdioTransport({ command: execPath, args: ["-e", isolatedEnvScript], inheritEnvironment: true, timeoutMs: 1000 });
-  assert.deepEqual(await inheritedStdio.request("ping"), { secret: "parent-secret", custom: null });
+  assert.deepEqual(await inheritedStdio.request("ping"), { secret: "parent-secret", custom: "parent-value" });
   await inheritedStdio.close();
   const overriddenStdio = createMCPStdioTransport({ command: execPath, args: ["-e", isolatedEnvScript], inheritEnvironment: true, env: { WOHO_MCP_STDIO_SECRET: "child-secret", WOHO_MCP_CUSTOM: "child-value" }, timeoutMs: 1000 });
   assert.deepEqual(await overriddenStdio.request("ping"), { secret: "child-secret", custom: "child-value" });
