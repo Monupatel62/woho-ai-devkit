@@ -63,7 +63,7 @@ function mapError(status: number, _body: string): Error {
 async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) throw new NetworkError("Provider returned no response body");
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const chunks: string[] = [];
   let received = 0;
   try {
@@ -235,7 +235,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       if (contentLength && Number(contentLength) > maxResponseBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
       const reader = response.body.getReader();
       let receivedBytes = 0;
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder("utf-8", { fatal: true });
       let buffer = "";
       const processLine = (line: string): AIStreamChunk | undefined => {
         const trimmed = line.trim();
@@ -274,6 +274,11 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           }
         }
       }
+        try {
+          buffer += decoder.decode();
+        } catch (error) {
+          throw new NetworkError("Malformed provider SSE frame", error);
+        }
         if (buffer.trim()) {
         try {
           const chunk = processLine(buffer);
