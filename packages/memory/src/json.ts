@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { constants, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateMemoryMetadata, type MemoryMessage, type MemoryQuery, type MemoryStore } from "./index.js";
@@ -60,7 +60,7 @@ export class JsonFileStore implements MemoryStore {
     try {
       // Validate the opened file descriptor, not a path checked by a separate syscall.
       // This prevents a concurrent symlink replacement from redirecting the read.
-      handle = await open(this.filePath, "r");
+      handle = await open(this.filePath, process.platform === "win32" ? "r" : constants.O_RDONLY | constants.O_NOFOLLOW);
       const info = await handle.stat();
       if (!info.isFile() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
       const raw = await handle.readFile("utf8");
