@@ -52,9 +52,9 @@ for (const createStore of [
       false,
     );
 
-    assert.equal(
-      await store.claimToolExecution!(runId, "call-2", "b".repeat(64)),
-      undefined,
+    await assert.rejects(
+      () => Promise.resolve(store.claimToolExecution!(runId, "call-2", "b".repeat(64))),
+      /terminal execution/,
     );
     assert.equal((await store.get(runId))?.toolReceipts?.["call-2"], undefined);
   } finally {
