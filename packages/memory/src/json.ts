@@ -1,4 +1,4 @@
-import { lstat, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { constants, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateMemoryMetadata, type MemoryMessage, type MemoryQuery, type MemoryStore } from "./index.js";
@@ -56,15 +56,23 @@ export class JsonFileStore implements MemoryStore {
       if (messages.length > this.maxMessages) return messages.slice(-this.maxMessages);
       return messages;
     };
+    let handle: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      const info = await lstat(this.filePath);
-      if (!info.isFile() || info.isSymbolicLink() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
-      const raw = await readFile(this.filePath, "utf8");
+      // Validate the opened file descriptor, not a path checked by a separate syscall.
+      // This prevents a concurrent symlink replacement from redirecting the read.
+      handle = await open(this.filePath, process.platform === "win32" ? "r" : constants.O_RDONLY | constants.O_NOFOLLOW);
+      const info = await handle.stat();
+      if (!info.isFile() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
+      const raw = await handle.readFile("utf8");
       const parsed: unknown = JSON.parse(raw);
       return validate(parsed);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return [];
+      if (code === "ELOOP") throw new Error("Memory file is missing, not a regular file, or too large");
       throw error;
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
   }
 
