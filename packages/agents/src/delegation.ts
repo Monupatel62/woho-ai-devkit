@@ -67,8 +67,10 @@ export function createAgentDelegationTool(
       const result = await runtime.run(ai, {
         agent,
         input: task,
+        projectId: context?.projectId,
         parentRunId: context?.runId,
-        metadata: { delegated: true, depth: depth + 1, delegatedBy: context?.runId },
+        sessionId: context?.sessionId,
+        metadata: { delegated: true, depth: depth + 1, delegatedBy: context?.runId, projectId: context?.projectId },
         runId: undefined,
       });
       return {

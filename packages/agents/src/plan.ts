@@ -67,6 +67,7 @@ export async function runAgentPlan(
         const task: AgentTask = {
           agent: step.agent,
           input: typeof step.input === "function" ? step.input({ completed: results }) : step.input,
+          projectId: options.projectContext?.projectId,
           sessionId: step.sessionId ?? options.projectContext?.sessionId,
           metadata: options.projectContext ? mergeWohoProjectMetadata(options.projectContext, step.metadata) : step.metadata,
           parentRunId: undefined,
