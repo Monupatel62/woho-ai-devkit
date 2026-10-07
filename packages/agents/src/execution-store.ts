@@ -832,7 +832,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId);
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled" || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
-      const lease = { ...current.lease, expiresAt: now + ttlMs }; await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) }), true); return true;
+      const lease = { ...current.lease, expiresAt: Math.max(current.lease.expiresAt, now) + ttlMs }; await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) }), true); return true;
     }));
   }
 
