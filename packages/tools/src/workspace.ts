@@ -2,6 +2,7 @@ import type { AgentTool } from "@woho/agents";
 import { createToolPolicy, type ToolPolicy } from "./policy.js";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { StringDecoder } from "node:string_decoder";
 
 export interface WorkspaceToolPolicy extends Partial<ToolPolicy> {
   root: string;
@@ -164,9 +165,26 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
 
       if (operation === "read") {
         const target = await safeExisting(root, relative as string);
-        const stat = await fs.stat(target);
-        if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
-        return { path: relative, content: await fs.readFile(target, "utf8") };
+        const handle = await fs.open(target, process.platform === "win32" ? "r" : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+        try {
+          const stat = await handle.stat();
+          if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
+          const decoder = new StringDecoder("utf8");
+          const chunks: string[] = [];
+          const buffer = Buffer.alloc(Math.min(64 * 1024, policy.maxFileBytes + 1));
+          let total = 0;
+          while (true) {
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+            if (bytesRead === 0) break;
+            total += bytesRead;
+            if (total > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
+            chunks.push(decoder.write(buffer.subarray(0, bytesRead)));
+          }
+          chunks.push(decoder.end());
+          return { path: relative, content: chunks.join("") };
+        } finally {
+          await handle.close().catch(() => undefined);
+        }
       }
 
       if (operation === "edit") {
@@ -181,9 +199,27 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
           throw new Error("Edit text exceeds maxFileBytes");
         }
         const target = await safeExisting(root, relative);
-        const stat = await fs.stat(target);
-        if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
-        const current = await fs.readFile(target, "utf8");
+        const handle = await fs.open(target, process.platform === "win32" ? "r+" : fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
+        let current: string;
+        try {
+          const stat = await handle.stat();
+          if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
+          const decoder = new StringDecoder("utf8");
+          const chunks: string[] = [];
+          const buffer = Buffer.alloc(Math.min(64 * 1024, policy.maxFileBytes + 1));
+          let total = 0;
+          while (true) {
+            const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+            if (bytesRead === 0) break;
+            total += bytesRead;
+            if (total > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
+            chunks.push(decoder.write(buffer.subarray(0, bytesRead)));
+          }
+          chunks.push(decoder.end());
+          current = chunks.join("");
+        } finally {
+          await handle.close().catch(() => undefined);
+        }
         const first = current.indexOf(oldText);
         if (first < 0) throw new Error("oldText was not found");
         if (!replaceAll && current.indexOf(oldText, first + oldText.length) >= 0) {
