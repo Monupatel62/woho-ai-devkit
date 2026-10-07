@@ -274,6 +274,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           }
         }
       }
+        buffer += decoder.decode();
         if (buffer.trim()) {
         try {
           const chunk = processLine(buffer);
