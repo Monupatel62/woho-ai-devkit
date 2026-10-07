@@ -235,7 +235,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
       if (contentLength && Number(contentLength) > maxResponseBytes) throw new NetworkError("Provider response exceeds maxResponseBytes");
       const reader = response.body.getReader();
       let receivedBytes = 0;
-      const decoder = new TextDecoder();
+      const decoder = new TextDecoder("utf-8", { fatal: true });
       let buffer = "";
       const processLine = (line: string): AIStreamChunk | undefined => {
         const trimmed = line.trim();
@@ -274,7 +274,11 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): AIProvider
           }
         }
       }
-        buffer += decoder.decode();
+        try {
+          buffer += decoder.decode();
+        } catch (error) {
+          throw new NetworkError("Malformed provider SSE frame", error);
+        }
         if (buffer.trim()) {
         try {
           const chunk = processLine(buffer);
