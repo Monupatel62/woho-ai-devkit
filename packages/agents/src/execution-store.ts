@@ -849,7 +849,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current || (current.status !== "queued" && current.status !== "running")) return undefined;
       if (current.availableAt !== undefined && current.availableAt > now) return undefined;
       if (current.lease && current.lease.expiresAt > now) {
-        return current.lease.ownerId === ownerId ? { record: cloneRecord(current), lease: { ...current.lease }, recovered: false } : undefined;
+        return undefined;
       }
       const recovered = current.status === "running";
       const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
