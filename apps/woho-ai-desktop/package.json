@@ -2,27 +2,9 @@
   "name": "@woho/ai-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "WoHo AI Desktop application.",
-  "type": "module",
+  "description": "WoHo AI Desktop application foundation.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "typecheck": "tsc -b --pretty false",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
-  },
-  "dependencies": {
-    "@woho/agents": "workspace:*",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
-  },
-  "devDependencies": {
-    "@tauri-apps/cli": "^2.8.0",
-    "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^5.0.4",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.7"
+    "dev": "cargo tauri dev",
+    "build": "cargo tauri build"
   }
 }
