@@ -261,7 +261,12 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   if (!Number.isInteger(record.attempts) || record.attempts < 0) throw new Error("Execution attempts must be a non-negative integer");
   if (record.error !== undefined && typeof record.error !== "string") throw new Error("Invalid execution error");
   if (!Array.isArray(record.events)) throw new Error("Invalid execution events");
-  for (const event of record.events) validateExecutionEvent(event, record.runId);
+  let previousTimestamp = record.startedAt;
+  for (const event of record.events) {
+    validateExecutionEvent(event, record.runId);
+    if (event.timestamp < previousTimestamp) throw new Error("Execution events are out of order");
+    previousTimestamp = event.timestamp;
+  }
 }
 
 const EXECUTION_TRANSITIONS: Readonly<Record<ExecutionStatus, readonly ExecutionStatus[]>> = {
@@ -787,6 +792,10 @@ export class FileExecutionStore implements ExecutionStore {
   }
 
   private withAppendedEvent(record: ExecutionRecord, event: ExecutionEvent): ExecutionRecord {
+    validateExecutionEvent(event, record.runId);
+    const last = record.events[record.events.length - 1];
+    if (last && event.timestamp < last.timestamp) throw new Error("Execution events are out of order");
+    if (event.timestamp < record.updatedAt) throw new Error("Execution event timestamp cannot move execution history backwards");
     const events = [...record.events, event];
     if (events.length > this.maxEvents) events.splice(0, events.length - this.maxEvents);
     return { ...record, updatedAt: event.timestamp, events };
