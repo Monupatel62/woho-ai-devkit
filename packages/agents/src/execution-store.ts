@@ -376,7 +376,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   }
   appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
-    assertCurrentFencingToken(current,fencingToken); validateExecutionEvent(event,runId); this.records.set(runId,this.withAppendedEvent(current,event));
+    assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot append an event to a terminal execution: " + runId); validateExecutionEvent(event,runId); this.records.set(runId,this.withAppendedEvent(current,event));
   }
   transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
@@ -660,6 +660,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) return;
+      if (isTerminalExecution(current)) throw new Error("Cannot append an event to a terminal execution: " + runId);
       validateExecutionEvent(event, runId);
       await this.writeRecord(target, this.withAppendedEvent(current, event), true);
     }));
@@ -768,6 +769,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) throw new Error("Execution not found: " + runId);
+      if (isTerminalExecution(current)) throw new Error("Cannot mutate tool receipts on a terminal execution: " + runId);
       const existing = current.toolReceipts?.[callId];
       if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return existing; }
       const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
@@ -779,7 +781,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId); validateCallId(callId);
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); const receipt = current?.toolReceipts?.[callId];
-      if (!current || !receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+      if (!current || isTerminalExecution(current) || !receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
       const updatedAt = patch.updatedAt ?? Date.now(); const nextReceipt = { ...receipt, ...patch, updatedAt };
       await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt: Math.max(current.updatedAt, updatedAt) }), true); return true;
     }));
@@ -876,7 +878,7 @@ export class FileExecutionStore implements ExecutionStore {
         completedAt: effectiveCancelledAt,
         updatedAt: effectiveCancelledAt,
         error: reason.slice(0, 4096),
-        lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
+        lease: current.lease ? { ...current.lease, expiresAt: effectiveCancelledAt } : undefined,
         events: [...current.events, event],
       };
       validateExecutionRecord(next);
