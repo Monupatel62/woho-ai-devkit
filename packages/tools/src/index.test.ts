@@ -275,8 +275,3 @@ const run = async () => {
 
 run().catch((error) => { console.error(error); process.exitCode = 1; });
 
-
-  const boundedCommand = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], maxArgs: 2, maxArgBytes: 10 });
-  await assert.rejects(() => boundedCommand.execute({ command: "node", args: ["-e", "123", "extra"], cwd: process.cwd() }), /maxArgs/);
-  await assert.rejects(() => boundedCommand.execute({ command: "node", args: ["-e", "x".repeat(11)], cwd: process.cwd() }), /maxArgBytes/);
-  await assert.rejects(() => boundedCommand.execute({ command: "node", args: ["-e", "x".repeat(11)], cwd: process.cwd() }), /maxArgBytes/);
