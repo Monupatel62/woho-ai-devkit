@@ -506,7 +506,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
       .filter((record) => options.projectId === undefined || record.projectId === options.projectId)
       .filter((record) => record.status === "queued" || record.status === "running")
       .filter((record) => record.availableAt === undefined || record.availableAt <= now)
-      .filter((record) => !record.lease || record.lease.expiresAt <= now || record.lease.ownerId === ownerId)
+      .filter((record) => !record.lease || record.lease.expiresAt <= now)
       .sort((a, b) => a.updatedAt - b.updatedAt);
     for (const candidate of candidates) {
       const claimed = this.claimExecution(candidate.runId, ownerId, ttlMs, now);
