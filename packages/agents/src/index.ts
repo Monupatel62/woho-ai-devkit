@@ -375,8 +375,6 @@ export class Agent {
           throw new AIError("Agent exceeded maxTotalTokens", "AGENT_TOKEN_BUDGET_EXCEEDED");
         }
       }
-          : { ...response.usage, cost: response.usage.cost ? { ...response.usage.cost } : undefined };
-      }
       const calls = response.toolCalls ?? [];
       if (calls.length > this.maxToolCallsPerStep) {
         throw new AIError("Agent exceeded maxToolCallsPerStep (" + this.maxToolCallsPerStep + ")", "AGENT_TOOL_CALL_LIMIT");
