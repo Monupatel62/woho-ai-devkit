@@ -99,7 +99,24 @@ export class JsonFileStore implements MemoryStore {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
         try {
           const info = await stat(lockPath);
-          if (Date.now() - info.mtimeMs > this.lockStaleMs) await rm(lockPath, { force: true });
+          if (Date.now() - info.mtimeMs > this.lockStaleMs) {
+            let ownerAlive = false;
+            try {
+              const raw = await readFile(lockPath, "utf8");
+              const metadata = JSON.parse(raw) as { pid?: unknown };
+              if (typeof metadata.pid === "number" && Number.isInteger(metadata.pid) && metadata.pid > 0) {
+                try {
+                  process.kill(metadata.pid, 0);
+                  ownerAlive = true;
+                } catch (error) {
+                  ownerAlive = (error as NodeJS.ErrnoException).code === "EPERM";
+                }
+              }
+            } catch {
+              // Malformed or unreadable stale locks are safe to reclaim.
+            }
+            if (!ownerAlive) await rm(lockPath, { force: true });
+          }
         } catch (staleError) {
           if ((staleError as NodeJS.ErrnoException).code !== "ENOENT") throw staleError;
         }
