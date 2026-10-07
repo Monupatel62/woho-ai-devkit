@@ -50,7 +50,7 @@ export async function runCodingLoop(
       signal: options.signal,
     });
     if (/^PASS\b/i.test(verification.text.trim())) {
-      return { attempts: attempt, results, final: result };
+      return { attempts: results.length, results, final: result };
     }
     if (attempt < maxAttempts) {
       instruction = `${bounded(task.goal)}\n\nPrevious attempt did not verify successfully. Diagnose and fix the failure before finishing.\nVerification feedback:\n${bounded(verification.text)}`;
