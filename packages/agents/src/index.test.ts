@@ -473,7 +473,7 @@ const run = async () => {
     { agent: "general", input: "capture checkpoint", projectId: "capture-project" },
   );
   const capturedRecord = checkpointCaptureStore.get(checkpointCaptureResult.runId);
-  assert.equal(capturedRecord?.checkpoint?.step, 0);
+  assert.equal(capturedRecord?.checkpoint?.step, 1);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
 
   const retryCheckpointStore = new InMemoryExecutionStore();
