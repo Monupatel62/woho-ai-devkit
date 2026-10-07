@@ -24,7 +24,7 @@ for (const createStore of [
     const runId = "terminal-" + Math.random().toString(36).slice(2);
     await store.create(makeRecord(runId));
 
-    const lease = await store.acquireLease!(runId, "worker-a", 10_000, 20);
+    const lease = await store.acquireLease!(runId, "worker-a", 10_000, Date.now());
     assert.ok(lease);
 
     const receipt = await store.claimToolExecutionFenced!(runId, lease.fencingToken, "call-1", "a".repeat(64));
