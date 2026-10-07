@@ -3,8 +3,6 @@ import type { AgentTool } from "./index.js";
 import type { AgentRegistry } from "./definition.js";
 import type { AgentRuntime } from "./runtime.js";
 
-type AgentToolExecutionContextWithScope = { readonly runId?: string; readonly projectId?: string; readonly sessionId?: string };
-
 export interface AgentDelegationPolicy {
   readonly allowedAgents?: readonly string[];
   readonly maxDepth?: number;
@@ -69,10 +67,10 @@ export function createAgentDelegationTool(
       const result = await runtime.run(ai, {
         agent,
         input: task,
-        projectId: context?.runId ? (context as AgentToolExecutionContextWithScope).projectId : undefined,
+        projectId: context?.projectId,
         parentRunId: context?.runId,
-        sessionId: (context as AgentToolExecutionContextWithScope).sessionId,
-        metadata: { delegated: true, depth: depth + 1, delegatedBy: context?.runId, projectId: (context as AgentToolExecutionContextWithScope).projectId },
+        sessionId: context?.sessionId,
+        metadata: { delegated: true, depth: depth + 1, delegatedBy: context?.runId, projectId: context?.projectId },
         runId: undefined,
       });
       return {
