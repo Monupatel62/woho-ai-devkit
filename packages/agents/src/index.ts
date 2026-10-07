@@ -429,7 +429,6 @@ export class Agent {
             const replayMessage: AIMessage = { role: "tool", content: serializeToolResult(replayResult, this.maxToolResultChars), toolCallId: call.id, name: call.name };
             messages.push(replayMessage);
             if (conversation) await conversation.add({ id: "tool-" + call.id, ...replayMessage, timestamp: Date.now() });
-            await runOptions.onToolExecutionComplete?.({ callId: call.id, tool: tool.name, input: parsed, result: replayResult });
             if (runOptions.onCheckpoint) await runOptions.onCheckpoint({ step, messages: [...messages], updatedAt: Date.now() });
             continue;
           }
