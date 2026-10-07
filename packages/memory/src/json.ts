@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { validateMemoryMetadata, type MemoryMessage, type MemoryQuery, type MemoryStore } from "./index.js";
@@ -57,9 +57,8 @@ export class JsonFileStore implements MemoryStore {
       return messages;
     };
     try {
-      const { stat } = await import("node:fs/promises");
-      const info = await stat(this.filePath);
-      if (!info.isFile() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
+      const info = await lstat(this.filePath);
+      if (!info.isFile() || info.isSymbolicLink() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
       const raw = await readFile(this.filePath, "utf8");
       const parsed: unknown = JSON.parse(raw);
       return validate(parsed);
