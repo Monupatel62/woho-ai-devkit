@@ -441,7 +441,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const existing = current.toolReceipts?.[callId];
     if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return cloneRecord({ ...current }).toolReceipts?.[callId]; }
     const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
-    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: receipt.updatedAt }));
+    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: Math.max(current.updatedAt, receipt.updatedAt) }));
     return receipt;
   }
 
@@ -450,25 +450,26 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
     const updatedAt = patch.updatedAt ?? Date.now();
     const nextReceipt = { ...receipt, ...patch, updatedAt };
-    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt })); return true;
+    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt: Math.max(current.updatedAt, updatedAt) })); return true;
   }
 
   acquireLease(runId: string, ownerId: string, ttlMs: number, now = Date.now()): ExecutionLease | undefined {
     validateRunId(runId); if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution lease request");
     const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
+    if (current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return undefined;
     if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
     const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-    this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: now })); return lease;
+    this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return lease;
   }
 
   renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): boolean {
-    const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
-    const lease = { ...current.lease, expiresAt: now + ttlMs }; this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: now })); return true;
+    const current = this.records.get(runId); if (!current?.lease || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled" || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
+    const lease = { ...current.lease, expiresAt: now + ttlMs }; this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return true;
   }
 
   releaseLease(runId: string, ownerId: string, fencingToken: number, now = Date.now()): boolean {
     const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
-    this.records.set(runId, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now })); return true;
+    this.records.set(runId, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: Math.max(current.updatedAt, now) })); return true;
   }
 
   claimExecution(runId: string, ownerId: string, ttlMs: number, now = Date.now()): ExecutionClaim | undefined {
@@ -492,7 +493,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
       ...current,
       status: "running",
       attempts: current.attempts + 1,
-      updatedAt: now,
+      updatedAt: Math.max(current.updatedAt, now),
       lease,
       availableAt: undefined,
     };
@@ -522,12 +523,13 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRequiredTimestamp(cancelledAt, "cancelledAt");
     const current = this.records.get(runId);
     if (!current || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return false;
-    const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { eventId: "cancel-" + cancelledAt, reason: reason.slice(0, 4096) } };
+    const effectiveCancelledAt = Math.max(current.updatedAt, cancelledAt);
+      const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: effectiveCancelledAt, data: { eventId: "cancel-" + effectiveCancelledAt, reason: reason.slice(0, 4096) } };
     const next: ExecutionRecord = {
       ...current,
       status: "cancelled",
-      completedAt: cancelledAt,
-      updatedAt: cancelledAt,
+      completedAt: effectiveCancelledAt,
+      updatedAt: effectiveCancelledAt,
       error: reason.slice(0, 4096),
       lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
       events: [...current.events, event],
@@ -555,7 +557,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
         decidedAt,
       },
       status: current.status === "waiting" ? "running" : current.status,
-      updatedAt: decidedAt,
+      updatedAt: Math.max(current.updatedAt, decidedAt),
     };
     validateExecutionRecord(next);
     this.records.set(runId, cloneRecord(next));
@@ -569,7 +571,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
     if (current.resumeRunId) return current.resumeRunId;
     if (current.updatedAt !== expectedUpdatedAt) return undefined;
-    this.records.set(runId, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }));
+    this.records.set(runId, cloneRecord({ ...current, resumeRunId, updatedAt: Math.max(current.updatedAt, Date.now()) }));
     return resumeRunId;
   }
 }
@@ -748,7 +750,7 @@ export class FileExecutionStore implements ExecutionStore {
       const existing = current.toolReceipts?.[callId];
       if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return existing; }
       const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
-      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: receipt.updatedAt }), true); return receipt;
+      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: Math.max(current.updatedAt, receipt.updatedAt) }), true); return receipt;
     }));
   }
 
@@ -758,7 +760,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId); const current = await this.readRecord(target); const receipt = current?.toolReceipts?.[callId];
       if (!current || !receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
       const updatedAt = patch.updatedAt ?? Date.now(); const nextReceipt = { ...receipt, ...patch, updatedAt };
-      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt }), true); return true;
+      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt: Math.max(current.updatedAt, updatedAt) }), true); return true;
     }));
   }
 
@@ -766,17 +768,18 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId); if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution lease request");
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) throw new Error("Execution not found: " + runId);
+      if (current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return undefined;
       if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
       const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-      await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: now }), true); return lease;
+      await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) }), true); return lease;
     }));
   }
 
   async renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): Promise<boolean> {
     validateRunId(runId);
     return this.enqueue(() => this.withFileLock(async () => {
-      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
-      const lease = { ...current.lease, expiresAt: now + ttlMs }; await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: now }), true); return true;
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled" || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
+      const lease = { ...current.lease, expiresAt: now + ttlMs }; await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) }), true); return true;
     }));
   }
 
@@ -784,7 +787,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId);
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
-      await this.writeRecord(target, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now }), true); return true;
+      await this.writeRecord(target, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: Math.max(current.updatedAt, now) }), true); return true;
     }));
   }
 
@@ -802,7 +805,7 @@ export class FileExecutionStore implements ExecutionStore {
       }
       const recovered = current.status === "running";
       const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: now, lease, availableAt: undefined };
+      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: Math.max(current.updatedAt, now), lease, availableAt: undefined };
       validateExecutionRecord(next);
       await this.writeRecord(target, cloneRecord(next), true);
       return { record: cloneRecord(next), lease: { ...lease }, recovered };
@@ -849,8 +852,8 @@ export class FileExecutionStore implements ExecutionStore {
       const next: ExecutionRecord = {
         ...current,
         status: "cancelled",
-        completedAt: cancelledAt,
-        updatedAt: cancelledAt,
+        completedAt: effectiveCancelledAt,
+        updatedAt: effectiveCancelledAt,
         error: reason.slice(0, 4096),
         lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
         events: [...current.events, event],
@@ -881,7 +884,7 @@ export class FileExecutionStore implements ExecutionStore {
           decidedAt,
         },
         status: current.status === "waiting" ? "running" : current.status,
-        updatedAt: decidedAt,
+        updatedAt: Math.max(current.updatedAt, decidedAt),
       };
       validateExecutionRecord(next);
       await this.writeRecord(target, cloneRecord(next), true);
@@ -898,7 +901,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
       if (current.resumeRunId) return current.resumeRunId;
       if (current.updatedAt !== expectedUpdatedAt) return undefined;
-      await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }), true);
+      await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Math.max(current.updatedAt, Date.now()) }), true);
       return resumeRunId;
     }));
   }

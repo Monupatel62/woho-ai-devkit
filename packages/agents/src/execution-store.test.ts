@@ -326,4 +326,52 @@ try {
   await rm(fencedRoot, { recursive: true, force: true });
 }
 
-console.log("mutation fencing tests passed");
+
+async function assertMonotonicMutationTimestamps(store: InMemoryExecutionStore | FileExecutionStore, label: string): Promise<void> {
+  const runId = "monotonic-" + label;
+  await store.create({
+    runId,
+    agent: "general",
+    metadata: {},
+    status: "waiting",
+    startedAt: 100,
+    updatedAt: 500,
+    attempts: 1,
+    events: [],
+    approval: {
+      approvalId: "approval-" + label,
+      callId: "call-" + label,
+      status: "pending",
+      tool: "protected",
+      capability: "test",
+      action: "write",
+      requestedAt: 100,
+    },
+  });
+  assert.equal(await store.updateIf!(runId, 500, { updatedAt: 400 }), true);
+  assert.equal((await store.get(runId))?.updatedAt, 500);
+  assert.equal(await store.resolveApproval!(runId, "approval-" + label, true, undefined, 450), true);
+  assert.equal((await store.get(runId))?.updatedAt, 500);
+  const lease = await store.acquireLease!(runId, "worker-" + label, 1_000, 450);
+  assert.equal(lease?.fencingToken, 1);
+  assert.equal((await store.get(runId))?.updatedAt, 500);
+  assert.equal(await store.releaseLease!(runId, "worker-" + label, lease!.fencingToken, 450), true);
+  assert.equal(await store.cancelExecution!(runId, "cancelled", 450), true);
+  assert.equal((await store.get(runId))?.updatedAt, 500);
+  assert.equal(await store.acquireLease!(runId, "worker-" + label, 1_000, 450), undefined);
+  assert.equal(await store.completeToolExecution!(runId, "call-tool-" + label, "fp-" + label, { status: "completed", result: "ok", updatedAt: 450 }), false);
+}
+
+const monotonicMemory = new InMemoryExecutionStore();
+await assertMonotonicMutationTimestamps(monotonicMemory, "memory");
+
+const monotonicRoot = await mkdtemp(path.join(os.tmpdir(), "woho-monotonic-store-"));
+try {
+  const monotonicFile = new FileExecutionStore({ directory: monotonicRoot });
+  await assertMonotonicMutationTimestamps(monotonicFile, "file");
+} finally {
+  await rm(monotonicRoot, { recursive: true, force: true });
+}
+
+console.log("monotonic mutation timestamp tests passed");
+
