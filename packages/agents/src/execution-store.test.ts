@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { FileExecutionStore, InMemoryExecutionStore } from "./execution-store.js";
@@ -84,6 +84,17 @@ try {
     /Invalid execution status/,
   );
   await rm(malformedPath, { force: true });
+  const symlinkTarget = path.join(root, "symlink-target.json");
+  const symlinkPath = path.join(root, Buffer.from("symlink-record", "utf8").toString("base64url") + ".json");
+  await writeFile(symlinkTarget, JSON.stringify(record));
+  await symlink(symlinkTarget, symlinkPath);
+  await assert.rejects(
+    () => store.get("symlink-record"),
+    /Execution record is missing, not a regular file, or too large/,
+  );
+  await rm(symlinkPath, { force: true });
+  await rm(symlinkTarget, { force: true });
+
 
   await assert.rejects(
     () => store.appendEvent(record.runId, {
@@ -129,7 +140,7 @@ try {
   assert.equal(boundedRecord?.events.length, 2);
   assert.deepEqual(boundedRecord?.events.map((item) => item.timestamp), [4, 5]);
 
-  const inMemoryBounded = new (await import("./execution-store.js")).InMemoryExecutionStore({ maxEvents: 2 });
+  const inMemoryBounded = new InMemoryExecutionStore({ maxEvents: 2 });
   const inMemorySeed = { ...record, runId: "bounded-memory" };
   await inMemoryBounded.create(inMemorySeed);
   await inMemoryBounded.appendEvent(inMemorySeed.runId, { type: "tool.started", runId: inMemorySeed.runId, timestamp: 3, data: { step: 1 } });
@@ -178,11 +189,11 @@ try {
   assert.deepEqual(loaded?.events, [event]);
 
   const listed = await reopened.list({ status: "succeeded", limit: 1 });
-  assert.equal(listed.length, 1);
+  assert.equal(listed.length, 1, "status-filtered list should contain only the succeeded run");
   assert.equal(listed[0]?.runId, record.runId);
 
   const projectListed = await reopened.list({ projectId: "project-alpha" });
-  assert.equal(projectListed.length, 1);
+  assert.equal(projectListed.length, 1, "project-filtered list should contain only project-alpha run");
   assert.equal(projectListed[0]?.projectId, "project-alpha");
   const otherProject = { ...record, runId: "project-beta-run", projectId: "project-beta" };
   await reopened.create(otherProject);
@@ -325,7 +336,7 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
   await store.create(seed);
   const base = Date.now();
   const first = await store.acquireLease!(runId, "worker-a", 100_000, base);
-  assert.equal(first?.fencingToken, 1);
+  assert.equal(first?.fencingToken, 1, "first lease must receive fencing token 1");
   assert.equal(await store.releaseLease!(runId, "worker-a", first!.fencingToken, base + 10), true);
   const second = await store.acquireLease!(runId, "worker-b", 100_000, base + 20);
   assert.equal(second?.fencingToken, 2);
@@ -413,7 +424,7 @@ async function assertMonotonicMutationTimestamps(store: InMemoryExecutionStore |
   assert.equal(await store.resolveApproval!(runId, "approval-" + label, true, undefined, 450), true);
   assert.equal((await store.get(runId))?.updatedAt, 500);
   const lease = await store.acquireLease!(runId, "worker-" + label, 1_000, 450);
-  assert.equal(lease?.fencingToken, 1);
+  assert.equal(lease?.fencingToken, 1, "first monotonic lease must receive fencing token 1");
   assert.equal((await store.get(runId))?.updatedAt, 500);
   assert.equal(await store.releaseLease!(runId, "worker-" + label, lease!.fencingToken, 450), true);
   assert.equal(await store.cancelExecution!(runId, "cancelled", 450), true);
@@ -482,9 +493,9 @@ async function assertDeleteDirectorySync(): Promise<void> {
       attempts: 1,
       events: [],
     });
-    syncCalls.length = 0;
+    const beforeDelete = syncCalls.length;
     assert.equal(await store.remove("delete-sync"), true);
-    assert.equal(syncCalls.length, 1);
+    assert.equal(syncCalls.length, beforeDelete + 1);
     await store.create({
       runId: "remove-if-sync",
       agent: "general",
@@ -496,9 +507,9 @@ async function assertDeleteDirectorySync(): Promise<void> {
       attempts: 1,
       events: [],
     });
-    syncCalls.length = 0;
+    const beforeRemoveIf = syncCalls.length;
     assert.equal(await store.removeIf("remove-if-sync", 20), true);
-    assert.equal(syncCalls.length, 1);
+    assert.equal(syncCalls.length, beforeRemoveIf + 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

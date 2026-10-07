@@ -1048,17 +1048,33 @@ export class FileExecutionStore implements ExecutionStore {
   }
 
   private async readRecord(file: string): Promise<ExecutionRecord | undefined> {
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
     try {
-      const stat = await fs.lstat(file);
-      if (!stat.isFile() || stat.size > this.maxRecordBytes) {
+      const expected = await fs.lstat(file);
+      if (!expected.isFile() || expected.size > this.maxRecordBytes) {
         throw new Error("Execution record is missing, not a regular file, or too large");
       }
-      const parsed = JSON.parse(await fs.readFile(file, "utf8")) as ExecutionRecord;
+      const noFollow = process.platform === "win32" ? 0 : fs.constants.O_NOFOLLOW;
+      handle = await fs.open(file, fs.constants.O_RDONLY | noFollow);
+      const opened = await handle.stat();
+      if (
+        !opened.isFile() ||
+        opened.dev !== expected.dev ||
+        opened.ino !== expected.ino ||
+        opened.size > this.maxRecordBytes
+      ) {
+        throw new Error("Execution record is missing, not a regular file, or too large");
+      }
+      const parsed = JSON.parse(await handle.readFile("utf8")) as ExecutionRecord;
       validateExecutionRecord(parsed);
       return cloneRecord(parsed);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return undefined;
+      if (code === "ELOOP") throw new Error("Execution record is missing, not a regular file, or too large");
       throw error;
+    } finally {
+      await handle?.close().catch(() => undefined);
     }
   }
 
