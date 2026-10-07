@@ -513,7 +513,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (current.status !== "queued" && current.status !== "running") return undefined;
     if (current.availableAt !== undefined && current.availableAt > now) return undefined;
     if (current.lease && current.lease.expiresAt > now) {
-      return current.lease.ownerId === ownerId ? { record: cloneRecord(current), lease: { ...current.lease }, recovered: false } : undefined;
+      return undefined;
     }
     const recovered = current.status === "running";
     const lease: ExecutionLease = {
