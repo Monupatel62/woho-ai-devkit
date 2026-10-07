@@ -882,7 +882,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current) return undefined;
       const recovered = current.status === "running";
       const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: now, lease, availableAt: undefined };
+      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: Math.max(current.updatedAt, now), lease, availableAt: undefined };
       validateExecutionRecord(next);
       await this.writeRecord(this.filePath(current.runId), cloneRecord(next), true);
       return { record: cloneRecord(next), lease: { ...lease }, recovered };
