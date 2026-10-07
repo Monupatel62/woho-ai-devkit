@@ -34,7 +34,7 @@ async function expectBlocked(operation: () => void | Promise<void>): Promise<voi
 async function exercise(store: InMemoryExecutionStore | FileExecutionStore): Promise<void> {
   const runId = "immutable-identity";
   await store.create(seed(runId));
-  const lease = await store.acquireLease!(runId, "worker-a", 10_000, 20);
+  const lease = await store.acquireLease!(runId, "worker-a", 10_000, Date.now());
   assert.ok(lease);
 
   const patches: Array<Partial<ExecutionRecord>> = [
