@@ -1071,12 +1071,29 @@ export class FileExecutionStore implements ExecutionStore {
     }
     try {
       await fs.rename(temp, target);
+      await this.syncDirectory();
     } catch (error) {
       if (!replace || (error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       await fs.rm(target, { force: true });
       await fs.rename(temp, target);
+      await this.syncDirectory();
     } finally {
       await fs.rm(temp, { force: true });
+    }
+  }
+
+  /**
+   * Persist the directory entry after an atomic rename so a sudden host crash
+   * cannot lose the newly installed record even though the file itself was
+   * already fsynced. Windows does not support opening directories this way.
+   */
+  private async syncDirectory(): Promise<void> {
+    if (process.platform === "win32") return;
+    const handle = await fs.open(this.directory, "r");
+    try {
+      await handle.sync();
+    } finally {
+      await handle.close();
     }
   }
 
