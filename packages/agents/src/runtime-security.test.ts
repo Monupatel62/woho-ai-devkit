@@ -64,7 +64,7 @@ test("runtime enforces wall-clock execution timeout", async () => {
     () => runtime.run({} as never, { agent: "slow", input: "test", runId: "run-timeout" }),
     /timed out|Execution timed out/,
   );
-  assert.equal(store.get("run-timeout")?.status, "failed");
+  assert.equal(store.get("run-timeout")?.status, "cancelled");
 });
 
 test("runtime telemetry is structured and excludes task/tool payloads", async () => {
