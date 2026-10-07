@@ -4,6 +4,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { commandTool } from "./command.js";
+import { resolvePublicHttpsAddress } from "./index.js";
 
 const run = async () => {
   assert.deepEqual(await calculatorTool().execute({ expression: "6 * 7" }), { expression: "6 * 7", result: 42 });
@@ -30,6 +31,9 @@ const run = async () => {
   assert.throws(() => createToolPolicy({ allowedDirectories: [""] }), /non-empty strings/);
   assert.deepEqual(createToolPolicy({ allowedHosts: ["Example.COM."] }).allowedHosts, ["example.com"]);
   assert.equal(createToolPolicy().allowPrivateAddresses, false);
+  await assert.rejects(() => resolvePublicHttpsAddress("127.0.0.1", false), /private or reserved/);
+  const pinnedLoopback = await resolvePublicHttpsAddress("127.0.0.1", true);
+  assert.deepEqual(pinnedLoopback, { address: "127.0.0.1", family: 4 });
   assert.throws(() => createToolPolicy({ allowPrivateAddresses: "yes" as never }), /boolean/);
   const unixPathPolicy = createToolPolicy({ allowedDirectories: ["/Tmp/WoHo"] });
   assert.deepEqual(unixPathPolicy.allowedDirectories, ["/Tmp/WoHo"]);
