@@ -870,7 +870,8 @@ export class FileExecutionStore implements ExecutionStore {
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
-      if (!current || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return false;
+      if (!current || isTerminalExecution(current)) return false;
+      const effectiveCancelledAt = Math.max(current.updatedAt, cancelledAt);
       const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: effectiveCancelledAt, data: { eventId: "cancel-" + effectiveCancelledAt, reason: reason.slice(0, 4096) } };
       const next: ExecutionRecord = {
         ...current,
