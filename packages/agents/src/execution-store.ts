@@ -352,6 +352,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) return;
+    if (isTerminalExecution(current)) throw new Error("Cannot append an event to a terminal execution: " + runId);
     validateExecutionEvent(event, runId);
     this.records.set(runId, this.withAppendedEvent(current, event));
   }
@@ -452,6 +453,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   claimToolExecution(runId: string, callId: string, fingerprint: string): ExecutionToolReceipt | undefined {
     validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
     const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
+    if (isTerminalExecution(current)) throw new Error("Cannot mutate tool receipts on a terminal execution: " + runId);
     const existing = current.toolReceipts?.[callId];
     if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return cloneRecord({ ...current }).toolReceipts?.[callId]; }
     const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
