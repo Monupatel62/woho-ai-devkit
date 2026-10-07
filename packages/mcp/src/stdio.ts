@@ -134,6 +134,10 @@ export class MCPStdioTransport implements MCPTransport {
     if (this.closed) return;
     const incoming = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     if (incoming.length === 0) return;
+    if (incoming.length > this.maxMessageBytes || this.stdoutBuffer.length > this.maxMessageBytes - incoming.length) {
+      this.rejectAll(new MCPError("MCP response exceeds maxMessageBytes"));
+      return;
+    }
     this.stdoutBuffer = Buffer.concat([this.stdoutBuffer, incoming]);
     if (this.stdoutBuffer.length > this.maxMessageBytes && !this.stdoutBuffer.includes(0x0a)) {
       this.rejectAll(new MCPError("MCP response exceeds maxMessageBytes"));
