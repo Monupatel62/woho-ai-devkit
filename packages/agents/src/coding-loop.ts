@@ -38,7 +38,7 @@ export async function runCodingLoop(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = await runner(instruction, options);
     results.push(result);
-    if (!task.verify?.trim()) return { attempts: attempt, results, final: result };
+    if (!task.verify?.trim()) return { attempts: results.length, results, final: result };
     const evidence = Object.entries(result.toolResults)
       .map(([id, value]) => `Tool call ${id}: ${bounded(typeof value === "string" ? value : JSON.stringify(value))}`)
       .join("\n");
