@@ -300,7 +300,7 @@ export function isValidExecutionTransition(from: ExecutionStatus, to: ExecutionS
   return EXECUTION_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-function validateExecutionTransition(current: ExecutionRecord, next: ExecutionStatus | undefined): void {
+function isTerminalExecution(record: ExecutionRecord): boolean {\n  return record.status === "succeeded" || record.status === "failed" || record.status === "cancelled";\n}\n\nfunction validateExecutionTransition(current: ExecutionRecord, next: ExecutionStatus | undefined): void {
   validateExecutionStatus(current.status);
   if (next === undefined || next === current.status) return;
   if (!isValidExecutionTransition(current.status, next)) {
@@ -439,7 +439,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateExecutionRecord(next); this.records.set(runId,cloneRecord(next)); return undefined;
   }
   completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
-    validateRunId(runId); validateCallId(callId); const current=this.records.get(runId); if(!current) return false; assertCurrentFencingToken(current,fencingToken);
+    validateRunId(runId); validateCallId(callId); const current=this.records.get(runId); if(!current) return false; assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) return false;
     const receipt=current.toolReceipts?.[callId]; if(!receipt||receipt.fingerprint!==fingerprint||receipt.status!=="in_flight") return false;
     const updatedAt=patch.updatedAt??Date.now(); const next={...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:{...receipt,...patch,updatedAt}},updatedAt:Math.max(current.updatedAt,updatedAt)};
     validateExecutionRecord(next); this.records.set(runId,cloneRecord(next)); return true;
@@ -457,7 +457,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
   completeToolExecution(runId: string, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
     validateRunId(runId); validateCallId(callId); const current = this.records.get(runId); if (!current) return false;
-    const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+    if (isTerminalExecution(current)) return false;\n    const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
     const updatedAt = patch.updatedAt ?? Date.now();
     const nextReceipt = { ...receipt, ...patch, updatedAt };
     this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt: Math.max(current.updatedAt, updatedAt) })); return true;
@@ -541,7 +541,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
       completedAt: effectiveCancelledAt,
       updatedAt: effectiveCancelledAt,
       error: reason.slice(0, 4096),
-      lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
+      lease: current.lease ? { ...current.lease, expiresAt: effectiveCancelledAt } : undefined,
       events: [...current.events, event],
     };
     validateExecutionRecord(next);
@@ -689,7 +689,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);validateExecutionTransition(current,patch.status);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events};validateExecutionRecord(next);await this.writeRecord(target,cloneRecord(next),true);}));
   }
   async appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): Promise<void> {
-    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);validateExecutionEvent(event,runId);await this.writeRecord(target,this.withAppendedEvent(current,event),true);}));
+    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot append an event to a terminal execution: "+runId);validateExecutionEvent(event,runId);await this.writeRecord(target,this.withAppendedEvent(current,event),true);}));
   }
   async transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
     validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(expectedUpdatedAt!==undefined&&current.updatedAt!==expectedUpdatedAt)throw new Error("Execution changed before transition: "+runId);validateExecutionTransition(current,patch.status);validateExecutionEvent(event,runId);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,event.timestamp),events:this.withAppendedEvent(current,event).events};validateExecutionRecord(next);await this.writeRecord(target,next,true);}));
@@ -758,10 +758,10 @@ export class FileExecutionStore implements ExecutionStore {
 
   async claimToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string): Promise<ExecutionToolReceipt | undefined> {
     validateRunId(runId); validateCallId(callId); if(!fingerprint.trim())throw new Error("Tool execution fingerprint is required");
-    return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);const existing=current.toolReceipts?.[callId];if(existing){if(existing.fingerprint!==fingerprint)throw new Error("Tool execution fingerprint conflict: "+callId);return existing;}const receipt={callId,fingerprint,status:"in_flight" as const,updatedAt:Date.now()};await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:receipt},updatedAt:Math.max(current.updatedAt,receipt.updatedAt)}),true);return undefined;}));
+    return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot mutate tool receipts on a terminal execution: "+runId);const existing=current.toolReceipts?.[callId];if(existing){if(existing.fingerprint!==fingerprint)throw new Error("Tool execution fingerprint conflict: "+callId);return existing;}const receipt={callId,fingerprint,status:"in_flight" as const,updatedAt:Date.now()};await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:receipt},updatedAt:Math.max(current.updatedAt,receipt.updatedAt)}),true);return undefined;}));
   }
   async completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): Promise<boolean> {
-    validateRunId(runId); validateCallId(callId); return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)return false;assertCurrentFencingToken(current,fencingToken);const receipt=current.toolReceipts?.[callId];if(!receipt||receipt.fingerprint!==fingerprint||receipt.status!=="in_flight")return false;const updatedAt=patch.updatedAt??Date.now();await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:{...receipt,...patch,updatedAt}},updatedAt:Math.max(current.updatedAt,updatedAt)}),true);return true;}));
+    validateRunId(runId); validateCallId(callId); return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)return false;assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))return false;const receipt=current.toolReceipts?.[callId];if(!receipt||receipt.fingerprint!==fingerprint||receipt.status!=="in_flight")return false;const updatedAt=patch.updatedAt??Date.now();await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:{...receipt,...patch,updatedAt}},updatedAt:Math.max(current.updatedAt,updatedAt)}),true);return true;}));
   }
 
   async claimToolExecution(runId: string, callId: string, fingerprint: string): Promise<ExecutionToolReceipt | undefined> {
@@ -869,7 +869,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return false;
-      const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { eventId: "cancel-" + cancelledAt, reason: reason.slice(0, 4096) } };
+      const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: effectiveCancelledAt, data: { eventId: "cancel-" + effectiveCancelledAt, reason: reason.slice(0, 4096) } };
       const next: ExecutionRecord = {
         ...current,
         status: "cancelled",
