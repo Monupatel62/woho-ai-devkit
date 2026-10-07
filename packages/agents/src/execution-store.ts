@@ -58,6 +58,8 @@ export interface ExecutionRecord {
   readonly input?: string;
   /** Child run ID atomically claimed for a durable resume, when one has been started. */
   readonly resumeRunId?: string;
+  /** Earliest time a queued execution may be claimed by a worker. */
+  readonly availableAt?: number;
   readonly parentRunId?: string;
   readonly sessionId?: string;
   readonly metadata: Readonly<Record<string, unknown>>;
@@ -269,7 +271,7 @@ function validateExecutionRecord(record: ExecutionRecord): void {
     validateCallId(record.approval.callId);
     if (record.approval.inputFingerprint !== undefined && (typeof record.approval.inputFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(record.approval.inputFingerprint))) throw new Error("Invalid execution approval inputFingerprint");
     if (!["pending", "approved", "denied"].includes(record.approval.status)) throw new Error("Invalid execution approval status");
-    for (const key of ["tool", "capability", "action"]) if (typeof record.approval[key] !== "string" || !record.approval[key].trim()) throw new Error("Invalid execution approval " + key);
+    for (const key of ["tool", "capability", "action"] as const) { const value = record.approval[key]; if (typeof value !== "string" || !value.trim()) throw new Error("Invalid execution approval " + key); }
     validateRequiredTimestamp(record.approval.requestedAt, "Execution approval requestedAt");
     validateTimestamp(record.approval.decidedAt, "Execution approval decidedAt");
     if (record.approval.decidedAt !== undefined && record.approval.decidedAt < record.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
