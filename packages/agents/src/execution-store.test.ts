@@ -105,9 +105,18 @@ try {
     type: "run.completed" as const,
     runId: record.runId,
     timestamp: 2,
-    data: { ok: true },
+    data: { ok: true, eventId: "event-1" },
   };
   await store.appendEvent(record.runId, event);
+  await assert.rejects(
+    () => store.appendEvent(record.runId, {
+      type: "run.completed",
+      runId: record.runId,
+      timestamp: 2,
+      data: { eventId: "event-1" },
+    }),
+    /Duplicate execution eventId/,
+  );
   await store.update(record.runId, { status: "succeeded", completedAt: 2, updatedAt: 2 });
 
   const boundedRecordSeed = { ...record, runId: "bounded-file", projectId: "project-bounded" };
