@@ -1,6 +1,7 @@
 import { constants, mkdir, open, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
+import { StringDecoder } from "node:string_decoder";
 import { validateMemoryMetadata, type MemoryMessage, type MemoryQuery, type MemoryStore } from "./index.js";
 
 export interface JsonFileStoreOptions {
@@ -63,8 +64,20 @@ export class JsonFileStore implements MemoryStore {
       handle = await open(this.filePath, process.platform === "win32" ? "r" : constants.O_RDONLY | constants.O_NOFOLLOW);
       const info = await handle.stat();
       if (!info.isFile() || info.size > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
-      const raw = await handle.readFile("utf8");
-      const parsed: unknown = JSON.parse(raw);
+      const decoder = new StringDecoder("utf8");
+      const chunks: string[] = [];
+      const chunkSize = Math.min(64 * 1024, this.maxFileBytes + 1);
+      const buffer = Buffer.alloc(chunkSize);
+      let total = 0;
+      while (true) {
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+        if (bytesRead === 0) break;
+        total += bytesRead;
+        if (total > this.maxFileBytes) throw new Error("Memory file is missing, not a regular file, or too large");
+        chunks.push(decoder.write(buffer.subarray(0, bytesRead)));
+      }
+      chunks.push(decoder.end());
+      const parsed: unknown = JSON.parse(chunks.join(""));
       return validate(parsed);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
