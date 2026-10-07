@@ -8,6 +8,8 @@ export interface ExecutionApprovalRecord {
   readonly approvalId: string;
   /** Model/tool call identity that triggered the approval. */
   readonly callId: string;
+  /** SHA-256 fingerprint of the exact approved tool input. */
+  readonly inputFingerprint?: string;
   readonly status: "pending" | "approved" | "denied";
   readonly tool: string;
   readonly capability: string;
@@ -238,6 +240,7 @@ function validateExecutionRecord(record: ExecutionRecord): void {
     if (!isRecord(record.approval)) throw new Error("Invalid execution approval");
     validateApprovalId(record.approval.approvalId);
     validateCallId(record.approval.callId);
+    if (record.approval.inputFingerprint !== undefined && (typeof record.approval.inputFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(record.approval.inputFingerprint))) throw new Error("Invalid execution approval inputFingerprint");
     if (!["pending", "approved", "denied"].includes(record.approval.status)) throw new Error("Invalid execution approval status");
     for (const key of ["tool", "capability", "action"]) if (typeof record.approval[key] !== "string" || !record.approval[key].trim()) throw new Error("Invalid execution approval " + key);
     validateRequiredTimestamp(record.approval.requestedAt, "Execution approval requestedAt");
