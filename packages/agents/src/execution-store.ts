@@ -456,13 +456,14 @@ export class InMemoryExecutionStore implements ExecutionStore {
   acquireLease(runId: string, ownerId: string, ttlMs: number, now = Date.now()): ExecutionLease | undefined {
     validateRunId(runId); if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution lease request");
     const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
+    if (current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return undefined;
     if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
     const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
     this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return lease;
   }
 
   renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): boolean {
-    const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
+    const current = this.records.get(runId); if (!current?.lease || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled" || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
     const lease = { ...current.lease, expiresAt: now + ttlMs }; this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return true;
   }
 
