@@ -89,6 +89,12 @@ export interface ExecutionStore {
   acquireLease?(runId: string, ownerId: string, ttlMs: number, now?: number): ExecutionLease | undefined | Promise<ExecutionLease | undefined>;
   renewLease?(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now?: number): boolean | Promise<boolean>;
   releaseLease?(runId: string, ownerId: string, fencingToken: number, now?: number): boolean | Promise<boolean>;
+  updateFenced?(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): void | Promise<void>;
+  appendEventFenced?(runId: string, fencingToken: number, event: ExecutionEvent): void | Promise<void>;
+  transitionFenced?(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void | Promise<void>;
+  claimToolExecutionFenced?(runId: string, fencingToken: number, callId: string, fingerprint: string): ExecutionToolReceipt | undefined | Promise<ExecutionToolReceipt | undefined>;
+  completeToolExecutionFenced?(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean | Promise<boolean>;
+  resolveApprovalFenced?(runId: string, fencingToken: number, approvalId: string, approved: boolean, reason?: string, decidedAt?: number): boolean | Promise<boolean>;
 }
 
 export interface RecoverStaleExecutionsOptions {
@@ -329,6 +335,46 @@ export class InMemoryExecutionStore implements ExecutionStore {
       updatedAt: Math.max(current.updatedAt, event.timestamp),
       events: this.withAppendedEvent(current, event).events,
     };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+  }
+
+  private assertCurrentFencingToken(current: ExecutionRecord, fencingToken: number, now = Date.now()): void {
+    if (!Number.isInteger(fencingToken) || fencingToken < 1) throw new Error("Invalid execution fencing token");
+    if (!current.lease || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) {
+      throw new Error("Execution fencing token is stale: " + current.runId);
+    }
+  }
+
+  updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): void {
+    validateRunId(runId);
+    const current = this.records.get(runId);
+    if (!current) throw new Error("Execution not found: " + runId);
+    this.assertCurrentFencingToken(current, fencingToken);
+    validateExecutionTransition(current, patch.status);
+    const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+  }
+
+  appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): void {
+    validateRunId(runId);
+    const current = this.records.get(runId);
+    if (!current) throw new Error("Execution not found: " + runId);
+    this.assertCurrentFencingToken(current, fencingToken);
+    validateExecutionEvent(event, runId);
+    this.records.set(runId, this.withAppendedEvent(current, event));
+  }
+
+  transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void {
+    validateRunId(runId);
+    const current = this.records.get(runId);
+    if (!current) throw new Error("Execution not found: " + runId);
+    this.assertCurrentFencingToken(current, fencingToken);
+    if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
+    validateExecutionTransition(current, patch.status);
+    validateExecutionEvent(event, runId);
+    const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, event.timestamp), events: this.withAppendedEvent(current, event).events };
     validateExecutionRecord(next);
     this.records.set(runId, cloneRecord(next));
   }
@@ -592,6 +638,103 @@ export class FileExecutionStore implements ExecutionStore {
   }
 
 
+  claimToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string): ExecutionToolReceipt | undefined {
+    validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
+    const current = this.records.get(runId);
+    if (!current) throw new Error("Execution not found: " + runId);
+    this.assertCurrentFencingToken(current, fencingToken);
+    const existing = current.toolReceipts?.[callId];
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId);
+      return existing;
+    }
+    const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
+    const next = { ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: Math.max(current.updatedAt, receipt.updatedAt) };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+    return receipt;
+  }
+
+  completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
+    validateRunId(runId); validateCallId(callId);
+    const current = this.records.get(runId);
+    if (!current) return false;
+    this.assertCurrentFencingToken(current, fencingToken);
+    const receipt = current.toolReceipts?.[callId];
+    if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+    const updatedAt = patch.updatedAt ?? Date.now();
+    const next = { ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: { ...receipt, ...patch, updatedAt } }, updatedAt: Math.max(current.updatedAt, updatedAt) };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+    return true;
+  }
+
+  async updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): Promise<void> {
+    validateRunId(runId);
+    await this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current) throw new Error("Execution not found: " + runId);
+      this.assertCurrentFencingToken(current, fencingToken);
+      validateExecutionTransition(current, patch.status);
+      const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+      validateExecutionRecord(next);
+      await this.writeRecord(target, cloneRecord(next), true);
+    }));
+  }
+
+  async appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): Promise<void> {
+    validateRunId(runId);
+    await this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current) throw new Error("Execution not found: " + runId);
+      this.assertCurrentFencingToken(current, fencingToken);
+      validateExecutionEvent(event, runId);
+      await this.writeRecord(target, this.withAppendedEvent(current, event), true);
+    }));
+  }
+
+  async transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
+    validateRunId(runId);
+    await this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current) throw new Error("Execution not found: " + runId);
+      this.assertCurrentFencingToken(current, fencingToken);
+      if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
+      validateExecutionTransition(current, patch.status);
+      validateExecutionEvent(event, runId);
+      const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, event.timestamp), events: this.withAppendedEvent(current, event).events };
+      validateExecutionRecord(next);
+      await this.writeRecord(target, next, true);
+    }));
+  }
+
+  async claimToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string): Promise<ExecutionToolReceipt | undefined> {
+    validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) throw new Error("Execution not found: " + runId);
+      this.assertCurrentFencingToken(current, fencingToken);
+      const existing = current.toolReceipts?.[callId];
+      if (existing) { if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId); return existing; }
+      const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
+      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: Math.max(current.updatedAt, receipt.updatedAt) }), true); return receipt;
+    }));
+  }
+
+  async completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): Promise<boolean> {
+    validateRunId(runId); validateCallId(callId);
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) return false;
+      this.assertCurrentFencingToken(current, fencingToken);
+      const receipt = current.toolReceipts?.[callId];
+      if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+      const updatedAt = patch.updatedAt ?? Date.now();
+      await this.writeRecord(target, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: { ...receipt, ...patch, updatedAt } }, updatedAt: Math.max(current.updatedAt, updatedAt) }), true); return true;
+    }));
+  }
+
   async claimToolExecution(runId: string, callId: string, fingerprint: string): Promise<ExecutionToolReceipt | undefined> {
     validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
     return this.enqueue(() => this.withFileLock(async () => {
@@ -678,6 +821,13 @@ export class FileExecutionStore implements ExecutionStore {
       await this.writeRecord(target, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }), true);
       return resumeRunId;
     }));
+  }
+
+  private assertCurrentFencingToken(current: ExecutionRecord, fencingToken: number, now = Date.now()): void {
+    if (!Number.isInteger(fencingToken) || fencingToken < 1) throw new Error("Invalid execution fencing token");
+    if (!current.lease || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) {
+      throw new Error("Execution fencing token is stale: " + current.runId);
+    }
   }
 
   private lockPath(): string {
