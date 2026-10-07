@@ -110,6 +110,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
       const resolvedCommand = await resolveAllowedCommand(command, allowedCommands);
       if (!resolvedCommand) throw new Error("Command is not allowed by policy");
       if (typeof cwd !== "undefined" && typeof cwd !== "string") throw new Error("cwd must be a string");
+      let resolvedCwd = cwd;
       if (policy.allowedDirectories.length) {
         if (!cwd) throw new Error("cwd is required when allowedDirectories are configured");
         const fs = await import("node:fs/promises");
@@ -123,6 +124,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
           } catch { /* ignored */ }
         }
         if (!ok) throw new Error("cwd is outside the allowed directories");
+        resolvedCwd = target;
       }
       return new Promise((resolve, reject) => {
         const safeEnvironment: Record<string, string> = {
