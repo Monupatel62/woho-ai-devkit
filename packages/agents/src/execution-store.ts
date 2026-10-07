@@ -42,6 +42,13 @@ export interface ExecutionLease {
   readonly expiresAt: number;
 }
 
+export interface ExecutionClaim {
+  readonly record: ExecutionRecord;
+  readonly lease: ExecutionLease;
+  /** True when an expired/lease-less running execution was reclaimed. */
+  readonly recovered: boolean;
+}
+
 export interface ExecutionRecord {
   readonly runId: string;
   /** Stable project scope for execution history and authorization boundaries. */
@@ -91,6 +98,10 @@ export interface ExecutionStore {
   acquireLease?(runId: string, ownerId: string, ttlMs: number, now?: number): ExecutionLease | undefined | Promise<ExecutionLease | undefined>;
   renewLease?(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now?: number): boolean | Promise<boolean>;
   releaseLease?(runId: string, ownerId: string, fencingToken: number, now?: number): boolean | Promise<boolean>;
+  /** Atomically claim a queued execution or reclaim a running execution whose lease expired. */
+  claimExecution?(runId: string, ownerId: string, ttlMs: number, now?: number): ExecutionClaim | undefined | Promise<ExecutionClaim | undefined>;
+  /** Atomically claim the oldest eligible queued/recoverable execution, optionally scoped to a project. */
+  claimNextExecution?(ownerId: string, ttlMs: number, options?: { projectId?: string; now?: number }): ExecutionClaim | undefined | Promise<ExecutionClaim | undefined>;
   updateFenced?(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): void | Promise<void>;
   appendEventFenced?(runId: string, fencingToken: number, event: ExecutionEvent): void | Promise<void>;
   transitionFenced?(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void | Promise<void>;
@@ -255,6 +266,7 @@ function validateExecutionRecord(record: ExecutionRecord): void {
   validateExecutionStatus(record.status);
   validateRequiredTimestamp(record.startedAt, "Execution startedAt");
   validateRequiredTimestamp(record.updatedAt, "Execution updatedAt");
+  validateTimestamp(record.availableAt, "Execution availableAt");
   if (record.updatedAt < record.startedAt) throw new Error("Execution updatedAt cannot be before startedAt");
   validateTimestamp(record.completedAt, "Execution completedAt");
   if (record.completedAt !== undefined && record.completedAt < record.startedAt) {
@@ -273,8 +285,8 @@ function validateExecutionRecord(record: ExecutionRecord): void {
 
 const EXECUTION_TRANSITIONS: Readonly<Record<ExecutionStatus, readonly ExecutionStatus[]>> = {
   queued: ["queued", "running", "cancelled", "failed"],
-  running: ["running", "waiting", "succeeded", "failed", "cancelled"],
-  waiting: ["waiting", "running", "succeeded", "failed", "cancelled"],
+  running: ["running", "waiting", "queued", "succeeded", "failed", "cancelled"],
+  waiting: ["waiting", "running", "queued", "succeeded", "failed", "cancelled"],
   succeeded: ["succeeded"],
   failed: ["failed"],
   cancelled: ["cancelled"],
@@ -455,6 +467,52 @@ export class InMemoryExecutionStore implements ExecutionStore {
   releaseLease(runId: string, ownerId: string, fencingToken: number, now = Date.now()): boolean {
     const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
     this.records.set(runId, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now })); return true;
+  }
+
+  claimExecution(runId: string, ownerId: string, ttlMs: number, now = Date.now()): ExecutionClaim | undefined {
+    validateRunId(runId);
+    if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution claim request");
+    validateTimestamp(now, "now");
+    const current = this.records.get(runId);
+    if (!current) return undefined;
+    if (current.status !== "queued" && current.status !== "running") return undefined;
+    if (current.availableAt !== undefined && current.availableAt > now) return undefined;
+    if (current.lease && current.lease.expiresAt > now) {
+      return current.lease.ownerId === ownerId ? { record: cloneRecord(current), lease: { ...current.lease }, recovered: false } : undefined;
+    }
+    const recovered = current.status === "running";
+    const lease: ExecutionLease = {
+      ownerId,
+      fencingToken: (current.lease?.fencingToken ?? 0) + 1,
+      expiresAt: now + ttlMs,
+    };
+    const next: ExecutionRecord = {
+      ...current,
+      status: "running",
+      attempts: current.attempts + 1,
+      updatedAt: now,
+      lease,
+      availableAt: undefined,
+    };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+    return { record: cloneRecord(next), lease: { ...lease }, recovered };
+  }
+
+  claimNextExecution(ownerId: string, ttlMs: number, options: { projectId?: string; now?: number } = {}): ExecutionClaim | undefined {
+    const now = options.now ?? Date.now();
+    validateTimestamp(now, "now");
+    const candidates = [...this.records.values()]
+      .filter((record) => options.projectId === undefined || record.projectId === options.projectId)
+      .filter((record) => record.status === "queued" || record.status === "running")
+      .filter((record) => record.availableAt === undefined || record.availableAt <= now)
+      .filter((record) => !record.lease || record.lease.expiresAt <= now || record.lease.ownerId === ownerId)
+      .sort((a, b) => a.updatedAt - b.updatedAt);
+    for (const candidate of candidates) {
+      const claimed = this.claimExecution(candidate.runId, ownerId, ttlMs, now);
+      if (claimed) return claimed;
+    }
+    return undefined;
   }
 
   resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): boolean {
@@ -704,6 +762,56 @@ export class FileExecutionStore implements ExecutionStore {
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
       await this.writeRecord(target, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now }), true); return true;
+    }));
+  }
+
+  async claimExecution(runId: string, ownerId: string, ttlMs: number, now = Date.now()): Promise<ExecutionClaim | undefined> {
+    validateRunId(runId);
+    if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution claim request");
+    validateTimestamp(now, "now");
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current || (current.status !== "queued" && current.status !== "running")) return undefined;
+      if (current.availableAt !== undefined && current.availableAt > now) return undefined;
+      if (current.lease && current.lease.expiresAt > now) {
+        return current.lease.ownerId === ownerId ? { record: cloneRecord(current), lease: { ...current.lease }, recovered: false } : undefined;
+      }
+      const recovered = current.status === "running";
+      const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
+      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: now, lease, availableAt: undefined };
+      validateExecutionRecord(next);
+      await this.writeRecord(target, cloneRecord(next), true);
+      return { record: cloneRecord(next), lease: { ...lease }, recovered };
+    }));
+  }
+
+  async claimNextExecution(ownerId: string, ttlMs: number, options: { projectId?: string; now?: number } = {}): Promise<ExecutionClaim | undefined> {
+    const now = options.now ?? Date.now();
+    validateTimestamp(now, "now");
+    if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution claim request");
+    return this.enqueue(() => this.withFileLock(async () => {
+      await this.ensureDirectory();
+      const entries = await fs.readdir(this.directory, { withFileTypes: true });
+      const candidates: ExecutionRecord[] = [];
+      for (const entry of entries) {
+        if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+        const record = await this.readRecord(path.join(this.directory, entry.name));
+        if (!record || (record.status !== "queued" && record.status !== "running")) continue;
+        if (options.projectId !== undefined && record.projectId !== options.projectId) continue;
+        if (record.availableAt !== undefined && record.availableAt > now) continue;
+        if (record.lease && record.lease.expiresAt > now && record.lease.ownerId !== ownerId) continue;
+        candidates.push(record);
+      }
+      candidates.sort((a, b) => a.updatedAt - b.updatedAt);
+      const current = candidates[0];
+      if (!current) return undefined;
+      const recovered = current.status === "running";
+      const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
+      const next: ExecutionRecord = { ...current, status: "running", attempts: current.attempts + 1, updatedAt: now, lease, availableAt: undefined };
+      validateExecutionRecord(next);
+      await this.writeRecord(this.filePath(current.runId), cloneRecord(next), true);
+      return { record: cloneRecord(next), lease: { ...lease }, recovered };
     }));
   }
 
