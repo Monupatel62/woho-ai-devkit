@@ -29,6 +29,8 @@ export interface AgentContext {
 
 export interface AgentApprovalRequest {
   readonly runId?: string;
+  readonly projectId?: string;
+  readonly sessionId?: string;
   /** Exact model tool-call identity requiring owner approval. */
   readonly callId: string;
   /** Durable approval request identity assigned by AgentRuntime. */
@@ -435,7 +437,7 @@ export class Agent {
             if (!decision.allowed) {
               if (decision.requiresApproval) {
                 await runEvent(runOptions, { type: "run.waiting", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { reason: "approval", tool: tool.name, capability: permission.capability, action: permission.action } });
-                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, callId: call.id, tool: tool.name, capability: permission.capability, action: permission.action, input: parsed, reason: decision.reason });
+                const approved = await (runOptions.approval ?? this.approval)?.({ runId: runOptions.runId, projectId: runOptions.projectId, sessionId: runOptions.sessionId, callId: call.id, tool: tool.name, capability: permission.capability, action: permission.action, input: parsed, reason: decision.reason });
                 if (!approved) throw new AIError(decision.reason ?? "Tool action was not approved", "APPROVAL_REQUIRED");
               } else {
                 throw new AIError(decision.reason ?? "Tool action denied by permission policy", "PERMISSION_DENIED");
