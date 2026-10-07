@@ -190,6 +190,10 @@ const run = async () => {
   try {
     await (await import("node:fs/promises")).symlink(".", symlinkPath, "dir");
     await assert.rejects(() => workspace.execute({ operation: "write", path: "linked/new.txt", content: "blocked" }), /Symbolic link ancestors/);
+    const linkedFile = join(workspaceRoot, "linked-file");
+    const linkedTarget = join(workspaceRoot, "src", "hello.txt");
+    await (await import("node:fs/promises")).symlink(linkedTarget, linkedFile);
+    await assert.rejects(() => workspace.execute({ operation: "write", path: "linked-file", content: "blocked" }), /symlink/);
     await assert.rejects(() => workspace.execute({ operation: "mkdir", path: "linked/new-dir" }), /Symbolic link ancestors/);
   } finally {
     await rm(symlinkPath, { recursive: true, force: true });

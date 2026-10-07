@@ -237,14 +237,28 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         if (Buffer.byteLength(value.content, "utf8") > policy.maxFileBytes) throw new Error("Content exceeds maxFileBytes");
         const { target, parent } = await safeParent(root, relative as string);
         await fs.mkdir(parent, { recursive: true });
+        let existing: Awaited<ReturnType<typeof fs.lstat>> | undefined;
         try {
-          const existing = await fs.lstat(target);
+          existing = await fs.lstat(target);
           if (existing.isSymbolicLink()) throw new Error("Refusing to write through a symlink");
           if (existing.isDirectory()) throw new Error("Cannot write a directory");
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         }
-        await fs.writeFile(target, value.content, { encoding: "utf8", mode: 0o600 });
+        const flags = process.platform === "win32"
+          ? existing ? "r+" : "wx"
+          : fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW;
+        const handle = await fs.open(target, flags, 0o600);
+        try {
+          const opened = await handle.stat();
+          if (!opened.isFile() || (existing && (opened.dev !== existing.dev || opened.ino !== existing.ino))) {
+            throw new Error("Refusing to write through a replaced file");
+          }
+          await handle.truncate(0);
+          await handle.writeFile(value.content, "utf8");
+        } finally {
+          await handle.close().catch(() => undefined);
+        }
         return { path: relative, bytes: Buffer.byteLength(value.content, "utf8") };
       }
 
