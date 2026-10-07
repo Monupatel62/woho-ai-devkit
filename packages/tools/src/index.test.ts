@@ -174,7 +174,7 @@ const run = async () => {
   assert.deepEqual(await workspace.execute({ operation: "write", path: "src/hello.txt", content: "hello" }), { path: "src/hello.txt", bytes: 5 });
   assert.deepEqual(await workspace.execute({ operation: "read", path: "src/hello.txt" }), { path: "src/hello.txt", content: "hello" });
   const oversizedWorkspaceFile = join(workspaceRoot, "src", "oversized.txt");
-  await writeFile(oversizedWorkspaceFile, "x".repeat(100), "utf8");
+  await writeFile(oversizedWorkspaceFile, "x".repeat(10_001), "utf8");
   await assert.rejects(() => workspace.execute({ operation: "read", path: "src/oversized.txt" }), /not regular, or too large/);
   assert.deepEqual(await workspace.execute({ operation: "edit", path: "src/hello.txt", oldText: "hello", newText: "hello woho" }), { path: "src/hello.txt", bytes: 10, changed: true });
   assert.deepEqual(await workspace.execute({ operation: "read", path: "src/hello.txt" }), { path: "src/hello.txt", content: "hello woho" });
