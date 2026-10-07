@@ -98,6 +98,14 @@ const run = async () => {
   await assert.rejects(() => lockedStore.add({ id: "locked", role: "user", content: "x" }), /lock acquisition timed out/);
   await rm(lockedPath + ".lock", { force: true });
 
+  const liveStalePath = join(dir, "live-stale.json");
+  const liveStaleStore = createJsonFileStore({ filePath: liveStalePath, lockTimeoutMs: 40, lockRetryMs: 5, lockStaleMs: 20 });
+  await writeFile(liveStalePath + ".lock", JSON.stringify({ pid: process.pid, acquiredAt: Date.now() }), { mode: 0o600 });
+  const liveOld = new Date(Date.now() - 1000);
+  await utimes(liveStalePath + ".lock", liveOld, liveOld);
+  await assert.rejects(() => liveStaleStore.add({ id: "live-stale", role: "user", content: "must-not-steal" }), /lock acquisition timed out/);
+  await rm(liveStalePath + ".lock", { force: true });
+
   const stalePath = join(dir, "stale.json");
   const staleStore = createJsonFileStore({ filePath: stalePath, lockTimeoutMs: 100, lockRetryMs: 5, lockStaleMs: 20 });
   await writeFile(stalePath + ".lock", "stale", { mode: 0o600 });
