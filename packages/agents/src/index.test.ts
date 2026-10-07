@@ -713,7 +713,7 @@ const run = async () => {
       { agent: "tamper-counted", input: "tamper " + field },
     );
     assert.equal(tamperExecutions, 0);
-    assert.equal(tamperResult.toolResults["mock-call-1"]?.error, "APPROVAL_BINDING_INVALID");
+    assert.equal((tamperResult.toolResults["mock-call-1"] as { error?: string })?.error, "APPROVAL_BINDING_INVALID");
   }
 
   const toolErrorEvents: import("@woho/core").ExecutionEvent[] = [];
