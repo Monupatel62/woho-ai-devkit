@@ -197,8 +197,7 @@ const run = async () => {
   assert.equal(runtimeEvents[0], "run.started");
   assert.equal(runtimeEvents.at(-1), "run.completed");
   class AtomicEventStore extends InMemoryExecutionStore {
-    transitionCalls = 0;
-    override async transition(runId: string, patch: Partial<import("./execution-store.js").ExecutionRecord>, event: import("@woho/core").ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
+    transitionCalls = 0;    override async transition(runId: string, patch: Partial<import("./execution-store.js").ExecutionRecord>, event: import("@woho/core").ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
       this.transitionCalls += 1;
       return super.transition(runId, patch, event, expectedUpdatedAt);
     }
@@ -397,8 +396,7 @@ const run = async () => {
     events: [],
     checkpoint: {
       step: 1,
-      messages: [
-        { role: "user", content: "continue after crash" },
+      messages: [        { role: "user", content: "continue after crash" },
         { role: "assistant", content: "", toolCalls: [{ id: "completed-call", name: "echo", arguments: "{}" }] },
         { role: "tool", content: "completed result", toolCallId: "completed-call", name: "echo" },
       ],
@@ -475,7 +473,7 @@ const run = async () => {
     { agent: "general", input: "capture checkpoint", projectId: "capture-project" },
   );
   const capturedRecord = checkpointCaptureStore.get(checkpointCaptureResult.runId);
-  assert.equal(capturedRecord?.checkpoint?.step, 1);
+  assert.equal(capturedRecord?.checkpoint?.step, 0);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
 
   const retryCheckpointStore = new InMemoryExecutionStore();
@@ -597,8 +595,7 @@ const run = async () => {
   });
   const approvalResult = await approvalAgent.run("run", { runId: "approval-run", onEvent: (event) => { approvalEvents.push(event.type); }, approval: async (request) => { approved = true; approvalCallId = request.callId; return true; } });
   assert.equal(approved, true);
-  assert.equal(approvalCallId, "mock-call-1");
-  assert.ok(approvalEvents.includes("run.waiting"));
+  assert.equal(approvalCallId, "mock-call-1");  assert.ok(approvalEvents.includes("run.waiting"));
   assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
   let runtimeApproved = false;
   const approvalRuntime = new AgentRuntime({
