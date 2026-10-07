@@ -10,7 +10,7 @@ const record = (runId: string, status: ExecutionRecord["status"] = "queued"): Ex
 async function testCrashBeforeCompletionIsRecoverable(): Promise<void> {
   const store = new InMemoryExecutionStore();
   await store.create(record("crash"));
-  const first = new AgentExecutionWorker(store, { workerId: "dead", leaseTtlMs: 10, heartbeatIntervalMs: 100 });
+  const first = new AgentExecutionWorker(store, { workerId: "dead", leaseTtlMs: 10, heartbeatIntervalMs: 5 });
   const claim = await store.claimExecution!("crash", "dead", 10, 100);
   assert.equal(claim?.lease.fencingToken, 1);
   // Simulate process death: no release/terminal mutation.
