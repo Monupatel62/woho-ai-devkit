@@ -476,28 +476,24 @@ const run = async () => {
   assert.equal(capturedRecord?.checkpoint?.step, 1);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
 
-  const replayStore = new InMemoryExecutionStore();
+  class ReplayReceiptStore extends InMemoryExecutionStore {
+    override create(record: Parameters<InMemoryExecutionStore["create"]>[0]): void {
+      super.create({
+        ...record,
+        toolReceipts: {
+          "replay-tool-1": {
+            callId: "replay-tool-1",
+            fingerprint: "c529815d77cbc10c8c46cccf56423956eead42412b65bd8eaf0201eea27f3d6f",
+            status: "completed",
+            result: JSON.stringify("side-effect-complete"),
+            updatedAt: record.updatedAt,
+          },
+        },
+      });
+    }
+  }
+  const replayStore = new ReplayReceiptStore();
   const replayRunId = "durable-replay-run";
-  await replayStore.create({
-    runId: replayRunId,
-    agent: "replay-agent",
-    input: "replay safely",
-    metadata: {},
-    status: "running",
-    startedAt: 1,
-    updatedAt: 2,
-    attempts: 1,
-    events: [],
-    toolReceipts: {
-      "replay-tool-1": {
-        callId: "replay-tool-1",
-        fingerprint: "c529815d77cbc10c8c46cccf56423956eead42412b65bd8eaf0201eea27f3d6f",
-        status: "completed",
-        result: JSON.stringify("side-effect-complete"),
-        updatedAt: 2,
-      },
-    },
-  });
   let replayExecutions = 0;
   let replayModelCalls = 0;
   const replayRegistry = new AgentRegistry();
