@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { FileExecutionStore, InMemoryExecutionStore } from "./execution-store.js";
@@ -84,6 +84,16 @@ try {
     /Invalid execution status/,
   );
   await rm(malformedPath, { force: true });
+  const symlinkTarget = path.join(root, "symlink-target.json");
+  const symlinkPath = path.join(root, Buffer.from("symlink-record", "utf8").toString("base64url") + ".json");
+  await writeFile(symlinkTarget, JSON.stringify(record));
+  await symlink(symlinkTarget, symlinkPath);
+  await assert.rejects(
+    () => store.get("symlink-record"),
+    /Execution record is missing, not a regular file, or too large/,
+  );
+  await rm(symlinkPath, { force: true });
+
 
   await assert.rejects(
     () => store.appendEvent(record.runId, {
