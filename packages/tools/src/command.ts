@@ -20,7 +20,7 @@ function normalizedCommandPath(command: string): string {
   return command.trim().replaceAll("\\", "/").toLowerCase();
 }
 
-async function commandMatchesPathAllowlist(command: string, allowedCommands: string[]): Promise<boolean> {
+async function resolveAllowedCommand(command: string, allowedCommands: string[]): Promise<string | undefined> {
   const normalizedCommand = normalizedCommandPath(command);
   const commandBase = basename(command).toLowerCase();
   const fs = await import("node:fs/promises");
@@ -31,17 +31,17 @@ async function commandMatchesPathAllowlist(command: string, allowedCommands: str
       if (normalizedCommand !== normalizedEntry) continue;
       try {
         const stat = await fs.lstat(command);
-        if (!stat.isFile() || stat.isSymbolicLink()) return false;
-        return true;
+        if (!stat.isFile() || stat.isSymbolicLink()) return undefined;
+        return await fs.realpath(command);
       } catch {
-        return false;
+        return undefined;
       }
     }
     if (commandBase !== normalizedEntry) continue;
     if (normalizedCommand.includes("/")) {
       try {
         const stat = await fs.lstat(command);
-        if (stat.isFile() && !stat.isSymbolicLink()) return true;
+        if (stat.isFile() && !stat.isSymbolicLink()) return await fs.realpath(command);
       } catch {}
       continue;
     }
@@ -51,12 +51,12 @@ async function commandMatchesPathAllowlist(command: string, allowedCommands: str
         const candidate = pathModule.join(directory, commandBase + extension.toLowerCase());
         try {
           const stat = await fs.stat(candidate);
-          if (stat.isFile()) return true;
+          if (stat.isFile()) return await fs.realpath(candidate);
         } catch {}
       }
     }
   }
-  return false;
+  return undefined;
 }
 
 export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
@@ -107,8 +107,10 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
         argBytes += Buffer.byteLength(arg, "utf8");
         if (argBytes > maxArgBytes) throw new Error("Command arguments exceed maxArgBytes");
       }
-      if (!(await commandMatchesPathAllowlist(command, allowedCommands))) throw new Error("Command is not allowed by policy");
+      const resolvedCommand = await resolveAllowedCommand(command, allowedCommands);
+      if (!resolvedCommand) throw new Error("Command is not allowed by policy");
       if (typeof cwd !== "undefined" && typeof cwd !== "string") throw new Error("cwd must be a string");
+      let resolvedCwd = cwd;
       if (policy.allowedDirectories.length) {
         if (!cwd) throw new Error("cwd is required when allowedDirectories are configured");
         const fs = await import("node:fs/promises");
@@ -122,6 +124,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
           } catch { /* ignored */ }
         }
         if (!ok) throw new Error("cwd is outside the allowed directories");
+        resolvedCwd = target;
       }
       return new Promise((resolve, reject) => {
         const safeEnvironment: Record<string, string> = {
@@ -130,7 +133,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
           ...(inheritEnvironment ? process.env : {}),
           ...(inputPolicy.environment ?? {}),
         };
-        const child = spawn(command, args as string[], { cwd, shell: false, windowsHide: true, env: safeEnvironment });
+        const child = spawn(resolvedCommand, args as string[], { cwd: resolvedCwd, shell: false, windowsHide: true, env: safeEnvironment });
         let stdout = "";
         let stderr = "";
         let bytes = 0;

@@ -128,6 +128,17 @@ const run = async () => {
   });
   const commandResult = await command.execute({ command: process.execPath, args: ["-e", "process.stdout.write('woho-command-ok')"], cwd: process.cwd() }) as { stdout: string };
 
+  const cwdRoot = await mkdtemp(join(tmpdir(), "woho-command-cwd-"));
+  const cwdAlias = join(cwdRoot, "alias");
+  try {
+    await (await import("node:fs/promises")).symlink(process.cwd(), cwdAlias, "dir");
+    const cwdBound = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()] });
+    const cwdResult = await cwdBound.execute({ command: "node", args: ["-e", "process.stdout.write(process.cwd())"], cwd: cwdAlias }) as { stdout: string };
+    assert.equal(cwdResult.stdout, process.cwd());
+  } finally {
+    await rm(cwdRoot, { recursive: true, force: true });
+  }
+
   const previousSecret = process.env.WOHO_TOOLS_TEST_SECRET;
   process.env.WOHO_TOOLS_TEST_SECRET = "secret-value";
   const isolatedCommand = commandTool({
