@@ -86,6 +86,8 @@ export interface ExecutionStore {
   get(runId: string): ExecutionRecord | undefined | Promise<ExecutionRecord | undefined>;
   list(options?: { status?: ExecutionStatus; projectId?: string; limit?: number }): ExecutionRecord[] | Promise<ExecutionRecord[]>;
   remove?(runId: string): boolean | Promise<boolean>;
+  /** Atomically remove a terminal record only when its version is unchanged. */
+  removeIf?(runId: string, expectedUpdatedAt: number): boolean | Promise<boolean>;
   updateIf?(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean | Promise<boolean>;
   /** Atomically claim a single child run for resuming a failed/cancelled execution. */
   claimResume?(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined | Promise<string | undefined>;
@@ -409,6 +411,14 @@ export class InMemoryExecutionStore implements ExecutionStore {
     return this.records.delete(runId);
   }
 
+  removeIf(runId: string, expectedUpdatedAt: number): boolean {
+    validateRunId(runId);
+    const current = this.records.get(runId);
+    if (!current || current.updatedAt !== expectedUpdatedAt || !["succeeded", "failed", "cancelled"].includes(current.status)) return false;
+    this.records.delete(runId);
+    return true;
+  }
+
   updateIf(runId: string, expectedUpdatedAt: number, patch: Partial<ExecutionRecord>): boolean {
     validateRunId(runId);
     const current = this.records.get(runId);
@@ -717,6 +727,17 @@ export class FileExecutionStore implements ExecutionStore {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
         throw error;
       }
+    }));
+  }
+
+  async removeIf(runId: string, expectedUpdatedAt: number): Promise<boolean> {
+    validateRunId(runId);
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current || current.updatedAt !== expectedUpdatedAt || !["succeeded", "failed", "cancelled"].includes(current.status)) return false;
+      await fs.unlink(target);
+      return true;
     }));
   }
 
@@ -1093,11 +1114,19 @@ export async function pruneExecutionHistory(
   const candidates = sorted.filter((record, index) => {
     const oldEnough = cutoff === undefined || record.updatedAt <= cutoff;
     const overCount = options.maxRecords === undefined || index < keepFromIndex;
-    return oldEnough && overCount;
+    const terminal = record.status === "succeeded" || record.status === "failed" || record.status === "cancelled";
+    return terminal && oldEnough && overCount;
   });
   const removed: ExecutionRecord[] = [];
   for (const record of candidates) {
-    if (await store.remove(record.runId)) removed.push(record);
+    const didRemove = store.removeIf
+      ? await store.removeIf(record.runId, record.updatedAt)
+      : await (async () => {
+          const latest = await store.get(record.runId);
+          if (!latest || latest.updatedAt !== record.updatedAt || !["succeeded", "failed", "cancelled"].includes(latest.status)) return false;
+          return store.remove!(record.runId);
+        })();
+    if (didRemove) removed.push(record);
   }
   return removed;
 }
