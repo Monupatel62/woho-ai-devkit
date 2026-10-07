@@ -215,6 +215,16 @@ const run = async () => {
   });
   const isolatedGitStatus = await isolatedGit.execute({ operation: "status" }) as { stdout: string };
   assert.match(isolatedGitStatus.stdout, /README/);
+  const previousGitSecret = process.env.WOHO_GIT_ENV_TEST;
+  process.env.WOHO_GIT_ENV_TEST = "inherited-value";
+  const inheritedGit = (await import("./git.js")).gitTool({
+    root: gitRoot,
+    inheritEnvironment: true,
+    environment: { WOHO_GIT_ENV_TEST: "explicit-value" },
+  });
+  const inheritedGitStatus = await inheritedGit.execute({ operation: "status" }) as { stdout: string };
+  assert.match(inheritedGitStatus.stdout, /README/);
+  if (previousGitSecret === undefined) delete process.env.WOHO_GIT_ENV_TEST; else process.env.WOHO_GIT_ENV_TEST = previousGitSecret;
   await assert.rejects(() => git.execute({ operation: "add", paths: ["../outside"] }), /parent traversal/);
   assert.match(status.stdout, /README/);
   await git.execute({ operation: "add", paths: ["README.md"] });
