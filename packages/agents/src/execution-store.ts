@@ -404,7 +404,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
   releaseLease(runId: string, ownerId: string, fencingToken: number, now = Date.now()): boolean {
     const current = this.records.get(runId); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
-    this.records.set(runId, cloneRecord({ ...current, lease: undefined, updatedAt: now })); return true;
+    this.records.set(runId, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now })); return true;
   }
 
   resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): boolean {
@@ -635,7 +635,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId);
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
-      await this.writeRecord(target, cloneRecord({ ...current, lease: undefined, updatedAt: now }), true); return true;
+      await this.writeRecord(target, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now }), true); return true;
     }));
   }
 
