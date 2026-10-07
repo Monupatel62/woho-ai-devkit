@@ -355,6 +355,10 @@ async function assertMonotonicMutationTimestamps(store: InMemoryExecutionStore |
   const lease = await store.acquireLease!(runId, "worker-" + label, 1_000, 450);
   assert.equal(lease?.fencingToken, 1);
   assert.equal((await store.get(runId))?.updatedAt, 500);
+  assert.equal(await store.releaseLease!(runId, "worker-" + label, lease!.fencingToken, 450), true);
+  assert.equal(await store.cancelExecution!(runId, "cancelled", 450), true);
+  assert.equal((await store.get(runId))?.updatedAt, 500);
+  assert.equal(await store.acquireLease!(runId, "worker-" + label, 1_000, 450), undefined);
   assert.equal(await store.completeToolExecution!(runId, "call-tool-" + label, "fp-" + label, { status: "completed", result: "ok", updatedAt: 450 }), false);
 }
 
