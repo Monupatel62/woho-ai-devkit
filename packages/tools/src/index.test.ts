@@ -210,6 +210,10 @@ const run = async () => {
   } finally {
     await rm(symlinkPath, { recursive: true, force: true });
   }
+  await workspace.execute({ operation: "write", path: "nested/a.txt", content: "nested" });
+  assert.deepEqual(await workspace.execute({ operation: "read", path: "nested/a.txt" }), { path: "nested/a.txt", content: "nested" });
+  await workspace.execute({ operation: "mkdir", path: "nested/deep/dir" });
+  assert.deepEqual(await workspace.execute({ operation: "move", path: "nested/a.txt", destination: "nested/deep/a.txt" }), { from: "nested/a.txt", to: "nested/deep/a.txt", moved: true });
   assert.deepEqual(await workspace.execute({ operation: "move", path: "src/hello.txt", destination: "hello.txt" }), { from: "src/hello.txt", to: "hello.txt", moved: true });
   assert.deepEqual(await workspace.execute({ operation: "delete", path: "hello.txt" }), { path: "hello.txt", deleted: true });
   const oversizedBuiltInFile = join(workspaceRoot, "src", "oversized-built-in.txt");
