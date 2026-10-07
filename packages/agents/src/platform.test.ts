@@ -152,7 +152,8 @@ const codingResult = await codingPlatform.runCodingTask(
   "Inspect src/app.ts and implement the requested coding change.",
   { verify: "The project inspection must be performed and the implementation must be verified.", runId: "platform-coding-run" },
 );
-assert.equal(codingResult.attempts, 1);
+assert.equal(codingResult.results.length, 1);
+assert.equal(codingResult.attempts, codingResult.results.length);
 assert.equal(codingResult.final.text, "implemented after inspecting project tool output");
 assert.equal(codingToolRuns, 1);
 assert.ok(codingCalls >= 2);
