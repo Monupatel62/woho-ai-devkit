@@ -357,15 +357,14 @@ export class AgentRuntime {
   }
 
   private async recordAgentEvent(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
-    if (this.store?.transitionFenced && lease) {
-      await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event, undefined);
-    } else if (this.store?.transition && !lease) {
-      await this.store.transition(event.runId, {}, event, undefined);
-    } else if (this.store?.appendEventFenced && this.store?.updateFenced && lease) {
-      await this.store.appendEventFenced(event.runId, lease.fencingToken, event);
-      await this.store.updateFenced(event.runId, lease.fencingToken, { updatedAt: event.timestamp });
+    if (!this.store) return;
+    if (lease) {
+      if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
+    } else if (this.store.transition) {
+      await this.store.transition(event.runId, {}, event);
     } else {
-      throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.appendEvent?.(event.runId, event);
     }
     await this.onEvent?.(event);
   }
@@ -487,9 +486,9 @@ export class AgentRuntime {
     if (lease) {
       if (!this.store.updateFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
       await this.store.updateFenced(runId, lease.fencingToken, patch);
-      return;
+    } else {
+      await this.store.update(runId, patch);
     }
-    await this.store.update(runId, patch);
   }
 
   private async transitionExecution(runId: string, lease: { fencingToken: number } | undefined, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
@@ -500,12 +499,8 @@ export class AgentRuntime {
       await this.onEvent?.(event);
       return;
     }
-    if (this.store.transition) {
-      await this.store.transition(runId, patch, event, expectedUpdatedAt);
-    } else {
-      await this.store.update(runId, patch);
-      await this.store.appendEvent(runId, event);
-    }
+    if (this.store.transition) await this.store.transition(runId, patch, event, expectedUpdatedAt);
+    else { await this.store.update(runId, patch); await this.store.appendEvent?.(runId, event); }
     await this.onEvent?.(event);
   }
 
@@ -590,14 +585,14 @@ export class AgentRuntime {
   }
 
   private async emit(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
-    if (this.store?.transitionFenced && lease) {
-      await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event, undefined);
-    } else if (this.store?.transition && !lease) {
-      await this.store.transition(event.runId, {}, event, undefined);
-    } else if (this.store?.appendEventFenced && this.store?.updateFenced && lease) {
-      await this.store.appendEventFenced(event.runId, lease.fencingToken, event);
+    if (!this.store) return;
+    if (lease) {
+      if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
+    } else if (this.store.transition) {
+      await this.store.transition(event.runId, {}, event);
     } else {
-      throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.appendEvent?.(event.runId, event);
     }
     await this.onEvent?.(event);
   }
@@ -633,3 +628,20 @@ export class AgentRuntime {
       waiter.reject = fail;
       if (signal) signal.addEventListener("abort", onAbort, { once: true });
       this.waiters.push(waiter);
+    });
+    this.active += 1;
+  }
+
+  private release(): void {
+    while (this.waiters.length) {
+      const next = this.waiters.shift()!;
+      if (next.signal?.aborted) {
+        next.reject(next.signal.reason ?? new Error("Aborted"));
+        continue;
+      }
+      next.resolve();
+      return;
+    }
+    this.active -= 1;
+  }
+}
