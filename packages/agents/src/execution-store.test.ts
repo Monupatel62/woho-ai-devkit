@@ -141,11 +141,11 @@ try {
   const writerB = new FileExecutionStore({ directory: root });
   await Promise.all([
     writerA.update(record.runId, { error: "from-a" }),
-    writerB.update(record.runId, { sessionId: "from-b" }),
+    writerB.update(record.runId, { availableAt: 123 }),
   ]);
   const merged = await writerA.get(record.runId);
   assert.equal(merged?.error, "from-a");
-  assert.equal(merged?.sessionId, "from-b");
+  assert.equal(merged?.availableAt, 123);
 
   const lockPath = path.join(root, ".execution-store.lock");
   await writeFile(lockPath, "active", { flag: "w", mode: 0o600 });
