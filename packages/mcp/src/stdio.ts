@@ -33,8 +33,8 @@ export class MCPStdioTransport implements MCPTransport {
       env: {
         PATH: process.env.PATH ?? "",
         ...(process.platform === "win32" && process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-        ...(options.env ?? {}),
         ...(inheritEnvironment ? process.env : {}),
+        ...(options.env ?? {}),
       },
       shell: false,
       stdio: ["pipe", "pipe", "pipe"],
