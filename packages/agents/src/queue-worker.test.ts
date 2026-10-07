@@ -132,6 +132,34 @@ async function testCrashRecoveryAndFencing(): Promise<void> {
   );
 }
 
+async function testDurableCancellation(): Promise<void> {
+  const store = new InMemoryExecutionStore();
+  await store.create(makeRecord("cancel"));
+  const worker = new AgentExecutionWorker(store, {
+    workerId: "cancel-worker",
+    leaseTtlMs: 40,
+    heartbeatIntervalMs: 10,
+  });
+  let observedAbort = false;
+  const outcomePromise = worker.runOnce(async (_record, context) => {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, 100);
+      context.signal.addEventListener("abort", () => {
+        observedAbort = true;
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    });
+  });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(await store.cancelExecution!("cancel", "owner requested cancellation", 10), true);
+  const outcome = await outcomePromise;
+  assert.equal(observedAbort, true);
+  assert.equal(outcome?.status, "lease_lost");
+  assert.equal(store.get("cancel")?.status, "cancelled");
+  assert.equal(await store.cancelExecution!("cancel", "duplicate cancellation", 20), false);
+}
+
 async function testFileWorkerRace(): Promise<void> {
   const root = await mkdtemp(path.join(os.tmpdir(), "woho-queue-worker-"));
   try {
@@ -156,5 +184,6 @@ await testMemoryWorker();
 await testRetryAndBackoff();
 await testRetryThenSuccess();
 await testCrashRecoveryAndFencing();
+await testDurableCancellation();
 await testFileWorkerRace();
 console.log("queue worker tests passed");
