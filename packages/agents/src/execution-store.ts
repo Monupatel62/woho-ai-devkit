@@ -326,7 +326,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const next = {
       ...current,
       ...patch,
-      updatedAt: event.timestamp,
+      updatedAt: Math.max(current.updatedAt, event.timestamp),
       events: this.withAppendedEvent(current, event).events,
     };
     validateExecutionRecord(next);
@@ -336,7 +336,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   private withAppendedEvent(record: ExecutionRecord, event: ExecutionEvent): ExecutionRecord {
     const events = [...record.events, event];
     if (events.length > this.maxEvents) events.splice(0, events.length - this.maxEvents);
-    return { ...record, updatedAt: event.timestamp, events };
+    return { ...record, updatedAt: Math.max(record.updatedAt, event.timestamp), events };
   }
 
   get(runId: string): ExecutionRecord | undefined {
