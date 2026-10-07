@@ -45,4 +45,12 @@ const result = await executor.execute(
 assert.equal(result, "ok");
 assert.equal(executed, 1);
 
+const mutableAction = { capability: "message.send" as const, appPackage: "com.example.chat", description: "Send message" };
+let releaseApproval!: () => void;
+const approvalStarted = new Promise<void>((resolve) => { releaseApproval = resolve; });
+const approval = executor.execute(mutableAction, { approve: async () => { await approvalStarted; return true; } });
+mutableAction.capability = "device.action" as never;
+releaseApproval();
+await assert.rejects(() => approval, /Owner approval required|/);
+
 console.log("phone-agent permission tests passed");
