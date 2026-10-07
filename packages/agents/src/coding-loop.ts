@@ -38,7 +38,7 @@ export async function runCodingLoop(
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     const result = await runner(instruction, options);
     results.push(result);
-    if (!task.verify?.trim()) return { attempts: attempt, results, final: result };
+    if (!task.verify?.trim()) return { attempts: results.length, results, final: result };
     const evidence = Object.entries(result.toolResults)
       .map(([id, value]) => `Tool call ${id}: ${bounded(typeof value === "string" ? value : JSON.stringify(value))}`)
       .join("\n");
@@ -50,7 +50,7 @@ export async function runCodingLoop(
       signal: options.signal,
     });
     if (/^PASS\b/i.test(verification.text.trim())) {
-      return { attempts: attempt, results, final: result };
+      return { attempts: results.length, results, final: result };
     }
     if (attempt < maxAttempts) {
       instruction = `${bounded(task.goal)}\n\nPrevious attempt did not verify successfully. Diagnose and fix the failure before finishing.\nVerification feedback:\n${bounded(verification.text)}`;

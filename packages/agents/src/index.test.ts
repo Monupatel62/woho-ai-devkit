@@ -197,8 +197,7 @@ const run = async () => {
   assert.equal(runtimeEvents[0], "run.started");
   assert.equal(runtimeEvents.at(-1), "run.completed");
   class AtomicEventStore extends InMemoryExecutionStore {
-    transitionCalls = 0;
-    override async transition(runId: string, patch: Partial<import("./execution-store.js").ExecutionRecord>, event: import("@woho/core").ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
+    transitionCalls = 0;    override async transition(runId: string, patch: Partial<import("./execution-store.js").ExecutionRecord>, event: import("@woho/core").ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
       this.transitionCalls += 1;
       return super.transition(runId, patch, event, expectedUpdatedAt);
     }
@@ -236,6 +235,23 @@ const run = async () => {
   assert.throws(() => new AgentRuntime({ retry: { maxAttempts: 0 } }), /retry.maxAttempts/);
   assert.throws(() => new AgentRuntime({ heartbeatIntervalMs: 0 }), /heartbeatIntervalMs/);
   assert.throws(() => new AgentRuntime({ maxInputBytes: 0 }), /maxInputBytes/);
+
+  const safetyStore = new InMemoryExecutionStore();
+  await safetyStore.create({ runId: "safety-run", agent: "general", input: "safety", metadata: {}, status: "running", startedAt: 1, updatedAt: 1, attempts: 0, events: [] });
+  const claimed = await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1");
+  assert.equal(claimed?.status, "in_flight");
+  assert.equal((await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1"))?.status, "in_flight");
+  assert.equal(await safetyStore.completeToolExecution!("safety-run", "tool-1", "fp-1", { status: "completed", result: JSON.stringify({ ok: true }) }), true);
+  assert.equal((await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1"))?.status, "completed");
+  assert.throws(() => safetyStore.claimToolExecution!("safety-run", "tool-1", "different-fingerprint"), /fingerprint conflict/);
+
+  const leaseOne = await safetyStore.acquireLease!("safety-run", "worker-a", 10_000, 100);
+  assert.equal(leaseOne?.fencingToken, 1);
+  assert.equal(await safetyStore.acquireLease!("safety-run", "worker-b", 10_000, 101), undefined);
+  assert.equal(await safetyStore.renewLease!("safety-run", "worker-b", leaseOne!.fencingToken, 10_000, 102), false);
+  assert.equal(await safetyStore.releaseLease!("safety-run", "worker-a", leaseOne!.fencingToken, 103), true);
+  const leaseTwo = await safetyStore.acquireLease!("safety-run", "worker-b", 10_000, 104);
+  assert.equal(leaseTwo?.fencingToken, 2);
 
   const boundedInputStore = new InMemoryExecutionStore();
   const boundedInputRuntime = new AgentRuntime({ store: boundedInputStore, maxInputBytes: 8 }, registry);
@@ -380,8 +396,7 @@ const run = async () => {
     events: [],
     checkpoint: {
       step: 1,
-      messages: [
-        { role: "user", content: "continue after crash" },
+      messages: [        { role: "user", content: "continue after crash" },
         { role: "assistant", content: "", toolCalls: [{ id: "completed-call", name: "echo", arguments: "{}" }] },
         { role: "tool", content: "completed result", toolCallId: "completed-call", name: "echo" },
       ],
@@ -461,60 +476,55 @@ const run = async () => {
   assert.equal(capturedRecord?.checkpoint?.step, 1);
   assert.equal(capturedRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
 
-  const retryCheckpointStore = new InMemoryExecutionStore();
-  let retryToolExecutions = 0;
-  let retryModelCalls = 0;
-  const checkpointRetryAI = createAI({
-    provider: {
-      name: "checkpoint-retry",
-      async chat(request) {
-        retryModelCalls += 1;
-        if (retryModelCalls === 1) {
-          return {
-            id: "retry-tool-call",
-            text: "",
-            model: "checkpoint-retry",
-            finishReason: "tool_call",
-            toolCalls: [{ id: "retry-tool-1", name: "retry-safe-tool", arguments: "{}" }],
-          };
-        }
-        if (retryModelCalls === 2) {
-          throw new Error("provider-failure-after-tool");
-        }
-        if (retryModelCalls === 3 && request.messages.at(-1)?.role === "tool") {
-          return { id: "retry-done", text: "retry-recovered", model: "checkpoint-retry" };
-        }
-        throw new Error("unexpected replay");
-      },
-    },
-  });
-  const retryAgentRegistry = new AgentRegistry();
-  retryAgentRegistry.register(
-    { id: "retry-agent", name: "Retry Agent", role: "general" },
+  class ReplayReceiptStore extends InMemoryExecutionStore {
+    override create(record: Parameters<InMemoryExecutionStore["create"]>[0]): void {
+      super.create({
+        ...record,
+        toolReceipts: {
+          "replay-tool-1": {
+            callId: "replay-tool-1",
+            fingerprint: "c529815d77cbc10c8c46cccf56423956eead42412b65bd8eaf0201eea27f3d6f",
+            status: "completed",
+            result: JSON.stringify("side-effect-complete"),
+            updatedAt: record.updatedAt,
+          },
+        },
+      });
+    }
+  }
+  const replayStore = new ReplayReceiptStore();
+  const replayRunId = "durable-replay-run";
+  let replayExecutions = 0;
+  let replayModelCalls = 0;
+  const replayRegistry = new AgentRegistry();
+  replayRegistry.register(
+    { id: "replay-agent", name: "Replay Agent", role: "general" },
     ({ ai }) => createAgent(ai, {
-      name: "Retry Agent",
+      name: "Replay Agent",
       tools: [{
         name: "retry-safe-tool",
-        description: "Side effect used to verify durable retry recovery",
+        description: "Side effect used to verify durable replay recovery",
         execute: async () => {
-          retryToolExecutions += 1;
-          return "side-effect-complete";
+          replayExecutions += 1;
+          return "should-not-execute";
         },
       }],
     }),
   );
-  const checkpointRetryRuntime = new AgentRuntime({
-    store: retryCheckpointStore,
-    retry: { maxAttempts: 2, delayMs: 0 },
-  }, retryAgentRegistry);
-  const checkpointRetryResult = await checkpointRetryRuntime.run(checkpointRetryAI, { agent: "retry-agent", input: "retry safely" });
-  assert.equal(checkpointRetryResult.text, "retry-recovered");
-  assert.equal(retryToolExecutions, 1);
-  assert.equal(retryModelCalls, 3);
-  const retryRecord = retryCheckpointStore.get(checkpointRetryResult.runId);
-  assert.equal(retryRecord?.checkpoint?.inFlightToolCallId, undefined);
-  assert.equal(retryRecord?.checkpoint?.messages.at(-1)?.role, "assistant");
-  assert.ok(retryRecord?.checkpoint?.messages.some((message) => message.role === "tool" && message.toolCallId === "retry-tool-1"));
+  const replayAI = createAI({ provider: {
+    name: "durable-replay",
+    async chat(request) {
+      replayModelCalls += 1;
+      if (request.messages.at(-1)?.role === "tool") return { id: "replay-done", text: "replayed", model: "durable-replay" };
+      return { id: "replay-call", text: "", model: "durable-replay", finishReason: "tool_call", toolCalls: [{ id: "replay-tool-1", name: "retry-safe-tool", arguments: "{}" }] };
+    },
+  }});
+  const replayRuntime = new AgentRuntime({ store: replayStore }, replayRegistry);
+  const replayResult = await replayRuntime.run(replayAI, { agent: "replay-agent", input: "replay safely", runId: replayRunId });
+  assert.equal(replayResult.text, "replayed");
+  assert.equal(replayExecutions, 0);
+  assert.equal(replayModelCalls, 2);
+  assert.equal(replayResult.toolResults["replay-tool-1"], "side-effect-complete");
   const secretCheckpointStore = new InMemoryExecutionStore();
   const secretCheckpointRuntime = new AgentRuntime({ store: secretCheckpointStore }, registry);
   const secretCheckpointResult = await secretCheckpointRuntime.run(
@@ -580,8 +590,7 @@ const run = async () => {
   });
   const approvalResult = await approvalAgent.run("run", { runId: "approval-run", onEvent: (event) => { approvalEvents.push(event.type); }, approval: async (request) => { approved = true; approvalCallId = request.callId; return true; } });
   assert.equal(approved, true);
-  assert.equal(approvalCallId, "mock-call-1");
-  assert.ok(approvalEvents.includes("run.waiting"));
+  assert.equal(approvalCallId, "mock-call-1");  assert.ok(approvalEvents.includes("run.waiting"));
   assert.equal(approvalResult.toolResults["mock-call-1"], "allowed");
   let runtimeApproved = false;
   const approvalRuntime = new AgentRuntime({

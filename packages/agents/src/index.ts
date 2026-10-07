@@ -48,6 +48,25 @@ export interface AgentExecutionCheckpoint {
   readonly updatedAt: number;
 }
 
+export interface AgentToolLifecycleRequest {
+  readonly callId: string;
+  readonly tool: string;
+  readonly input: unknown;
+}
+
+export interface AgentToolReplay {
+  readonly replay: boolean;
+  readonly result?: unknown;
+}
+
+export interface AgentToolCompletion {
+  readonly callId: string;
+  readonly tool: string;
+  readonly input: unknown;
+  readonly result?: unknown;
+  readonly error?: string;
+}
+
 export interface AgentRunOptions {
   signal?: AbortSignal;
   runId?: string;
@@ -56,6 +75,8 @@ export interface AgentRunOptions {
   /** Continue from a durable checkpoint without replaying the original user message. */
   checkpoint?: AgentExecutionCheckpoint;
   onCheckpoint?: (checkpoint: AgentExecutionCheckpoint) => void | Promise<void>;
+  onBeforeToolExecution?: (request: AgentToolLifecycleRequest) => AgentToolReplay | void | Promise<AgentToolReplay | void>;
+  onToolExecutionComplete?: (completion: AgentToolCompletion) => void | Promise<void>;
 }
 
 export interface AgentOptions {
@@ -372,8 +393,9 @@ export class Agent {
           continue;
         }
 
+        let parsed: unknown;
         try {
-          const parsed = parseArguments(call.arguments);
+          parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
           if (tool.capability || tool.authorize) {
             if (!this.permissions) {
@@ -399,6 +421,17 @@ export class Agent {
           if (runOptions.onCheckpoint) {
             await runOptions.onCheckpoint({ step, messages: [...messages], inFlightToolCallId: call.id, updatedAt: Date.now() });
           }
+          const replay = await runOptions.onBeforeToolExecution?.({ callId: call.id, tool: tool.name, input: parsed });
+          if (replay?.replay) {
+            const replayResult = replay.result;
+            toolResults[call.id] = replayResult;
+            await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: true, replay: true } });
+            const replayMessage: AIMessage = { role: "tool", content: serializeToolResult(replayResult, this.maxToolResultChars), toolCallId: call.id, name: call.name };
+            messages.push(replayMessage);
+            if (conversation) await conversation.add({ id: "tool-" + call.id, ...replayMessage, timestamp: Date.now() });
+            if (runOptions.onCheckpoint) await runOptions.onCheckpoint({ step, messages: [...messages], updatedAt: Date.now() });
+            continue;
+          }
           await runEvent(runOptions, { type: "tool.started", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step } });
           let result: unknown;
           const toolController = new AbortController();
@@ -421,6 +454,7 @@ export class Agent {
             runOptions.signal?.removeEventListener("abort", abortFromRun);
           }
           toolResults[call.id] = result;
+          await runOptions.onToolExecutionComplete?.({ callId: call.id, tool: tool.name, input: parsed, result });
           await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: true } });
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(result, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
@@ -432,6 +466,7 @@ export class Agent {
           const errorCode = error instanceof AIError ? error.code : "TOOL_EXECUTION_ERROR";
           await runEvent(runOptions, { type: "tool.completed", runId: runOptions.runId ?? "agent-run", timestamp: Date.now(), data: { tool: tool.name, callId: call.id, step, success: false, errorCode } });
           const failure = { error: error instanceof AIError ? error.code : "TOOL_EXECUTION_ERROR" };
+          await runOptions.onToolExecutionComplete?.({ callId: call.id, tool: tool.name, input: parsed, error: failure.error });
           toolResults[call.id] = failure;
           const toolMessage: AIMessage = { role: "tool", content: serializeToolResult(failure, this.maxToolResultChars), toolCallId: call.id, name: call.name };
           messages.push(toolMessage);
