@@ -700,6 +700,10 @@ const run = async () => {
       this.updateCalls += 1;
       super.update(runId, patch);
     }
+    override updateFenced(runId: string, fencingToken: number, patch: Parameters<InMemoryExecutionStore["update"]>[1]): void {
+      this.updateCalls += 1;
+      super.updateFenced(runId, fencingToken, patch);
+    }
   }
   const heartbeatStore = new CountingExecutionStore();
   const heartbeatRegistry = new AgentRegistry();
