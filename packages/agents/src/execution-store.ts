@@ -499,7 +499,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
   renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): boolean {
     const current = this.records.get(runId); if (!current?.lease || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled" || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
-    const lease = { ...current.lease, expiresAt: now + ttlMs }; this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return true;
+    const lease = { ...current.lease, expiresAt: Math.max(current.lease.expiresAt, now) + ttlMs }; this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return true;
   }
 
   releaseLease(runId: string, ownerId: string, fencingToken: number, now = Date.now()): boolean {
