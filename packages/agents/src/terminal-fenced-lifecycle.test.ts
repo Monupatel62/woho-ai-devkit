@@ -22,7 +22,7 @@ for (const store of [
   const runId = store instanceof FileExecutionStore ? "file-terminal" : "memory-terminal";
   try {
     await store.create(seed(runId));
-    const lease = await store.acquireLease!(runId, "worker", 10_000, 20);
+    const lease = await store.acquireLease!(runId, "worker", 10_000, Date.now());
     assert.ok(lease);
     await store.update(runId, { status: "succeeded", completedAt: 30, updatedAt: 30 });
 
