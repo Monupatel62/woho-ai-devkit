@@ -357,14 +357,13 @@ export class AgentRuntime {
   }
 
   private async recordAgentEvent(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
-    if (!this.store) return;
-    if (lease) {
+    if (this.store && lease) {
       if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
       await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
-    } else if (this.store.transition) {
+    } else if (this.store?.transition) {
       await this.store.transition(event.runId, {}, event);
-    } else {
-      await this.store.appendEvent?.(event.runId, event);
+    } else if (this.store?.appendEvent) {
+      await this.store.appendEvent(event.runId, event);
     }
     await this.onEvent?.(event);
   }
@@ -585,8 +584,7 @@ export class AgentRuntime {
   }
 
   private async emit(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
-    if (!this.store) return;
-    if (lease) {
+    if (this.store && lease) {
       if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
       await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
     } else if (this.store.transition) {
