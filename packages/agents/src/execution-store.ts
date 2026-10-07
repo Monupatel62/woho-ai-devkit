@@ -300,7 +300,11 @@ export function isValidExecutionTransition(from: ExecutionStatus, to: ExecutionS
   return EXECUTION_TRANSITIONS[from]?.includes(to) ?? false;
 }
 
-function isTerminalExecution(record: ExecutionRecord): boolean {\n  return record.status === "succeeded" || record.status === "failed" || record.status === "cancelled";\n}\n\nfunction validateExecutionTransition(current: ExecutionRecord, next: ExecutionStatus | undefined): void {
+function isTerminalExecution(record: ExecutionRecord): boolean {
+  return record.status === "succeeded" || record.status === "failed" || record.status === "cancelled";
+}
+
+function validateExecutionTransition(current: ExecutionRecord, next: ExecutionStatus | undefined): void {
   validateExecutionStatus(current.status);
   if (next === undefined || next === current.status) return;
   if (!isValidExecutionTransition(current.status, next)) {
@@ -457,7 +461,8 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
   completeToolExecution(runId: string, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
     validateRunId(runId); validateCallId(callId); const current = this.records.get(runId); if (!current) return false;
-    if (isTerminalExecution(current)) return false;\n    const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+    if (isTerminalExecution(current)) return false;
+    const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
     const updatedAt = patch.updatedAt ?? Date.now();
     const nextReceipt = { ...receipt, ...patch, updatedAt };
     this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt: Math.max(current.updatedAt, updatedAt) })); return true;
