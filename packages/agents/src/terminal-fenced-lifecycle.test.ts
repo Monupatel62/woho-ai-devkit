@@ -27,9 +27,9 @@ for (const store of [
     await store.update(runId, { status: "succeeded", completedAt: 30, updatedAt: 30 });
 
     const event = { type: "tool.completed" as const, runId, timestamp: 31 };
-    await assert.rejects(() => Promise.resolve(store.transition(runId, {}, event)), /terminal execution/);
-    await assert.rejects(() => Promise.resolve(store.transitionFenced!(runId, lease.fencingToken, {}, event)), /terminal execution/);
-    await assert.rejects(() => Promise.resolve(store.updateFenced!(runId, lease.fencingToken, { metadata: { late: true } })), /terminal execution/);
+    await assert.rejects(() => Promise.resolve().then(() => store.transition(runId, {}, event)), /terminal execution/);
+    await assert.rejects(() => Promise.resolve().then(() => store.transitionFenced!(runId, lease.fencingToken, {}, event)), /terminal execution/);
+    await assert.rejects(() => Promise.resolve().then(() => store.updateFenced!(runId, lease.fencingToken, { metadata: { late: true } })), /terminal execution/);
 
     const current = await store.get(runId);
     assert.equal(current?.status, "succeeded");
