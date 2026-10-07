@@ -365,6 +365,10 @@ export class AgentRuntime {
       }
       throw new Error("Agent runtime exhausted retry loop");
     } catch (error) {
+      const durableRecord = await this.store?.get(runId);
+      if (durableRecord?.status === "cancelled") {
+        throw error;
+      }
       if (task.signal?.aborted) {
         const cancelledAt = Date.now();
         const cancelledEvent: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { agent: task.agent } };
@@ -455,6 +459,12 @@ export class AgentRuntime {
       if (approval.status === "denied") return false;
       await this.sleep(this.approvalPollIntervalMs, signal);
     }
+  }
+
+  /** Atomically request cancellation of a durable execution. */
+  async cancel(runId: string, reason = "Execution cancelled"): Promise<boolean> {
+    if (!this.store?.cancelExecution) throw new Error("Execution store does not support durable cancellation");
+    return this.store.cancelExecution(runId, this.sanitizeError(reason));
   }
 
   /** Restart a persisted failed/cancelled execution as a new run linked to the original. */
