@@ -19,9 +19,38 @@ export interface AgentRetryPolicy {
 
 export type AgentVerifier = (result: AgentRunResult, task: AgentTask) => boolean | string | Promise<boolean | string>;
 
+export type AgentTelemetryEventType =
+  | "run.started"
+  | "run.retry"
+  | "run.completed"
+  | "run.failed"
+  | "run.cancelled"
+  | "run.recovered"
+  | "run.lease_lost"
+  | "tool.started"
+  | "tool.completed";
+
+export interface AgentTelemetryEvent {
+  readonly type: AgentTelemetryEventType;
+  readonly runId: string;
+  readonly projectId?: string;
+  readonly agent?: string;
+  readonly parentRunId?: string;
+  readonly attempt?: number;
+  readonly durationMs?: number;
+  readonly tool?: string;
+  readonly success?: boolean;
+  readonly recovered?: boolean;
+  readonly status?: ExecutionRecord["status"];
+}
+
+export type AgentTelemetryHandler = (event: AgentTelemetryEvent) => void | Promise<void>;
+
 export interface AgentRuntimeOptions {
   readonly maxConcurrency?: number;
   readonly onEvent?: (event: ExecutionEvent) => void | Promise<void>;
+  /** Bounded structured telemetry. No task input, tool arguments, or error text is emitted. */
+  readonly onTelemetry?: AgentTelemetryHandler;
   readonly retry?: AgentRetryPolicy;
   readonly approval?: AgentApprovalHandler;
   readonly store?: ExecutionStore;
@@ -88,6 +117,7 @@ export class AgentRuntime {
   readonly registry: AgentRegistry;
   private readonly maxConcurrency: number;
   private readonly onEvent?: AgentRuntimeOptions["onEvent"];
+  private readonly onTelemetry?: AgentTelemetryHandler;
   private readonly defaultRetry: Required<AgentRetryPolicy>;
   private readonly store?: ExecutionStore;
   private readonly approval?: AgentApprovalHandler;
@@ -109,6 +139,7 @@ export class AgentRuntime {
     this.registry = registry;
     this.maxConcurrency = options.maxConcurrency ?? 4;
     this.onEvent = options.onEvent;
+    this.onTelemetry = options.onTelemetry;
     this.defaultRetry = this.validateRetry(options.retry ?? {});
     this.store = options.store;
     this.approval = options.approval;
@@ -188,6 +219,7 @@ export class AgentRuntime {
     if (this.store?.acquireLease && !lease) throw new AIError("Execution is already owned by another worker", "EXECUTION_LEASE_CONFLICT");
     let leaseLost = false;
     await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } }, lease);
+    await this.telemetry({ type: "run.started", runId, projectId: task.projectId, agent: task.agent, parentRunId: task.parentRunId });
     const heartbeat = this.store
       ? setInterval(() => {
           void (async () => {
@@ -205,7 +237,7 @@ export class AgentRuntime {
     try {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
         try {
-          if (leaseLost) throw new AIError("Execution lease was lost", "EXECUTION_LEASE_LOST");
+          if (leaseLost) { await this.telemetry({ type: "run.lease_lost", runId, projectId: task.projectId, agent: task.agent, attempt }); throw new AIError("Execution lease was lost", "EXECUTION_LEASE_LOST"); }
           if (executionController.signal.aborted) throw executionController.signal.reason ?? new AIError("Execution cancelled", "EXECUTION_CANCELLED");
           await this.updateExecution(runId, { attempts: attempt, status: "running", updatedAt: Date.now() }, lease);
           const agent = this.registry.create(task.agent, ai);
@@ -366,12 +398,14 @@ export class AgentRuntime {
             await this.store?.update(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt, updatedAt: completedAt });
             await this.emit(completedEvent, lease);
           }
+          await this.telemetry({ type: "run.completed", runId, projectId: task.projectId, agent: task.agent, parentRunId: task.parentRunId, attempt, durationMs: completedAt - startedAt, success: true, status: "succeeded" });
           return { ...result, runId };
         } catch (error) {
           if (executionController.signal.aborted) throw error;
           if (attempt >= retry.maxAttempts) throw error;
           const delay = retry.delayMs * Math.pow(retry.backoff, attempt - 1);
           const waitingAt = Date.now();
+          await this.telemetry({ type: "run.retry", runId, projectId: task.projectId, agent: task.agent, attempt, durationMs: Date.now() - startedAt });
           const waitingEvent: ExecutionEvent = {
             type: "run.waiting",
             runId,
@@ -395,6 +429,7 @@ export class AgentRuntime {
         throw error;
       }
       if (task.signal?.aborted || executionController.signal.aborted) {
+        await this.telemetry({ type: "run.cancelled", runId, projectId: task.projectId, agent: task.agent, durationMs: Date.now() - startedAt, status: "cancelled" });
         const cancelledAt = Date.now();
         const cancelledEvent: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { agent: task.agent } };
         if (this.store?.transition) {
@@ -406,6 +441,7 @@ export class AgentRuntime {
         }
       } else {
         const failedAt = Date.now();
+        await this.telemetry({ type: "run.failed", runId, projectId: task.projectId, agent: task.agent, durationMs: failedAt - startedAt, status: "failed", success: false });
         const failureMessage = this.sanitizeError(error);
         const failedEvent: ExecutionEvent = {
           type: "run.failed",
@@ -521,6 +557,7 @@ export class AgentRuntime {
     if (!claimedRunId) {
       throw new Error("Execution resume was claimed concurrently: " + runId);
     }
+    await this.telemetry({ type: "run.recovered", runId: record.runId, projectId: record.projectId, agent: record.agent, parentRunId: record.parentRunId, recovered: true });
     return this.run(ai, {
       runId: claimedRunId,
       agent: record.agent,
@@ -670,6 +707,15 @@ export class AgentRuntime {
     });
   }
 
+  private async telemetry(event: AgentTelemetryEvent): Promise<void> {
+    if (!this.onTelemetry) return;
+    try {
+      await this.onTelemetry(Object.freeze({ ...event }));
+    } catch {
+      // Telemetry must never change execution correctness or side-effect semantics.
+    }
+  }
+
   private async emit(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
     if (this.store && lease) {
       if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
@@ -678,6 +724,16 @@ export class AgentRuntime {
       await this.store.transition(event.runId, {}, event);
     } else {
       await this.store?.appendEvent?.(event.runId, event);
+    }
+    const data = event.data;
+    if (event.type === "tool.started" || event.type === "tool.completed") {
+      await this.telemetry({
+        type: event.type,
+        runId: event.runId,
+        tool: typeof data?.tool === "string" ? data.tool : undefined,
+        attempt: typeof data?.attempt === "number" ? data.attempt : undefined,
+        success: event.type === "tool.completed" ? data?.success === true : undefined,
+      });
     }
     await this.onEvent?.(event);
   }
