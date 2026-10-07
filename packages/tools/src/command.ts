@@ -16,6 +16,39 @@ function basename(command: string): string {
   return normalized.split("/").pop() ?? normalized;
 }
 
+function normalizedCommandPath(command: string): string {
+  return command.trim().replaceAll("\\", "/").toLowerCase();
+}
+
+async function commandMatchesPathAllowlist(command: string, allowedCommands: string[]): Promise<boolean> {
+  const normalizedCommand = normalizedCommandPath(command);
+  const commandBase = basename(command).toLowerCase();
+  const fs = await import("node:fs/promises");
+  const pathModule = await import("node:path");
+  for (const entry of allowedCommands) {
+    const normalizedEntry = normalizedCommandPath(entry);
+    if (normalizedEntry.includes("/")) {
+      if (normalizedCommand === normalizedEntry) return true;
+      continue;
+    }
+    if (!normalizedCommand.includes("/") && commandBase === normalizedEntry) return true;
+    if (commandBase !== normalizedEntry) continue;
+    try {
+      const commandReal = normalizedCommandPath(await fs.realpath(command));
+      const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
+      for (const directory of (process.env.PATH ?? "").split(pathModule.delimiter).filter(Boolean)) {
+        for (const extension of extensions) {
+          const candidate = pathModule.join(directory, commandBase + extension.toLowerCase());
+          try {
+            if (commandReal === normalizedCommandPath(await fs.realpath(candidate))) return true;
+          } catch {}
+        }
+      }
+    } catch {}
+  }
+  return false;
+}
+
 export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
   const policy = createToolPolicy(inputPolicy);
   const allowedCommands = (inputPolicy.allowedCommands ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean);
@@ -64,7 +97,7 @@ export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
         argBytes += Buffer.byteLength(arg, "utf8");
         if (argBytes > maxArgBytes) throw new Error("Command arguments exceed maxArgBytes");
       }
-      if (!allowedCommands.includes(basename(command).toLowerCase())) throw new Error("Command is not allowed by policy");
+      if (!(await commandMatchesPathAllowlist(command, allowedCommands))) throw new Error("Command is not allowed by policy");
       if (typeof cwd !== "undefined" && typeof cwd !== "string") throw new Error("cwd must be a string");
       if (policy.allowedDirectories.length) {
         if (!cwd) throw new Error("cwd is required when allowedDirectories are configured");

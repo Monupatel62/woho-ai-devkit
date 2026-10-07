@@ -101,6 +101,7 @@ const run = async () => {
   assert.throws(() => createBraveSearchProvider({ apiKey: " " }), /apiKey is required/);
 
   const command = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], timeoutMs: 2_000, maxOutputBytes: 10_000 });
+  await assert.rejects(() => command.execute({ command: join(process.cwd(), "node"), args: ["-e", "process.exit(0)"], cwd: process.cwd() }), /not allowed/);
   assert.equal(command.capability, "command");
   assert.equal(command.action, "execute");
   assert.deepEqual(command.authorize?.({ command: process.execPath, cwd: process.cwd() }), {
