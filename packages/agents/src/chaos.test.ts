@@ -30,7 +30,7 @@ async function testExpiredWorkerCannotFinalizeAfterRecovery(): Promise<void> {
   const b = await store.claimExecution!("fence-chaos", "worker-b", 1000, 200);
   assert.ok(a && b);
   assert.equal(b.lease.fencingToken, 2);
-  await assert.rejects(() => store.updateFenced!("fence-chaos", a.lease.fencingToken, { status: "failed", error: "stale" }), /fencing token is stale/);
+  await assert.rejects(() => Promise.resolve().then(() => store.updateFenced!("fence-chaos", a.lease.fencingToken, { status: "failed", error: "stale" })), /fencing token is stale/);
   await store.updateFenced!("fence-chaos", b.lease.fencingToken, { status: "succeeded", completedAt: 201 });
   assert.equal(store.get("fence-chaos")?.status, "succeeded");
 }
