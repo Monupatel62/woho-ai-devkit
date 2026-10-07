@@ -865,3 +865,24 @@ const run = async () => {
   console.log("agent runtime tests passed");
 };
 run().catch((error) => { console.error(error); process.exitCode = 1; });
+test("tool execution receives project and session scope", async () => {
+  let observed: { projectId?: string; sessionId?: string } | undefined;
+  const agent = createAgent(createAI({ provider: createMockProvider({ response: "done" }) }), {
+    name: "scope-tool",
+    tools: [{
+      name: "scope",
+      description: "scope",
+      execute: async (_input, context) => {
+        observed = { projectId: context?.projectId, sessionId: context?.sessionId };
+        return "ok";
+      },
+    }],
+  });
+  const result = await agent.run("run", {
+    projectId: "project-secure",
+    sessionId: "session-secure",
+    runId: "run-secure",
+  });
+  assert.equal(result.text, "done");
+  assert.deepEqual(observed, { projectId: "project-secure", sessionId: "session-secure" });
+});
