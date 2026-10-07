@@ -773,7 +773,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
-      try { validateExecutionTransition(current, patch.status); } catch { return false; }
+      try { validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current, patch.status); } catch { return false; }
       const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
       try { validateExecutionRecord(next); } catch { return false; }
       await this.writeRecord(target, cloneRecord(next), true);
