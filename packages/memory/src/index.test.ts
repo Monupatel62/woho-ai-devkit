@@ -68,6 +68,10 @@ const run = async () => {
   );
   const boundedStore = createJsonFileStore({ filePath: join(dir, "bounded.json"), maxFileBytes: 40 });
   await assert.rejects(() => boundedStore.add({ id: "large", role: "user", content: "x".repeat(100) }), /exceeds maxFileBytes/);
+  const oversizedExistingPath = join(dir, "oversized-existing.json");
+  await writeFile(oversizedExistingPath, "x".repeat(100));
+  const oversizedExistingStore = createJsonFileStore({ filePath: oversizedExistingPath, maxFileBytes: 40 });
+  await assert.rejects(() => oversizedExistingStore.list(), /not a regular file, or too large/);
   const symlinkTarget = join(dir, "symlink-target.json");
   const symlinkPath = join(dir, "symlink.json");
   await writeFile(symlinkTarget, JSON.stringify([{ id: "outside", role: "user", content: "outside" }]));
