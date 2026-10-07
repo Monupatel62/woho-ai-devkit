@@ -524,3 +524,5 @@ export * from "./coding-loop.js";
 export * from "./browser.js";
 
 export * from "./project-context.js";
+
+export * from "./worker.js";
