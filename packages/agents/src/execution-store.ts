@@ -544,6 +544,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRequiredTimestamp(decidedAt, "Execution approval decidedAt");
     const current = this.records.get(runId);
     if (!current?.approval || current.approval.status !== "pending" || current.approval.approvalId !== approvalId) return false;
+    if (current.status === "cancelled" || current.status === "succeeded" || current.status === "failed") return false;
     if (decidedAt < current.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
     const next: ExecutionRecord = {
       ...current,
@@ -869,6 +870,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current?.approval || current.approval.status !== "pending" || current.approval.approvalId !== approvalId) return false;
+    if (current.status === "cancelled" || current.status === "succeeded" || current.status === "failed") return false;
       if (decidedAt < current.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
       const next: ExecutionRecord = {
         ...current,
