@@ -46,6 +46,40 @@ const run = async () => {
   assert.equal(result.toolResults["mock-call-1"], 5);
   assert.ok((await store.list({ sessionId: "session-a" })).length >= 3);
 
+  const tokenBudget = createAgent(createAI({
+    provider: {
+      name: "token-budget",
+      async chat() {
+        return {
+          id: "budget",
+          text: "too much",
+          model: "budget",
+          usage: { inputTokens: 8, outputTokens: 5, totalTokens: 13 },
+        };
+      },
+    },
+  }), { name: "token-budget", maxTotalTokens: 12 });
+  await assert.rejects(tokenBudget.run("budget"), (error) => error instanceof AIError && error.code === "AGENT_TOKEN_BUDGET_EXCEEDED");
+
+  const toolBudget = createAgent(createAI({
+    provider: {
+      name: "tool-budget",
+      async chat() {
+        return {
+          id: "tool-budget",
+          text: "",
+          model: "tool-budget",
+          finishReason: "tool_call",
+          toolCalls: [
+            { id: "one", name: "echo", arguments: "{}" },
+            { id: "two", name: "echo", arguments: "{}" },
+          ],
+        };
+      },
+    },
+  }), { name: "tool-budget", maxToolCalls: 1, tools: [{ name: "echo", description: "Echo", execute: async () => "ok" }] });
+  await assert.rejects(toolBudget.run("budget"), (error) => error instanceof AIError && error.code === "AGENT_TOOL_BUDGET_EXCEEDED");
+
   const limited = createAgent(createAI({ provider: createMockProvider({ response: "ok" }) }), {
     name: "limited",
     maxContextMessages: 1,
