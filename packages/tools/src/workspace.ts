@@ -248,9 +248,12 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         if (Buffer.byteLength(value.content, "utf8") > policy.maxFileBytes) throw new Error("Content exceeds maxFileBytes");
         const { target, parent } = await safeParent(root, relative as string);
         await fs.mkdir(parent, { recursive: true });
+        const realParent = await fs.realpath(parent);
+        if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
+        const safeTarget = path.join(realParent, path.basename(target));
         let existing: Awaited<ReturnType<typeof fs.lstat>> | undefined;
         try {
-          existing = await fs.lstat(target);
+          existing = await fs.lstat(safeTarget);
           if (existing.isSymbolicLink()) throw new Error("Refusing to write through a symlink");
           if (existing.isDirectory()) throw new Error("Cannot write a directory");
         } catch (error) {
@@ -259,7 +262,7 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         const flags = process.platform === "win32"
           ? existing ? "r+" : "wx"
           : fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | fs.constants.O_NOFOLLOW;
-        const handle = await fs.open(target, flags, 0o600);
+        const handle = await fs.open(safeTarget, flags, 0o600);
         try {
           const opened = await handle.stat();
           if (!opened.isFile() || (existing && (opened.dev !== existing.dev || opened.ino !== existing.ino))) {
@@ -275,9 +278,13 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
 
       if (operation === "mkdir") {
         if (!canWrite) throw new Error("Workspace write is disabled by policy");
-        const { target } = await safeParent(root, relative as string);
+        const { target, parent } = await safeParent(root, relative as string);
         await rejectSymlink(root, relative as string);
-        await fs.mkdir(target, { recursive: true, mode: 0o700 });
+        await fs.mkdir(parent, { recursive: true, mode: 0o700 });
+        const realParent = await fs.realpath(parent);
+        if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
+        const safeTarget = path.join(realParent, path.basename(target));
+        await fs.mkdir(safeTarget, { recursive: true, mode: 0o700 });
         await safeExisting(root, relative as string);
         return { path: relative, created: true };
       }
@@ -302,13 +309,16 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         const source = await safeExisting(root, relative as string);
         const { target: destination, parent } = await safeParent(root, value.destination);
         await fs.mkdir(parent, { recursive: true });
+        const realParent = await fs.realpath(parent);
+        if (realParent !== root && !realParent.startsWith(root + path.sep)) throw new Error("Parent escapes the workspace root");
+        const safeDestination = path.join(realParent, path.basename(destination));
         try {
-          const existing = await fs.lstat(destination);
+          const existing = await fs.lstat(safeDestination);
           if (existing.isSymbolicLink()) throw new Error("Refusing to replace a symlink");
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
         }
-        await fs.rename(source, destination);
+        await fs.rename(source, safeDestination);
         return { from: relative, to: value.destination, moved: true };
       }
 
