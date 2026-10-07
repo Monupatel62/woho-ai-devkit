@@ -800,7 +800,7 @@ export class FileExecutionStore implements ExecutionStore {
         if (!record || (record.status !== "queued" && record.status !== "running")) continue;
         if (options.projectId !== undefined && record.projectId !== options.projectId) continue;
         if (record.availableAt !== undefined && record.availableAt > now) continue;
-        if (record.lease && record.lease.expiresAt > now && record.lease.ownerId !== ownerId) continue;
+        if (record.lease && record.lease.expiresAt > now) continue;
         candidates.push(record);
       }
       candidates.sort((a, b) => a.updatedAt - b.updatedAt);
