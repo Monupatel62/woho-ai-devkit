@@ -345,7 +345,13 @@ export class AgentRuntime {
       throw error;
     } finally {
       if (heartbeat) clearInterval(heartbeat);
-      if (lease && this.store?.releaseLease) await this.store.releaseLease(runId, leaseOwnerId, lease.fencingToken).catch(() => false);
+      if (lease && this.store?.releaseLease) {
+        try {
+          await this.store.releaseLease(runId, leaseOwnerId, lease.fencingToken);
+        } catch {
+          // Lease cleanup is best-effort after the execution has already reached a terminal boundary.
+        }
+      }
       this.release();
     }
   }
