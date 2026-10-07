@@ -16,6 +16,10 @@ function basename(command: string): string {
   return normalized.split("/").pop() ?? normalized;
 }
 
+function normalizedCommandPath(command: string): string {
+  return command.trim().replaceAll("\\", "/").toLowerCase();
+}
+
 export function commandTool(inputPolicy: CommandToolPolicy = {}): AgentTool {
   const policy = createToolPolicy(inputPolicy);
   const allowedCommands = (inputPolicy.allowedCommands ?? []).map((item) => item.trim().toLowerCase()).filter(Boolean);
