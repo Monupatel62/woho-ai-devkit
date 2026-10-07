@@ -56,7 +56,7 @@ function isPrivateAddress(address: string): boolean {
   return false;
 }
 
-async function resolvePublicHttpsAddress(hostname: string, allowPrivateAddresses: boolean): Promise<{ address: string; family: 4 | 6 }> {
+export async function resolvePublicHttpsAddress(hostname: string, allowPrivateAddresses: boolean): Promise<{ address: string; family: 4 | 6 }> {
   if (allowPrivateAddresses) {
     if (isIP(hostname) === 4) return { address: hostname, family: 4 };
     if (isIP(hostname) === 6) return { address: hostname, family: 6 };
