@@ -27,11 +27,11 @@ for (const makeStore of [
     { startedAt: 999 },
   ];
   for (const patch of immutablePatches) {
-    await assert.rejects(() => Promise.resolve(store.update(runId, patch)), /identity field cannot be mutated/);
+    await assert.rejects(() => Promise.resolve().then(() => store.update(runId, patch)), /identity field cannot be mutated/);
     assert.equal(await store.updateIf!(runId, 10, patch), false);
-    await assert.rejects(() => Promise.resolve(store.transition!(runId, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
-    await assert.rejects(() => Promise.resolve(store.updateFenced!(runId, lease!.fencingToken, patch)), /identity field cannot be mutated/);
-    await assert.rejects(() => Promise.resolve(store.transitionFenced!(runId, lease!.fencingToken, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
+    await assert.rejects(() => Promise.resolve().then(() => store.transition!(runId, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
+    await assert.rejects(() => Promise.resolve().then(() => store.updateFenced!(runId, lease!.fencingToken, patch)), /identity field cannot be mutated/);
+    await assert.rejects(() => Promise.resolve().then(() => store.transitionFenced!(runId, lease!.fencingToken, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
   }
   const current = await store.get(runId);
   assert.equal(current?.runId, runId);
