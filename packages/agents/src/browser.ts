@@ -17,7 +17,10 @@ function assertUrlAllowed(url: string, allowedHosts?: readonly string[]): void {
   const host = parsed.hostname.toLowerCase();
   if (!allowedHosts.some((allowed) => host === allowed.toLowerCase() || host.endsWith(`.${allowed.toLowerCase()}`))) throw new Error("Browser host is not allowed");
 }
-function boundPage(page: BrowserPage, maxTextChars: number): BrowserPage { return { ...page, text: page.text?.slice(0, maxTextChars) }; }
+function boundPage(page: BrowserPage, maxTextChars: number, allowedHosts?: readonly string[]): BrowserPage {
+  assertUrlAllowed(page.url, allowedHosts);
+  return { ...page, text: page.text?.slice(0, maxTextChars) };
+}
 
 export function createBrowserTools(browser: BrowserClient, policy: BrowserPolicy = {}): AgentTool[] {
   const maxTextChars = policy.maxTextChars ?? 30_000;
@@ -30,7 +33,7 @@ export function createBrowserTools(browser: BrowserClient, policy: BrowserPolicy
       const url = (input as Record<string, unknown>).url;
       if (typeof url !== "string" || !url.trim()) throw new Error("url is required");
       assertUrlAllowed(url, policy.allowedHosts);
-      return boundPage(await browser.open(url, { signal: context?.signal, runId: context?.runId }), maxTextChars);
+      return boundPage(await browser.open(url, { signal: context?.signal, runId: context?.runId }), maxTextChars, policy.allowedHosts);
     },
   };
   const click: AgentTool = {
@@ -40,7 +43,7 @@ export function createBrowserTools(browser: BrowserClient, policy: BrowserPolicy
       if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
       const selector = (input as Record<string, unknown>).selector;
       if (typeof selector !== "string" || !selector.trim()) throw new Error("selector is required");
-      return boundPage(await browser.click(selector, { signal: context?.signal, runId: context?.runId }), maxTextChars);
+      return boundPage(await browser.click(selector, { signal: context?.signal, runId: context?.runId }), maxTextChars, policy.allowedHosts);
     },
   };
   const type: AgentTool = {
@@ -51,7 +54,7 @@ export function createBrowserTools(browser: BrowserClient, policy: BrowserPolicy
       const value = input as Record<string, unknown>;
       if (typeof value.selector !== "string" || !value.selector.trim()) throw new Error("selector is required");
       if (typeof value.text !== "string") throw new Error("text is required");
-      return boundPage(await browser.type(value.selector, value.text, { signal: context?.signal, runId: context?.runId }), maxTextChars);
+      return boundPage(await browser.type(value.selector, value.text, { signal: context?.signal, runId: context?.runId }), maxTextChars, policy.allowedHosts);
     },
   };
   const close: AgentTool = {
