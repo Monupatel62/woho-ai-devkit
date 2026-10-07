@@ -85,6 +85,22 @@ try {
   );
   await rm(malformedPath, { force: true });
 
+  await assert.rejects(
+    () => store.appendEvent(record.runId, {
+      type: "tool.started",
+      runId: record.runId,
+      timestamp: 0,
+    }),
+    /cannot move execution history backwards/,
+  );
+  await assert.rejects(
+    () => store.appendEvent(record.runId, {
+      type: "tool.started",
+      runId: record.runId,
+      timestamp: 0.5,
+    }),
+    /cannot move execution history backwards/,
+  );
   const event = {
     type: "run.completed" as const,
     runId: record.runId,
