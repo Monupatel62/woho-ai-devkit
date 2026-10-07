@@ -470,6 +470,7 @@ async function assertDeleteDirectorySync(): Promise<void> {
       attempts: 1,
       events: [],
     });
+    syncCalls.length = 0;
     assert.equal(await store.removeIf("remove-if-sync", 20), true);
     assert.equal(syncCalls.length, 2);
   } finally {
