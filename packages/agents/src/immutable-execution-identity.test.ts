@@ -4,6 +4,16 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+async function expectIdentityBlocked(operation: () => void | Promise<void>): Promise<void> {
+  try {
+    await operation();
+  } catch (error) {
+    assert.match(error instanceof Error ? error.message : String(error), /identity field cannot be mutated/);
+    return;
+  }
+  assert.fail("Expected execution identity mutation to be rejected");
+}
+
 function seed(runId: string): ExecutionRecord {
   return { runId, projectId: "project-a", agent: "general", input: "original-input", parentRunId: "parent-a", sessionId: "session-a", metadata: {}, status: "running", startedAt: 10, updatedAt: 10, attempts: 0, events: [] };
 }
@@ -27,11 +37,11 @@ for (const makeStore of [
     { startedAt: 999 },
   ];
   for (const patch of immutablePatches) {
-    await assert.rejects(() => Promise.resolve().then(() => store.update(runId, patch)), /identity field cannot be mutated/);
+    await expectIdentityBlocked(() => store.update(runId, patch));
     assert.equal(await store.updateIf!(runId, 10, patch), false);
-    await assert.rejects(() => Promise.resolve().then(() => store.transition!(runId, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
-    await assert.rejects(() => Promise.resolve().then(() => store.updateFenced!(runId, lease!.fencingToken, patch)), /identity field cannot be mutated/);
-    await assert.rejects(() => Promise.resolve().then(() => store.transitionFenced!(runId, lease!.fencingToken, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
+    await expectIdentityBlocked(() => store.transition!(runId, patch, { type: "run.waiting", runId, timestamp: 20 }));
+    await expectIdentityBlocked(() => store.updateFenced!(runId, lease!.fencingToken, patch));
+    await expectIdentityBlocked(() => store.transitionFenced!(runId, lease!.fencingToken, patch, { type: "run.waiting", runId, timestamp: 20 }));
   }
   const current = await store.get(runId);
   assert.equal(current?.runId, runId);
