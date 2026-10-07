@@ -417,6 +417,37 @@ export class InMemoryExecutionStore implements ExecutionStore {
   }
 
 
+  claimToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string): ExecutionToolReceipt | undefined {
+    validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
+    const current = this.records.get(runId);
+    if (!current) throw new Error("Execution not found: " + runId);
+    this.assertCurrentFencingToken(current, fencingToken);
+    const existing = current.toolReceipts?.[callId];
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId);
+      return existing;
+    }
+    const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
+    const next = { ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: Math.max(current.updatedAt, receipt.updatedAt) };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+    return receipt;
+  }
+
+  completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
+    validateRunId(runId); validateCallId(callId);
+    const current = this.records.get(runId);
+    if (!current) return false;
+    this.assertCurrentFencingToken(current, fencingToken);
+    const receipt = current.toolReceipts?.[callId];
+    if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
+    const updatedAt = patch.updatedAt ?? Date.now();
+    const next = { ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: { ...receipt, ...patch, updatedAt } }, updatedAt: Math.max(current.updatedAt, updatedAt) };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+    return true;
+  }
+
   claimToolExecution(runId: string, callId: string, fingerprint: string): ExecutionToolReceipt | undefined {
     validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
     const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
@@ -637,37 +668,6 @@ export class FileExecutionStore implements ExecutionStore {
     }));
   }
 
-
-  claimToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string): ExecutionToolReceipt | undefined {
-    validateRunId(runId); validateCallId(callId); if (!fingerprint.trim()) throw new Error("Tool execution fingerprint is required");
-    const current = this.records.get(runId);
-    if (!current) throw new Error("Execution not found: " + runId);
-    this.assertCurrentFencingToken(current, fencingToken);
-    const existing = current.toolReceipts?.[callId];
-    if (existing) {
-      if (existing.fingerprint !== fingerprint) throw new Error("Tool execution fingerprint conflict: " + callId);
-      return existing;
-    }
-    const receipt: ExecutionToolReceipt = { callId, fingerprint, status: "in_flight", updatedAt: Date.now() };
-    const next = { ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: receipt }, updatedAt: Math.max(current.updatedAt, receipt.updatedAt) };
-    validateExecutionRecord(next);
-    this.records.set(runId, cloneRecord(next));
-    return receipt;
-  }
-
-  completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
-    validateRunId(runId); validateCallId(callId);
-    const current = this.records.get(runId);
-    if (!current) return false;
-    this.assertCurrentFencingToken(current, fencingToken);
-    const receipt = current.toolReceipts?.[callId];
-    if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
-    const updatedAt = patch.updatedAt ?? Date.now();
-    const next = { ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: { ...receipt, ...patch, updatedAt } }, updatedAt: Math.max(current.updatedAt, updatedAt) };
-    validateExecutionRecord(next);
-    this.records.set(runId, cloneRecord(next));
-    return true;
-  }
 
   async updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): Promise<void> {
     validateRunId(runId);
@@ -998,19 +998,3 @@ export async function pruneExecutionHistory(
   if (!store.remove) throw new Error("Execution store does not support history removal");
   const now = options.now ?? Date.now();
   const records = await store.list({ status: options.status });
-  const cutoff = options.olderThanMs === undefined ? undefined : now - options.olderThanMs;
-  const sorted = records.sort((a, b) => a.updatedAt - b.updatedAt);
-  const keepFromIndex = options.maxRecords === undefined
-    ? sorted.length
-    : Math.max(0, sorted.length - options.maxRecords);
-  const candidates = sorted.filter((record, index) => {
-    const oldEnough = cutoff === undefined || record.updatedAt <= cutoff;
-    const overCount = options.maxRecords === undefined || index < keepFromIndex;
-    return oldEnough && overCount;
-  });
-  const removed: ExecutionRecord[] = [];
-  for (const record of candidates) {
-    if (await store.remove(record.runId)) removed.push(record);
-  }
-  return removed;
-}
