@@ -106,6 +106,7 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
   const canDelete = inputPolicy.allowDelete ?? false;
   const canMove = inputPolicy.allowMove ?? false;
   const capability = "file";
+  let operationTail = Promise.resolve();
 
   return {
     name: "workspace",
@@ -135,6 +136,11 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
       additionalProperties: false
     },
     async execute(input, context) {
+      const previous = operationTail;
+      let release!: () => void;
+      operationTail = new Promise<void>((resolve) => { release = resolve; });
+      await previous;
+      try {
       if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Input must be an object");
       const value = input as Record<string, unknown>;
       const operation = value.operation;
@@ -246,6 +252,9 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
       }
 
       throw new Error("Unsupported workspace operation");
+      } finally {
+        release();
+      }
     }
   };
 }
