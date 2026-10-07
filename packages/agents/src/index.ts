@@ -474,7 +474,7 @@ export class Agent {
             if (this.toolTimeoutMs !== undefined) {
               timer = setTimeout(() => toolController.abort(new AIError("Tool execution timed out: " + tool.name, "TOOL_TIMEOUT")), this.toolTimeoutMs);
             }
-            result = await tool.execute(parsed, { runId: runOptions.runId, signal: toolController.signal });
+            result = await tool.execute(parsed, { runId: runOptions.runId, projectId: runOptions.projectId, sessionId: runOptions.sessionId, signal: toolController.signal });
             if (toolController.signal.aborted) {
               throw toolController.signal.reason ?? new AIError("Tool execution aborted: " + tool.name, "TOOL_ABORTED");
             }
