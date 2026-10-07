@@ -88,7 +88,11 @@ async function fetchPinnedHttps(
       settled = true;
       reject(error instanceof Error ? error : new Error(String(error)));
     };
-    const req = httpsRequest(url, {
+    const req = httpsRequest({
+      protocol: "https:",
+      hostname: url.hostname,
+      port: url.port ? Number(url.port) : 443,
+      path: url.pathname + url.search,
       method: "GET",
       signal,
       headers: {
