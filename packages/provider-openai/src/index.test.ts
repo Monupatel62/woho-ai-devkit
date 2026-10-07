@@ -89,19 +89,17 @@ const run = async () => {
   for await (const chunk of provider.stream!({ messages: [{ role: "user", content: "stream" }] })) chunks.push(chunk.text);
   assert.deepEqual(chunks, ["hel", "lo"]);
 
-  const utf8Stream = new ReadableStream<Uint8Array>({
+  const malformedUtf8Stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const encoder = new TextEncoder();
-      const bytes = encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: "😀" } }] }) + "\n\n");
-      controller.enqueue(bytes.slice(0, bytes.length - 1));
-      controller.enqueue(bytes.slice(bytes.length - 1));
+      controller.enqueue(encoder.encode('data: ' + JSON.stringify({ choices: [{ delta: { content: "ok" } }] }) + "\n\n"));
+      controller.enqueue(new Uint8Array([0xE2]));
       controller.close();
     },
   });
-  globalThis.fetch = async () => new Response(utf8Stream, { status: 200, headers: { "content-type": "text/event-stream" } });
-  const utf8Chunks: string[] = [];
-  for await (const chunk of provider.stream!({ messages: [{ role: "user", content: "utf8" }] })) utf8Chunks.push(chunk.text);
-  assert.deepEqual(utf8Chunks, ["😀"]);
+  globalThis.fetch = async () => new Response(malformedUtf8Stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+  const malformedUtf8 = provider.stream!({ messages: [{ role: "user", content: "malformed utf8" }] });
+  await assert.rejects(async () => { for await (const _ of malformedUtf8) { /* expected failure */ } }, /Malformed provider SSE frame/);
 
   globalThis.fetch = async () => new Response('data: {bad-json}\\n\\n', { status: 200, headers: { "content-type": "text/event-stream" } });
   const malformed = provider.stream!({ messages: [{ role: "user", content: "bad" }] });
