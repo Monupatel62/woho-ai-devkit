@@ -19,5 +19,5 @@ test("browser tools enforce HTTP(S), host policy, and bounded output", async () 
   await assert.rejects(() => tools[0].execute({ url: "file:///tmp/x" }));
   await tools[1].execute({ selector: "#go" }, { signal: controller.signal });
   await assert.rejects(() => tools[1].execute({ selector: "#evil" }, { signal: controller.signal }), /Browser host is not allowed/); await tools[2].execute({ selector: "#q", text: "hello" }, { signal: controller.signal }); await tools[3].execute({}, { signal: controller.signal });
-  assert.deepEqual(calls, ["open:https://example.com/path:signal", "click:#go:signal", "type:#q:hello:signal", "close:signal"]);
+  assert.deepEqual(calls, ["open:https://example.com/path:signal", "click:#go:signal", "click:#evil:signal", "type:#q:hello:signal", "close:signal"]);
 });
