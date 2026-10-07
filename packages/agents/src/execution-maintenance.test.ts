@@ -39,6 +39,19 @@ const run = async () => {
   assert.equal(store.get("stale")?.events.at(-1)?.type, "run.failed");
   assert.deepEqual(store.get("stale")?.events.at(-1)?.data, { reason: "stale", staleAfterMs: 500 });
 
+  await store.create(makeRecord("timestamp-guard", "running", 1000));
+  await assert.rejects(
+    () => store.update("timestamp-guard", { updatedAt: 900 }),
+    /Execution updatedAt cannot be before startedAt/,
+  );
+  assert.equal(store.get("timestamp-guard")?.updatedAt, 1000);
+
+  await store.create({ ...makeRecord("leased-stale", "running", 100), lease: { ownerId: "worker-a", fencingToken: 1, expiresAt: 5000 } });
+  const leasedRecovered = await recoverStaleExecutions(store, { staleAfterMs: 500, now: 1000 });
+  assert.equal(leasedRecovered.some((record) => record.runId === "leased-stale"), false);
+  assert.equal(store.get("leased-stale")?.status, "running");
+
+
   const raced = store.get("fresh");
   assert.ok(raced);
   assert.equal(store.updateIf?.("fresh", raced.updatedAt - 1, { status: "failed" }), false);
@@ -76,6 +89,11 @@ const run = async () => {
     const fileStore = new FileExecutionStore({ directory: fileRoot });
     await fileStore.create(makeRecord("file-stale", "running", 100));
     const fileRecovered = await recoverStaleExecutions(fileStore, { staleAfterMs: 50, now: 200 });
+    assert.equal(fileRecovered.length, 1);
+    await fileStore.create({ ...makeRecord("file-leased-stale", "running", 100), lease: { ownerId: "worker-a", fencingToken: 1, expiresAt: 5000 } });
+    const fileLeasedRecovered = await recoverStaleExecutions(fileStore, { staleAfterMs: 50, now: 200 });
+    assert.equal(fileLeasedRecovered.some((record) => record.runId === "file-leased-stale"), false);
+    assert.equal((await fileStore.get("file-leased-stale"))?.status, "running");
     assert.equal(fileRecovered.length, 1);
     assert.equal((await fileStore.get("file-stale"))?.status, "failed");
     const fileNewer = makeRecord("file-newer", "succeeded", 300);
