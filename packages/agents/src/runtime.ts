@@ -725,6 +725,16 @@ export class AgentRuntime {
     } else {
       await this.store?.appendEvent?.(event.runId, event);
     }
+    const data = event.data;
+    if (event.type === "tool.started" || event.type === "tool.completed") {
+      await this.telemetry({
+        type: event.type,
+        runId: event.runId,
+        tool: typeof data?.tool === "string" ? data.tool : undefined,
+        attempt: typeof data?.attempt === "number" ? data.attempt : undefined,
+        success: event.type === "tool.completed" ? data?.success === true : undefined,
+      });
+    }
     await this.onEvent?.(event);
   }
 
