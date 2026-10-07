@@ -5,6 +5,6 @@
   "description": "WoHo AI Desktop application foundation.",
   "scripts": {
     "dev": "cargo tauri dev",
-    "build": "cargo tauri build"
+    "desktop:build": "cargo tauri build"
   }
 }
