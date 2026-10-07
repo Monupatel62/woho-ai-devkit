@@ -66,3 +66,25 @@ test("runtime enforces wall-clock execution timeout", async () => {
   );
   assert.equal(store.get("run-timeout")?.status, "failed");
 });
+
+test("runtime telemetry is structured and excludes task/tool payloads", async () => {
+  const telemetry: Array<Record<string, unknown>> = [];
+  const registry = new AgentRegistry();
+  registry.register({ id: "telemetry-agent", name: "Telemetry Agent", role: "general" }, () => ({
+    run: async () => ({ text: "ok", steps: 1, messages: [], toolResults: {} }),
+  } as unknown as Agent));
+  const runtime = new AgentRuntime({
+    onTelemetry: (event) => { telemetry.push({ ...event }); },
+  }, registry);
+  await runtime.run({} as never, {
+    agent: "telemetry-agent",
+    input: "PRIVATE TASK PAYLOAD",
+    runId: "telemetry-run",
+    projectId: "project-observe",
+  });
+  assert.equal(telemetry[0]?.type, "run.started");
+  assert.equal(telemetry.at(-1)?.type, "run.completed");
+  assert.equal(telemetry[0]?.projectId, "project-observe");
+  assert.equal("input" in telemetry[0]!, false);
+  assert.equal("error" in telemetry.at(-1)!, false);
+});
