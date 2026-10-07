@@ -527,8 +527,8 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const next: ExecutionRecord = {
       ...current,
       status: "cancelled",
-      completedAt: Math.max(current.completedAt ?? current.startedAt, cancelledAt),
-      updatedAt: Math.max(current.updatedAt, cancelledAt),
+      completedAt: effectiveCancelledAt,
+      updatedAt: effectiveCancelledAt,
       error: reason.slice(0, 4096),
       lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
       events: [...current.events, event],
@@ -570,7 +570,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (!current || (current.status !== "failed" && current.status !== "cancelled")) return undefined;
     if (current.resumeRunId) return current.resumeRunId;
     if (current.updatedAt !== expectedUpdatedAt) return undefined;
-    this.records.set(runId, cloneRecord({ ...current, resumeRunId, updatedAt: Date.now() }));
+    this.records.set(runId, cloneRecord({ ...current, resumeRunId, updatedAt: Math.max(current.updatedAt, Date.now()) }));
     return resumeRunId;
   }
 }
