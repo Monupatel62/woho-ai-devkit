@@ -250,3 +250,55 @@ assert.throws(
 assert.throws(() => approvalStore.update("approval-audit-run", {
   approval: { ...approvalRun.approval, status: "pending", decidedAt: 3 },
 }), /Pending approval cannot have decidedAt/);
+
+async function assertMutationFencing(store: InMemoryExecutionStore | FileExecutionStore, label: string): Promise<void> {
+  const runId = "fencing-" + label;
+  const seed = {
+    runId,
+    agent: "general",
+    metadata: {},
+    status: "running" as const,
+    startedAt: 1,
+    updatedAt: 1,
+    attempts: 0,
+    events: [],
+  };
+  await store.create(seed);
+  const base = Date.now();
+  const first = await store.acquireLease!(runId, "worker-a", 100_000, base);
+  assert.equal(first?.fencingToken, 1);
+  assert.equal(await store.releaseLease!(runId, "worker-a", first!.fencingToken, base + 10), true);
+  const second = await store.acquireLease!(runId, "worker-b", 100_000, base + 20);
+  assert.equal(second?.fencingToken, 2);
+
+  await assert.rejects(
+    async () => { await store.updateFenced!(runId, first!.fencingToken, { input: "stale-write" }); },
+    /fencing token is stale/,
+  );
+  await assert.rejects(
+    async () => { await store.transitionFenced!(
+      runId,
+      first!.fencingToken,
+      { status: "waiting" },
+      { type: "run.waiting", runId, timestamp: base + 21 },
+    ); },
+    /fencing token is stale/,
+  );
+
+  await store.updateFenced!(runId, second!.fencingToken, { input: "current-write" });
+  assert.equal((await store.get(runId))?.input, "current-write");
+  assert.equal((await store.get(runId))?.lease?.fencingToken, 2);
+}
+
+const fencedMemory = new InMemoryExecutionStore();
+await assertMutationFencing(fencedMemory, "memory");
+
+const fencedRoot = await mkdtemp(path.join(os.tmpdir(), "woho-fencing-store-"));
+try {
+  const fencedFile = new FileExecutionStore({ directory: fencedRoot });
+  await assertMutationFencing(fencedFile, "file");
+} finally {
+  await rm(fencedRoot, { recursive: true, force: true });
+}
+
+console.log("mutation fencing tests passed");

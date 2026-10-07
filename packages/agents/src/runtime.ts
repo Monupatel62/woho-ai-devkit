@@ -162,7 +162,7 @@ export class AgentRuntime {
     const lease = this.store?.acquireLease ? await this.store.acquireLease(runId, leaseOwnerId, this.executionLeaseTtlMs, startedAt) : undefined;
     if (this.store?.acquireLease && !lease) throw new AIError("Execution is already owned by another worker", "EXECUTION_LEASE_CONFLICT");
     let leaseLost = false;
-    await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } });
+    await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } }, lease);
     const heartbeat = this.store
       ? setInterval(() => {
           void (async () => {
@@ -171,7 +171,7 @@ export class AgentRuntime {
               const renewed = await this.store.renewLease(runId, leaseOwnerId, lease.fencingToken, this.executionLeaseTtlMs, now);
               if (!renewed) { leaseLost = true; return; }
             }
-            await this.store?.update(runId, { updatedAt: now });
+            await this.updateExecution(runId, { updatedAt: now }, lease);
           })().catch(() => undefined);
         }, this.heartbeatIntervalMs)
       : undefined;
@@ -182,7 +182,7 @@ export class AgentRuntime {
         try {
           if (leaseLost) throw new AIError("Execution lease was lost", "EXECUTION_LEASE_LOST");
           if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
-          await this.store?.update(runId, { attempts: attempt, status: "running", updatedAt: Date.now() });
+          await this.updateExecution(runId, { attempts: attempt, status: "running", updatedAt: Date.now() }, lease);
           const agent = this.registry.create(task.agent, ai);
           const approvalHandler = task.approval ?? this.approval;
           const auditedApproval = this.persistApprovalAudit && this.store
@@ -200,26 +200,26 @@ export class AgentRuntime {
                   ...(reason ? { reason } : {}),
                   requestedAt,
                 };
-                await this.store?.update(runId, { approval, status: "waiting", updatedAt: requestedAt });
+                await this.updateExecution(runId, { approval, status: "waiting", updatedAt: requestedAt }, lease);
                 const durableRequest = { ...request, approvalId };
                 try {
                   const approved = approvalHandler
                     ? await approvalHandler(durableRequest)
                     : await this.waitForApproval(runId, approvalId, task.signal);
                   const decidedAt = Date.now();
-                  await this.store?.update(runId, {
+                  await this.updateExecution(runId, {
                     approval: { ...approval, status: approved ? "approved" : "denied", decidedAt },
                     status: "running",
                     updatedAt: decidedAt,
-                  });
+                  }, lease);
                   return approved;
                 } catch (approvalError) {
                   const decidedAt = Date.now();
-                  await Promise.resolve().then(() => this.store?.update(runId, {
+                  await Promise.resolve().then(() => this.updateExecution(runId, {
                     approval: { ...approval, status: "denied", decidedAt },
                     status: "running",
                     updatedAt: decidedAt,
-                  })).catch(() => undefined);
+                  }, lease)).catch(() => undefined);
                   throw approvalError;
                 }
               }
@@ -228,13 +228,13 @@ export class AgentRuntime {
             signal: context.signal,
             runId,
             onEvent: async (event) => {
-              await this.recordAgentEvent(event);
+              await this.recordAgentEvent(event, lease);
             },
             approval: auditedApproval,
             checkpoint: latestCheckpoint,
-            onBeforeToolExecution: this.store?.claimToolExecution ? async ({ callId, tool, input }) => {
+            onBeforeToolExecution: this.store?.claimToolExecutionFenced && lease ? async ({ callId, tool, input }) => {
               const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
-              const receipt = await this.store!.claimToolExecution!(runId, callId, fingerprint);
+              const receipt = await this.store!.claimToolExecutionFenced!(runId, lease!.fencingToken, callId, fingerprint);
               if (!receipt) return;
               if (receipt.status === "in_flight") throw new AIError("Tool side effect is already in flight and cannot be replayed safely: " + callId, "TOOL_SIDE_EFFECT_AMBIGUOUS");
               if (receipt.fingerprint !== fingerprint) throw new AIError("Tool execution fingerprint conflict: " + callId, "TOOL_IDEMPOTENCY_CONFLICT");
@@ -244,12 +244,12 @@ export class AgentRuntime {
               try { replayResult = receipt.result === "__WOHO_UNDEFINED_RESULT__" ? undefined : JSON.parse(receipt.result); } catch { throw new AIError("Completed tool receipt is not valid JSON: " + callId, "TOOL_RECEIPT_INVALID"); }
               return { replay: true, result: replayResult };
             } : undefined,
-            onToolExecutionComplete: this.store?.completeToolExecution ? async ({ callId, tool, input, result, error }) => {
+            onToolExecutionComplete: this.store?.completeToolExecutionFenced && lease ? async ({ callId, tool, input, result, error }) => {
               const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
               const payload = result === undefined ? "__WOHO_UNDEFINED_RESULT__" : JSON.stringify(result);
               if (payload === undefined) throw new AIError("Tool result is not serializable for durable receipt", "TOOL_RECEIPT_INVALID");
               if (Buffer.byteLength(payload, "utf8") > this.maxToolReceiptBytes) throw new AIError("Tool receipt exceeds maxToolReceiptBytes", "TOOL_RECEIPT_TOO_LARGE");
-              const completed = await this.store!.completeToolExecution!(runId, callId, fingerprint, error ? { status: "failed", error } : { status: "completed", result: payload });
+              const completed = await this.store!.completeToolExecutionFenced!(runId, lease!.fencingToken, callId, fingerprint, error ? { status: "failed", error } : { status: "completed", result: payload });
               if (!completed) throw new AIError("Tool receipt could not be committed safely: " + callId, "TOOL_RECEIPT_COMMIT_FAILED");
             } : undefined,
             onCheckpoint: this.store ? async (checkpoint: AgentExecutionCheckpoint) => {
@@ -264,10 +264,10 @@ export class AgentRuntime {
               if (Buffer.byteLength(serialized, "utf8") > this.maxCheckpointBytes) {
                 throw new AIError("Execution checkpoint exceeds maxCheckpointBytes", "CHECKPOINT_TOO_LARGE");
               }
-              await this.store?.update(runId, {
+              await this.updateExecution(runId, {
                 checkpoint: sanitizedCheckpoint,
                 updatedAt: sanitizedCheckpoint.updatedAt,
-              });
+              }, lease);
             } : undefined,
           });
           const verification = task.verify ?? this.verify;
@@ -285,11 +285,11 @@ export class AgentRuntime {
             data: { agent: task.agent, steps: result.steps, attempts: attempt, verified: Boolean(verification) },
           };
           if (this.store?.transition) {
-            await this.store.transition(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt }, completedEvent);
+            await this.transitionExecution(runId, lease, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt }, completedEvent);
             await this.onEvent?.(completedEvent);
           } else {
             await this.store?.update(runId, { status: "succeeded", attempts: attempt, usage: result.usage, completedAt, updatedAt: completedAt });
-            await this.emit(completedEvent);
+            await this.emit(completedEvent, lease);
           }
           return { ...result, runId };
         } catch (error) {
@@ -304,11 +304,11 @@ export class AgentRuntime {
             data: { agent: task.agent, attempt, nextAttempt: attempt + 1, delayMs: delay },
           };
           if (this.store?.transition) {
-            await this.store.transition(runId, { status: "waiting", attempts: attempt }, waitingEvent);
+            await this.transitionExecution(runId, lease, { status: "waiting", attempts: attempt }, waitingEvent);
             await this.onEvent?.(waitingEvent);
           } else {
             await this.store?.update(runId, { status: "waiting", attempts: attempt, updatedAt: waitingAt });
-            await this.emit(waitingEvent);
+            await this.emit(waitingEvent, lease);
           }
           await this.sleep(delay, task.signal);
         }
@@ -319,11 +319,11 @@ export class AgentRuntime {
         const cancelledAt = Date.now();
         const cancelledEvent: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { agent: task.agent } };
         if (this.store?.transition) {
-          await this.store.transition(runId, { status: "cancelled", completedAt: cancelledAt }, cancelledEvent);
+          await this.transitionExecution(runId, lease, { status: "cancelled", completedAt: cancelledAt }, cancelledEvent);
           await this.onEvent?.(cancelledEvent);
         } else {
           await this.store?.update(runId, { status: "cancelled", completedAt: cancelledAt, updatedAt: cancelledAt });
-          await this.emit(cancelledEvent);
+          await this.emit(cancelledEvent, lease);
         }
       } else {
         const failedAt = Date.now();
@@ -335,11 +335,11 @@ export class AgentRuntime {
           data: { agent: task.agent, error: failureMessage },
         };
         if (this.store?.transition) {
-          await this.store.transition(runId, { status: "failed", completedAt: failedAt, error: failureMessage }, failedEvent);
+          await this.transitionExecution(runId, lease, { status: "failed", completedAt: failedAt, error: failureMessage }, failedEvent);
           await this.onEvent?.(failedEvent);
         } else {
           await this.store?.update(runId, { status: "failed", completedAt: failedAt, updatedAt: failedAt, error: failureMessage });
-          await this.emit(failedEvent);
+          await this.emit(failedEvent, lease);
         }
       }
       throw error;
@@ -356,12 +356,14 @@ export class AgentRuntime {
     }
   }
 
-  private async recordAgentEvent(event: ExecutionEvent): Promise<void> {
-    if (this.store?.transition) {
-      await this.store.transition(event.runId, {}, event, undefined);
-    } else {
-      await this.store?.appendEvent(event.runId, event);
-      await this.store?.update(event.runId, { updatedAt: event.timestamp });
+  private async recordAgentEvent(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
+    if (this.store && lease) {
+      if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
+    } else if (this.store?.transition) {
+      await this.store.transition(event.runId, {}, event);
+    } else if (this.store?.appendEvent) {
+      await this.store.appendEvent(event.runId, event);
     }
     await this.onEvent?.(event);
   }
@@ -478,6 +480,29 @@ export class AgentRuntime {
     return pruneExecutionHistory(this.store, options);
   }
 
+  private async updateExecution(runId: string, patch: Partial<ExecutionRecord>, lease?: { fencingToken: number }): Promise<void> {
+    if (!this.store) return;
+    if (lease) {
+      if (!this.store.updateFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.updateFenced(runId, lease.fencingToken, patch);
+    } else {
+      await this.store.update(runId, patch);
+    }
+  }
+
+  private async transitionExecution(runId: string, lease: { fencingToken: number } | undefined, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
+    if (!this.store) return;
+    if (lease) {
+      if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.transitionFenced(runId, lease.fencingToken, patch, event, expectedUpdatedAt);
+      await this.onEvent?.(event);
+      return;
+    }
+    if (this.store.transition) await this.store.transition(runId, patch, event, expectedUpdatedAt);
+    else { await this.store.update(runId, patch); await this.store.appendEvent?.(runId, event); }
+    await this.onEvent?.(event);
+  }
+
   private sanitizeError(error: unknown): string {
     const raw = error instanceof Error ? error.message : String(error);
     const redacted = raw
@@ -558,11 +583,14 @@ export class AgentRuntime {
     });
   }
 
-  private async emit(event: ExecutionEvent): Promise<void> {
-    if (this.store?.transition) {
-      await this.store.transition(event.runId, {}, event, undefined);
+  private async emit(event: ExecutionEvent, lease?: { fencingToken: number }): Promise<void> {
+    if (this.store && lease) {
+      if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
+      await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
+    } else if (this.store?.transition) {
+      await this.store.transition(event.runId, {}, event);
     } else {
-      await this.store?.appendEvent(event.runId, event);
+      await this.store?.appendEvent?.(event.runId, event);
     }
     await this.onEvent?.(event);
   }
