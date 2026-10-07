@@ -273,6 +273,7 @@ export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
       if (typeof path !== "string") throw new Error("path is required");
       if (!policy.allowedDirectories.length) throw new Error("No allowed directories configured");
       const fs = await import("node:fs/promises");
+      const { StringDecoder } = await import("node:string_decoder");
       const pathModule = await import("node:path");
       const realPath = await fs.realpath(path);
       const target = pathModule.resolve(realPath);
@@ -286,9 +287,26 @@ export function fileReadTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
         return false;
       })();
       if (!allowed) throw new Error("Path is outside the allowed directories");
-      const stat = await fs.stat(realPath);
-      if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not a regular file, or too large");
-      return { path: realPath, text: await fs.readFile(realPath, "utf8") };
+      const handle = await fs.open(realPath, process.platform === "win32" ? "r" : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      try {
+        const stat = await handle.stat();
+        if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not a regular file, or too large");
+        const decoder = new StringDecoder("utf8");
+        const chunks: string[] = [];
+        const buffer = Buffer.alloc(Math.min(64 * 1024, policy.maxFileBytes + 1));
+        let total = 0;
+        while (true) {
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+          if (bytesRead === 0) break;
+          total += bytesRead;
+          if (total > policy.maxFileBytes) throw new Error("File is missing, not a regular file, or too large");
+          chunks.push(decoder.write(buffer.subarray(0, bytesRead)));
+        }
+        chunks.push(decoder.end());
+        return { path: realPath, text: chunks.join("") };
+      } finally {
+        await handle.close().catch(() => undefined);
+      }
     },
   };
 }
