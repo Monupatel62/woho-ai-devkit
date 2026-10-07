@@ -297,7 +297,7 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
   assert.equal(second?.fencingToken, 2);
 
   await assert.rejects(
-    async () => { await store.updateFenced!(runId, first!.fencingToken, { input: "stale-write" }); },
+    async () => { await store.updateFenced!(runId, first!.fencingToken, { error: "stale-write" }); },
     /fencing token is stale/,
   );
   await assert.rejects(
@@ -310,8 +310,8 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
     /fencing token is stale/,
   );
 
-  await store.updateFenced!(runId, second!.fencingToken, { input: "current-write" });
-  assert.equal((await store.get(runId))?.input, "current-write");
+  await store.updateFenced!(runId, second!.fencingToken, { error: "current-write" });
+  assert.equal((await store.get(runId))?.error, "current-write");
   assert.equal((await store.get(runId))?.lease?.fencingToken, 2);
 }
 
