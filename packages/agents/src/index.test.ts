@@ -664,7 +664,7 @@ const run = async () => {
     permissions: { check: () => ({ allowed: false, reason: "owner approval required", requiresApproval: true }) },
     tools: [{ name: "protected-exact", description: "Protected exact action", capability: "filesystem", action: "write", execute: async () => "side-effect-ran" }],
   }));
-  const exactApprovalRuntime = new AgentRuntime({ store: exactApprovalStore }, exactApprovalRegistry);
+  const exactApprovalRuntime = new AgentRuntime({ store: exactApprovalStore, approval: async () => true }, exactApprovalRegistry);
   const exactApprovalResult = await exactApprovalRuntime.run(
     createAI({ provider: createMockProvider({ response: "exact-approved", toolCall: { name: "protected-exact", arguments: JSON.stringify({ path: "a.txt" }) } }) }),
     { agent: "exact-approval", input: "approve exact action" },
@@ -701,7 +701,7 @@ const run = async () => {
       permissions: { check: () => ({ allowed: false, reason: "owner approval required", requiresApproval: true }) },
       tools: [{ name: "protected-tamper", description: "Protected tamper action", capability: "filesystem", action: "write", execute: async () => "must-not-run" }],
     }));
-    const tamperRuntime = new AgentRuntime({ store: tamperStore }, tamperRegistry);
+    const tamperRuntime = new AgentRuntime({ store: tamperStore, approval: async () => true }, tamperRegistry);
     await assert.rejects(
       () => tamperRuntime.run(
         createAI({ provider: createMockProvider({ response: "tamper", toolCall: { name: "protected-tamper", arguments: JSON.stringify({ path: "a.txt" }) } }) }),
