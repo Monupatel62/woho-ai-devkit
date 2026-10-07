@@ -229,6 +229,9 @@ function validateImmutableExecutionPatch(current: ExecutionRecord, patch: Partia
     }
   }
 }
+  if (patch.checkpoint !== undefined && current.checkpoint !== undefined && patch.checkpoint.updatedAt < current.checkpoint.updatedAt) {
+    throw new Error("Execution checkpoint cannot move backwards");
+  }
 
 function validateExecutionRecord(record: ExecutionRecord): void {
   if (!isRecord(record)) throw new Error("Invalid execution record");
