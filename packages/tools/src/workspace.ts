@@ -218,20 +218,20 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
           chunks.push(decoder.end());
           current = chunks.join("");
         }
-        const first = current.indexOf(oldText);
-        if (first < 0) throw new Error("oldText was not found");
-        if (!replaceAll && current.indexOf(oldText, first + oldText.length) >= 0) {
-          throw new Error("oldText occurs multiple times; use replaceAll=true");
-        }
-        const updated = replaceAll ? current.split(oldText).join(newText) : current.slice(0, first) + newText + current.slice(first + oldText.length);
-        if (Buffer.byteLength(updated, "utf8") > policy.maxFileBytes) throw new Error("Edited file exceeds maxFileBytes");
         try {
+          const first = current.indexOf(oldText);
+          if (first < 0) throw new Error("oldText was not found");
+          if (!replaceAll && current.indexOf(oldText, first + oldText.length) >= 0) {
+            throw new Error("oldText occurs multiple times; use replaceAll=true");
+          }
+          const updated = replaceAll ? current.split(oldText).join(newText) : current.slice(0, first) + newText + current.slice(first + oldText.length);
+          if (Buffer.byteLength(updated, "utf8") > policy.maxFileBytes) throw new Error("Edited file exceeds maxFileBytes");
           await handle.truncate(0);
           await handle.writeFile(updated, "utf8");
+          return { path: relative, bytes: Buffer.byteLength(updated, "utf8"), changed: true };
         } finally {
           await handle.close().catch(() => undefined);
         }
-        return { path: relative, bytes: Buffer.byteLength(updated, "utf8"), changed: true };
       }
 
       if (operation === "write") {
