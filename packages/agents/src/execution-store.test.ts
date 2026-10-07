@@ -188,11 +188,11 @@ try {
   assert.deepEqual(loaded?.events, [event]);
 
   const listed = await reopened.list({ status: "succeeded", limit: 1 });
-  assert.equal(listed.length, 1);
+  assert.equal(listed.length, 1, "status-filtered list should contain only the succeeded run");
   assert.equal(listed[0]?.runId, record.runId);
 
   const projectListed = await reopened.list({ projectId: "project-alpha" });
-  assert.equal(projectListed.length, 1);
+  assert.equal(projectListed.length, 1, "project-filtered list should contain only project-alpha run");
   assert.equal(projectListed[0]?.projectId, "project-alpha");
   const otherProject = { ...record, runId: "project-beta-run", projectId: "project-beta" };
   await reopened.create(otherProject);
@@ -335,7 +335,7 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
   await store.create(seed);
   const base = Date.now();
   const first = await store.acquireLease!(runId, "worker-a", 100_000, base);
-  assert.equal(first?.fencingToken, 1);
+  assert.equal(first?.fencingToken, 1, "first lease must receive fencing token 1");
   assert.equal(await store.releaseLease!(runId, "worker-a", first!.fencingToken, base + 10), true);
   const second = await store.acquireLease!(runId, "worker-b", 100_000, base + 20);
   assert.equal(second?.fencingToken, 2);
@@ -423,7 +423,7 @@ async function assertMonotonicMutationTimestamps(store: InMemoryExecutionStore |
   assert.equal(await store.resolveApproval!(runId, "approval-" + label, true, undefined, 450), true);
   assert.equal((await store.get(runId))?.updatedAt, 500);
   const lease = await store.acquireLease!(runId, "worker-" + label, 1_000, 450);
-  assert.equal(lease?.fencingToken, 1);
+  assert.equal(lease?.fencingToken, 1, "first monotonic lease must receive fencing token 1");
   assert.equal((await store.get(runId))?.updatedAt, 500);
   assert.equal(await store.releaseLease!(runId, "worker-" + label, lease!.fencingToken, 450), true);
   assert.equal(await store.cancelExecution!(runId, "cancelled", 450), true);
