@@ -768,6 +768,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId); if (!ownerId.trim() || !Number.isInteger(ttlMs) || ttlMs < 1) throw new Error("Invalid execution lease request");
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current) throw new Error("Execution not found: " + runId);
+      if (current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return undefined;
       if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
       const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
       await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: now }), true); return lease;
@@ -777,7 +778,7 @@ export class FileExecutionStore implements ExecutionStore {
   async renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): Promise<boolean> {
     validateRunId(runId);
     return this.enqueue(() => this.withFileLock(async () => {
-      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
+      const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled" || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken || current.lease.expiresAt < now) return false;
       const lease = { ...current.lease, expiresAt: now + ttlMs }; await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) }), true); return true;
     }));
   }
@@ -786,7 +787,7 @@ export class FileExecutionStore implements ExecutionStore {
     validateRunId(runId);
     return this.enqueue(() => this.withFileLock(async () => {
       const target = this.filePath(runId); const current = await this.readRecord(target); if (!current?.lease || current.lease.ownerId !== ownerId || current.lease.fencingToken !== fencingToken) return false;
-      await this.writeRecord(target, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: now }), true); return true;
+      await this.writeRecord(target, cloneRecord({ ...current, lease: { ...current.lease, expiresAt: now }, updatedAt: Math.max(current.updatedAt, now) }), true); return true;
     }));
   }
 
