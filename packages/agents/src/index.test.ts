@@ -244,7 +244,7 @@ const run = async () => {
   assert.equal((await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1"))?.status, "in_flight");
   assert.equal(await safetyStore.completeToolExecution!("safety-run", "tool-1", "fp-1", { status: "completed", result: JSON.stringify({ ok: true }) }), true);
   assert.equal((await safetyStore.claimToolExecution!("safety-run", "tool-1", "fp-1"))?.status, "completed");
-  await assert.rejects(() => Promise.resolve(safetyStore.claimToolExecution!("safety-run", "tool-1", "different-fingerprint")), /fingerprint conflict/);
+  assert.throws(() => safetyStore.claimToolExecution!("safety-run", "tool-1", "different-fingerprint"), /fingerprint conflict/);
 
   const leaseOne = await safetyStore.acquireLease!("safety-run", "worker-a", 10_000, 100);
   assert.equal(leaseOne?.fencingToken, 1);
