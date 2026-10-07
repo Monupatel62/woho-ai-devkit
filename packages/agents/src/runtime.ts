@@ -587,10 +587,10 @@ export class AgentRuntime {
     if (this.store && lease) {
       if (!this.store.transitionFenced) throw new AIError("Execution store does not support fenced mutation", "EXECUTION_FENCING_UNSUPPORTED");
       await this.store.transitionFenced(event.runId, lease.fencingToken, {}, event);
-    } else if (this.store.transition) {
+    } else if (this.store?.transition) {
       await this.store.transition(event.runId, {}, event);
     } else {
-      await this.store.appendEvent?.(event.runId, event);
+      await this.store?.appendEvent?.(event.runId, event);
     }
     await this.onEvent?.(event);
   }
