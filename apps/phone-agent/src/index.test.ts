@@ -7,9 +7,11 @@ const permissions = new PhonePermissionEngine([
 ]);
 
 let executed = 0;
+let lastAction: unknown;
 const executor = new AuthorizedPhoneActionExecutor(permissions, {
-  async execute() {
+  async execute(action) {
     executed += 1;
+    lastAction = action;
     return "ok";
   },
 });
@@ -44,5 +46,14 @@ const result = await executor.execute(
 );
 assert.equal(result, "ok");
 assert.equal(executed, 1);
+
+const mutableAction = { capability: "message.send" as const, appPackage: "com.example.chat", description: "Send message" };
+let releaseApproval!: () => void;
+const approvalStarted = new Promise<void>((resolve) => { releaseApproval = resolve; });
+const approval = executor.execute(mutableAction, { approve: async () => { await approvalStarted; return true; } });
+mutableAction.capability = "device.action" as never;
+releaseApproval();
+await assert.doesNotReject(() => approval);
+assert.equal((lastAction as { capability: string }).capability, "message.send");
 
 console.log("phone-agent permission tests passed");

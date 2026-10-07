@@ -80,7 +80,8 @@ export class AuthorizedPhoneActionExecutor {
   } = {}): Promise<unknown> {
     if (options.signal?.aborted) throw options.signal.reason ?? new Error("Action aborted");
 
-    const decision = this.permissions.check(action);
+    const authorizedAction = Object.freeze({ ...action });
+    const decision = this.permissions.check(authorizedAction);
     if (!decision.allowed) throw new Error(decision.reason ?? "Permission denied");
 
     if (decision.requiresApproval) {
@@ -88,7 +89,7 @@ export class AuthorizedPhoneActionExecutor {
       if (!approved) throw new Error("Owner approval required");
     }
 
-    return this.executor.execute(action, options.signal);
+    return this.executor.execute(authorizedAction, options.signal);
   }
 }
 
