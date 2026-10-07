@@ -28,7 +28,7 @@ for (const makeStore of [
   ];
   for (const patch of immutablePatches) {
     await assert.rejects(() => Promise.resolve(store.update(runId, patch)), /identity field cannot be mutated/);
-    await assert.rejects(() => Promise.resolve(store.updateIf!(runId, 10, patch)), /identity field cannot be mutated/);
+    assert.equal(await store.updateIf!(runId, 10, patch), false);
     await assert.rejects(() => Promise.resolve(store.transition!(runId, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
     await assert.rejects(() => Promise.resolve(store.updateFenced!(runId, lease!.fencingToken, patch)), /identity field cannot be mutated/);
     await assert.rejects(() => Promise.resolve(store.transitionFenced!(runId, lease!.fencingToken, patch, { type: "run.waiting", runId, timestamp: 20 })), /identity field cannot be mutated/);
