@@ -157,18 +157,26 @@ export class AgentExecutionWorker {
         }
         return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "queued" };
       }
-      await this.store.transitionFenced!(record.runId, lease.fencingToken, {
-        status: "failed",
-        updatedAt: timestamp,
-        completedAt: timestamp,
-        availableAt: undefined,
-        error: message,
-      }, {
-        type: "run.failed",
-        runId: record.runId,
-        timestamp,
-        data: { eventId: randomUUID(), reason: "worker-execution-failed", attempt: record.attempts },
-      });
+      try {
+        await this.store.transitionFenced!(record.runId, lease.fencingToken, {
+          status: "failed",
+          updatedAt: timestamp,
+          completedAt: timestamp,
+          availableAt: undefined,
+          error: message,
+        }, {
+          type: "run.failed",
+          runId: record.runId,
+          timestamp,
+          data: { eventId: randomUUID(), reason: "worker-execution-failed", attempt: record.attempts },
+        });
+      } catch (transitionError) {
+        const current = this.store.get ? await this.store.get(record.runId) : undefined;
+        if (current?.status === "cancelled" || current?.status === "succeeded" || current?.status === "failed" || leaseLost) {
+          return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "lease_lost" };
+        }
+        throw transitionError;
+      }
       return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "failed" };
     } finally {
       clearInterval(heartbeat);
