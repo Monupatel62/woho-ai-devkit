@@ -450,7 +450,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const receipt = current.toolReceipts?.[callId]; if (!receipt || receipt.fingerprint !== fingerprint || receipt.status !== "in_flight") return false;
     const updatedAt = patch.updatedAt ?? Date.now();
     const nextReceipt = { ...receipt, ...patch, updatedAt };
-    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt })); return true;
+    this.records.set(runId, cloneRecord({ ...current, toolReceipts: { ...(current.toolReceipts ?? {}), [callId]: nextReceipt }, updatedAt: Math.max(current.updatedAt, updatedAt) })); return true;
   }
 
   acquireLease(runId: string, ownerId: string, ttlMs: number, now = Date.now()): ExecutionLease | undefined {
@@ -458,7 +458,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const current = this.records.get(runId); if (!current) throw new Error("Execution not found: " + runId);
     if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
     const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-    this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: now })); return lease;
+    this.records.set(runId, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) })); return lease;
   }
 
   renewLease(runId: string, ownerId: string, fencingToken: number, ttlMs: number, now = Date.now()): boolean {
@@ -526,8 +526,8 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const next: ExecutionRecord = {
       ...current,
       status: "cancelled",
-      completedAt: cancelledAt,
-      updatedAt: cancelledAt,
+      completedAt: Math.max(current.completedAt ?? current.startedAt, cancelledAt),
+      updatedAt: Math.max(current.updatedAt, cancelledAt),
       error: reason.slice(0, 4096),
       lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
       events: [...current.events, event],
@@ -555,7 +555,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
         decidedAt,
       },
       status: current.status === "waiting" ? "running" : current.status,
-      updatedAt: decidedAt,
+      updatedAt: Math.max(current.updatedAt, decidedAt),
     };
     validateExecutionRecord(next);
     this.records.set(runId, cloneRecord(next));
