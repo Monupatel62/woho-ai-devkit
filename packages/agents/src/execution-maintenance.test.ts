@@ -60,6 +60,20 @@ const run = async () => {
   assert.equal(oldRemoved[0]?.runId, "done");
   assert.equal(store.get("done"), undefined);
 
+  const activePruneStore = new InMemoryExecutionStore();
+  await activePruneStore.create(makeRecord("active-running", "running", 100));
+  await activePruneStore.create(makeRecord("active-waiting", "waiting", 100));
+  const activeRemoved = await pruneExecutionHistory(activePruneStore, { olderThanMs: 1, now: 1_000 });
+  assert.equal(activeRemoved.length, 0);
+  assert.notEqual(activePruneStore.get("active-running"), undefined);
+  assert.notEqual(activePruneStore.get("active-waiting"), undefined);
+
+  const versionedPruneStore = new InMemoryExecutionStore();
+  await versionedPruneStore.create(makeRecord("versioned", "succeeded", 100));
+  assert.equal(await versionedPruneStore.updateIf("versioned", 100, { updatedAt: 101 }), true);
+  assert.equal((await pruneExecutionHistory(versionedPruneStore, { olderThanMs: 1, now: 1_000 })).length, 1);
+  assert.equal(versionedPruneStore.get("versioned"), undefined);
+
   const countStore = new InMemoryExecutionStore();
   await countStore.create(makeRecord("failed-a", "failed", 200));
   await countStore.create(makeRecord("failed-b", "failed", 300));
