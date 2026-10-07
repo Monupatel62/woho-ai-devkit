@@ -1,5 +1,6 @@
 import type { AgentTool } from "@woho/agents";
 import { isIP } from "node:net";
+import { request as httpsRequest } from "node:https";
 import { validateToolInput } from "./validation.js";
 export { ToolRegistry, createToolRegistry } from "./registry.js";
 export { commandTool, type CommandToolPolicy } from "./command.js";
@@ -53,6 +54,80 @@ function isPrivateAddress(address: string): boolean {
       normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("ff");
   }
   return false;
+}
+
+async function resolvePublicHttpsAddress(hostname: string, allowPrivateAddresses: boolean): Promise<{ address: string; family: 4 | 6 }> {
+  if (allowPrivateAddresses) {
+    if (isIP(hostname) === 4) return { address: hostname, family: 4 };
+    if (isIP(hostname) === 6) return { address: hostname, family: 6 };
+  }
+  const addresses = isIP(hostname)
+    ? [hostname]
+    : (await (await import("node:dns/promises")).lookup(hostname, { all: true, verbatim: true })).map((entry) => entry.address);
+  if (!addresses.length) throw new Error("Hostname did not resolve");
+  if (!allowPrivateAddresses && addresses.some(isPrivateAddress)) throw new Error("URL resolves to a private or reserved address");
+  const address = addresses[0]!;
+  const family = isIP(address);
+  if (family !== 4 && family !== 6) throw new Error("Hostname resolved to an invalid address");
+  return { address, family };
+}
+
+async function fetchPinnedHttps(
+  url: URL,
+  address: string,
+  family: 4 | 6,
+  maxResponseBytes: number,
+  signal: AbortSignal,
+): Promise<{ status: number; contentType: string | undefined; text: string }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let received = 0;
+    const chunks: Buffer[] = [];
+    const fail = (error: unknown) => {
+      if (settled) return;
+      settled = true;
+      reject(error instanceof Error ? error : new Error(String(error)));
+    };
+    const req = httpsRequest(url, {
+      method: "GET",
+      signal,
+      headers: {
+        accept: "text/plain, application/json, text/*;q=0.9",
+        host: url.host,
+      },
+      lookup: (_hostname, _options, callback) => callback(null, address, family),
+      servername: url.hostname,
+    }, (response) => {
+      const contentLength = Number(response.headers["content-length"] ?? 0);
+      if (contentLength > maxResponseBytes) {
+        response.resume();
+        fail(new Error("Response exceeds size limit"));
+        return;
+      }
+      response.on("data", (chunk: Buffer | string) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        received += buffer.byteLength;
+        if (received > maxResponseBytes) {
+          req.destroy();
+          fail(new Error("Response exceeds size limit"));
+          return;
+        }
+        chunks.push(buffer);
+      });
+      response.on("end", () => {
+        if (settled) return;
+        settled = true;
+        resolve({
+          status: response.statusCode ?? 0,
+          contentType: Array.isArray(response.headers["content-type"]) ? response.headers["content-type"][0] : response.headers["content-type"],
+          text: Buffer.concat(chunks).toString("utf8"),
+        });
+      });
+      response.on("error", fail);
+    });
+    req.on("error", fail);
+    req.end();
+  });
 }
 
 async function assertPublicHttpAddress(hostname: string, allowPrivateAddresses: boolean): Promise<void> {
@@ -173,15 +248,11 @@ export function httpGetTool(inputPolicy: ToolSecurityPolicy = {}): AgentTool {
       if (url.username || url.password) throw new Error("Credential-bearing URLs are not allowed");
       if (url.protocol !== "https:") throw new Error("Only HTTPS URLs are allowed");
       assertAllowedHost(url.hostname, policy.allowedHosts);
-      await assertPublicHttpAddress(url.hostname, policy.allowPrivateAddresses);
+      const { address, family } = await resolvePublicHttpsAddress(url.hostname, policy.allowPrivateAddresses);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), policy.timeoutMs);
       try {
-        const response = await fetch(url, { signal: controller.signal, redirect: "error", headers: { accept: "text/plain, application/json, text/*;q=0.9" } });
-        const contentLength = Number(response.headers.get("content-length") ?? 0);
-        if (contentLength > policy.maxResponseBytes) throw new Error("Response exceeds size limit");
-        const text = await readResponseTextWithLimit(response, policy.maxResponseBytes);
-        return { status: response.status, contentType: response.headers.get("content-type"), text };
+        return await fetchPinnedHttps(url, address, family, policy.maxResponseBytes, controller.signal);
       } finally { clearTimeout(timer); }
     },
   };
