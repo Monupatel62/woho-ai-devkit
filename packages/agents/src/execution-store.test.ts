@@ -349,6 +349,32 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
   assert.equal((await store.get(runId))?.lease?.fencingToken, 2);
 }
 
+async function assertLeaseRenewalClockRollback(store: InMemoryExecutionStore | FileExecutionStore, label: string): Promise<void> {
+  const runId = "lease-clock-rollback-" + label;
+  await store.create({
+    runId,
+    agent: "general",
+    metadata: {},
+    status: "running",
+    startedAt: 1,
+    updatedAt: 10_000,
+    attempts: 1,
+    events: [],
+  });
+  const initialLease = await store.acquireLease!(runId, "worker-a", 1_000, 10_000);
+  assert.equal(initialLease?.expiresAt, 11_000);
+  assert.equal(await store.renewLease!(runId, "worker-a", initialLease!.fencingToken, 1_000, 9_000), true);
+  assert.equal((await store.get(runId))?.lease?.expiresAt, 12_000);
+}
+
+await assertLeaseRenewalClockRollback(new InMemoryExecutionStore(), "memory");
+const leaseRollbackRoot = await mkdtemp(path.join(os.tmpdir(), "woho-lease-rollback-"));
+try {
+  await assertLeaseRenewalClockRollback(new FileExecutionStore({ directory: leaseRollbackRoot }), "file");
+} finally {
+  await rm(leaseRollbackRoot, { recursive: true, force: true });
+}
+
 const fencedMemory = new InMemoryExecutionStore();
 await assertMutationFencing(fencedMemory, "memory");
 
