@@ -987,8 +987,28 @@ export class FileExecutionStore implements ExecutionStore {
         try {
           const stat = await fs.stat(lock);
           if (Date.now() - stat.mtimeMs >= this.lockStaleMs) {
-            await fs.rm(lock, { force: true });
-            continue;
+            let ownerPid: number | undefined;
+            try {
+              const metadata = JSON.parse(await fs.readFile(lock, "utf8")) as { pid?: unknown };
+              if (typeof metadata.pid === "number" && Number.isInteger(metadata.pid) && metadata.pid > 0) {
+                ownerPid = metadata.pid;
+              }
+            } catch {
+              // Malformed lock metadata is treated as abandoned.
+            }
+            let ownerAlive = false;
+            if (ownerPid !== undefined) {
+              try {
+                process.kill(ownerPid, 0);
+                ownerAlive = true;
+              } catch {
+                ownerAlive = false;
+              }
+            }
+            if (!ownerAlive) {
+              await fs.rm(lock, { force: true });
+              continue;
+            }
           }
         } catch (statError) {
           if ((statError as NodeJS.ErrnoException).code !== "ENOENT") throw statError;

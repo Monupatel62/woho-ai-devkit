@@ -162,6 +162,15 @@ try {
   const recoveredLock = new FileExecutionStore({ directory: root, lockTimeoutMs: 100, lockRetryMs: 5, lockStaleMs: 50 });
   await recoveredLock.update(record.runId, { error: "after-stale-lock" });
   assert.equal((await recoveredLock.get(record.runId))?.error, "after-stale-lock");
+
+  await writeFile(lockPath, JSON.stringify({ pid: process.pid, acquiredAt: Date.now() - 10_000 }), { flag: "w", mode: 0o600 });
+  await utimes(lockPath, staleTime, staleTime);
+  const liveOwner = new FileExecutionStore({ directory: root, lockTimeoutMs: 40, lockRetryMs: 5, lockStaleMs: 20 });
+  await assert.rejects(
+    () => liveOwner.update(record.runId, { error: "must-not-steal-live-lock" }),
+    /Timed out acquiring execution store lock/,
+  );
+  await rm(lockPath, { force: true });
   const reopened = new FileExecutionStore({ directory: root });
   const loaded = await reopened.get(record.runId);
   assert.equal(loaded?.status, "succeeded");
