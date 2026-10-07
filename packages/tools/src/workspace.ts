@@ -224,8 +224,12 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
           const updated = replaceAll ? current.split(oldText).join(newText) : current.slice(0, first) + newText + current.slice(first + oldText.length);
           if (Buffer.byteLength(updated, "utf8") > policy.maxFileBytes) throw new Error("Edited file exceeds maxFileBytes");
           await handle.truncate(0);
-          await handle.seek(0, 0);
-          await handle.writeFile(updated, "utf8");
+          const output = Buffer.from(updated, "utf8");
+          let written = 0;
+          while (written < output.length) {
+            const result = await handle.write(output, written, output.length - written, written);
+            written += result.bytesWritten;
+          }
           return { path: relative, bytes: Buffer.byteLength(updated, "utf8"), changed: true };
         } finally {
           await handle.close().catch(() => undefined);
