@@ -264,10 +264,11 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
     events: [],
   };
   await store.create(seed);
-  const first = await store.acquireLease!(runId, "worker-a", 100, 10);
+  const base = Date.now();
+  const first = await store.acquireLease!(runId, "worker-a", 100_000, base);
   assert.equal(first?.fencingToken, 1);
-  assert.equal(await store.releaseLease!(runId, "worker-a", first!.fencingToken, 20), true);
-  const second = await store.acquireLease!(runId, "worker-b", 100, 30);
+  assert.equal(await store.releaseLease!(runId, "worker-a", first!.fencingToken, base + 10), true);
+  const second = await store.acquireLease!(runId, "worker-b", 100_000, base + 20);
   assert.equal(second?.fencingToken, 2);
 
   await assert.rejects(
@@ -279,7 +280,7 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
       runId,
       first!.fencingToken,
       { status: "waiting" },
-      { type: "run.waiting", runId, timestamp: 31 },
+      { type: "run.waiting", runId, timestamp: base + 21 },
     ); },
     /fencing token is stale/,
   );
