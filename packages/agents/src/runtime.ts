@@ -44,6 +44,8 @@ export interface AgentRuntimeOptions {
   readonly maxToolReceiptBytes?: number;
   /** Lease duration for stores that support fenced execution ownership. */
   readonly executionLeaseTtlMs?: number;
+  /** Maximum wall-clock duration of one runtime execution. */
+  readonly executionTimeoutMs?: number;
 }
 
 export interface PendingApproval {
@@ -99,6 +101,7 @@ export class AgentRuntime {
   private readonly maxCheckpointBytes: number;
   private readonly maxToolReceiptBytes: number;
   private readonly executionLeaseTtlMs: number;
+  private readonly executionTimeoutMs?: number;
   private active = 0;
   private readonly waiters: Array<{ resolve: () => void; reject: (error: unknown) => void; signal?: AbortSignal }> = [];
 
@@ -119,8 +122,10 @@ export class AgentRuntime {
     this.maxCheckpointBytes = options.maxCheckpointBytes ?? 512 * 1024;
     this.maxToolReceiptBytes = options.maxToolReceiptBytes ?? 512 * 1024;
     this.executionLeaseTtlMs = options.executionLeaseTtlMs ?? 30_000;
+    this.executionTimeoutMs = options.executionTimeoutMs;
     if (!Number.isInteger(this.maxToolReceiptBytes) || this.maxToolReceiptBytes < 1) throw new Error("maxToolReceiptBytes must be a positive integer");
     if (!Number.isInteger(this.executionLeaseTtlMs) || this.executionLeaseTtlMs < 1) throw new Error("executionLeaseTtlMs must be a positive integer");
+    if (this.executionTimeoutMs !== undefined && (!Number.isInteger(this.executionTimeoutMs) || this.executionTimeoutMs < 1)) throw new Error("executionTimeoutMs must be a positive integer");
     if (!Number.isInteger(this.maxConcurrency) || this.maxConcurrency < 1) throw new Error("maxConcurrency must be a positive integer");
     if (!Number.isInteger(this.heartbeatIntervalMs) || this.heartbeatIntervalMs < 1) throw new Error("heartbeatIntervalMs must be a positive integer");
     if (!Number.isInteger(this.maxInputBytes) || this.maxInputBytes < 1) throw new Error("maxInputBytes must be a positive integer");
@@ -150,6 +155,9 @@ export class AgentRuntime {
     const retry = this.validateRetry(task.retry ?? this.defaultRetry);
     await this.acquire(task.signal);
     const executionController = new AbortController();
+    const timeout = this.executionTimeoutMs !== undefined
+      ? setTimeout(() => executionController.abort(new AIError("Execution timed out", "EXECUTION_TIMEOUT")), this.executionTimeoutMs)
+      : undefined;
     const abortFromTask = () => executionController.abort(task.signal?.reason);
     if (task.signal) {
       if (task.signal.aborted) executionController.abort(task.signal.reason);
@@ -406,6 +414,7 @@ export class AgentRuntime {
     } finally {
       if (heartbeat) clearInterval(heartbeat);
       task.signal?.removeEventListener("abort", abortFromTask);
+      if (timeout) clearTimeout(timeout);
       if (lease && this.store?.releaseLease) {
         try {
           await this.store.releaseLease(runId, leaseOwnerId, lease.fencingToken);
