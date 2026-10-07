@@ -78,7 +78,11 @@ await exercise(memory);
 
 const directory = await mkdtemp(path.join(tmpdir(), "woho-identity-"));
 try {
-  await exercise(new FileExecutionStore({ directory }));
+  const fileStore = new FileExecutionStore({ directory });
+  await fileStore.create(seed("immutable-file"));
+  assert.equal(await fileStore.updateIf!("immutable-file", 10, { input: "tampered-input" }), false);
+  const current = await fileStore.get("immutable-file");
+  assert.equal(current?.input, "original-input");
 } finally {
   await rm(directory, { recursive: true, force: true });
 }
