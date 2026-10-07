@@ -198,6 +198,10 @@ const run = async () => {
   assert.deepEqual(await workspace.execute({ operation: "delete", path: "hello.txt" }), { path: "hello.txt", deleted: true });
   await rm(workspaceRoot, { recursive: true, force: true });
 
+  const oversizedBuiltInFile = join(workspaceRoot, "src", "oversized-built-in.txt");
+  await writeFile(oversizedBuiltInFile, "x".repeat(100_001), "utf8");
+  await assert.rejects(() => fileReadTool.execute({ path: oversizedBuiltInFile }), /not a regular file, or too large/);
+
   const boundedGit = (await import("./git.js")).gitTool({ root: process.cwd(), maxPaths: 1, maxPathBytes: 10 });
   await assert.rejects(() => boundedGit.execute({ operation: "status", paths: ["a", "b"] }), /maxPaths/);
   await assert.rejects(() => boundedGit.execute({ operation: "status", paths: ["x".repeat(11)] }), /maxPathBytes/);
