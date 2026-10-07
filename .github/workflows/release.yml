@@ -74,6 +74,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
 
       - uses: pnpm/action-setup@v6
         with:
