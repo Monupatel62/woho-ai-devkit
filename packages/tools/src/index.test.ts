@@ -198,7 +198,8 @@ const run = async () => {
   assert.deepEqual(await workspace.execute({ operation: "delete", path: "hello.txt" }), { path: "hello.txt", deleted: true });
   const oversizedBuiltInFile = join(workspaceRoot, "src", "oversized-built-in.txt");
   await writeFile(oversizedBuiltInFile, "x".repeat(100_001), "utf8");
-  await assert.rejects(() => fileReadTool.execute({ path: oversizedBuiltInFile }), /not a regular file, or too large/);
+  const boundedFileRead = fileReadTool({ allowedDirectories: [workspaceRoot], maxFileBytes: 100_000 });
+  await assert.rejects(() => boundedFileRead.execute({ path: oversizedBuiltInFile }), /not a regular file, or too large/);
 
   await rm(workspaceRoot, { recursive: true, force: true });
 
