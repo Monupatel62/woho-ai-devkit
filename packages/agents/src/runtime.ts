@@ -558,10 +558,7 @@ export class AgentRuntime {
         "CHECKPOINT_SIDE_EFFECT_AMBIGUOUS",
       );
     }
-    if (record.resumeRunId) {
-      throw new Error("Execution resume is already claimed: " + runId);
-    }
-    const resumeRunId = randomUUID();
+    const resumeRunId = record.resumeRunId ?? randomUUID();
     const claimedRunId = this.store.claimResume
       ? await this.store.claimResume(runId, record.updatedAt, resumeRunId)
       : await this.claimResumeFallback(runId, record.updatedAt, resumeRunId);
