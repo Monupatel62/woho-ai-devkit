@@ -10,7 +10,7 @@ const record = (runId: string, status: ExecutionRecord["status"] = "queued"): Ex
 async function testCrashBeforeCompletionIsRecoverable(): Promise<void> {
   const store = new InMemoryExecutionStore();
   await store.create(record("crash"));
-  const first = new AgentExecutionWorker(store, { workerId: "dead", leaseTtlMs: 10, heartbeatIntervalMs: 100 });
+  const first = new AgentExecutionWorker(store, { workerId: "dead", leaseTtlMs: 10, heartbeatIntervalMs: 5 });
   const claim = await store.claimExecution!("crash", "dead", 10, 100);
   assert.equal(claim?.lease.fencingToken, 1);
   // Simulate process death: no release/terminal mutation.
@@ -26,11 +26,12 @@ async function testCrashBeforeCompletionIsRecoverable(): Promise<void> {
 async function testExpiredWorkerCannotFinalizeAfterRecovery(): Promise<void> {
   const store = new InMemoryExecutionStore();
   await store.create(record("fence-chaos"));
-  const a = await store.claimExecution!("fence-chaos", "worker-a", 10, 100);
-  const b = await store.claimExecution!("fence-chaos", "worker-b", 1000, 200);
+  const base = Date.now();
+  const a = await store.claimExecution!("fence-chaos", "worker-a", 10, base);
+  const b = await store.claimExecution!("fence-chaos", "worker-b", 1000, base + 100);
   assert.ok(a && b);
   assert.equal(b.lease.fencingToken, 2);
-  await assert.rejects(() => store.updateFenced!("fence-chaos", a.lease.fencingToken, { status: "failed", error: "stale" }), /fencing token is stale/);
+  await assert.rejects(() => Promise.resolve().then(() => store.updateFenced!("fence-chaos", a.lease.fencingToken, { status: "failed", error: "stale" })), /fencing token is stale/);
   await store.updateFenced!("fence-chaos", b.lease.fencingToken, { status: "succeeded", completedAt: 201 });
   assert.equal(store.get("fence-chaos")?.status, "succeeded");
 }

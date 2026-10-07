@@ -122,12 +122,12 @@ async function testCrashRecoveryAndFencing(): Promise<void> {
   assert.ok(claimB);
   assert.equal(claimB?.lease.fencingToken, 2);
   await assert.rejects(
-    () => store.transitionFenced!("fence", claimA!.lease.fencingToken, { status: "succeeded" }, {
+    () => Promise.resolve().then(() => store.transitionFenced!("fence", claimA!.lease.fencingToken, { status: "succeeded" }, {
       type: "run.completed",
       runId: "fence",
       timestamp: 201,
       data: { eventId: "stale-worker" },
-    }),
+    })),
     /fencing token is stale/,
   );
 }

@@ -24,7 +24,7 @@ for (const createStore of [
     const runId = "terminal-" + Math.random().toString(36).slice(2);
     await store.create(makeRecord(runId));
 
-    const lease = await store.acquireLease!(runId, "worker-a", 10_000, 20);
+    const lease = await store.acquireLease!(runId, "worker-a", 10_000, Date.now());
     assert.ok(lease);
 
     const receipt = await store.claimToolExecutionFenced!(runId, lease.fencingToken, "call-1", "a".repeat(64));
@@ -33,12 +33,12 @@ for (const createStore of [
     await store.update(runId, { status: "succeeded", completedAt: 30, updatedAt: 30 });
 
     await assert.rejects(
-      () => Promise.resolve(store.appendEvent(runId, { type: "tool.completed", runId, timestamp: 31 })),
+      () => Promise.resolve().then(() => store.appendEvent(runId, { type: "tool.completed", runId, timestamp: 31 })),
       /terminal execution/,
     );
 
     await assert.rejects(
-      () => Promise.resolve(store.appendEventFenced!(runId, lease.fencingToken, { type: "tool.completed", runId, timestamp: 31 })),
+      () => Promise.resolve().then(() => store.appendEventFenced!(runId, lease.fencingToken, { type: "tool.completed", runId, timestamp: 31 })),
       /terminal execution/,
     );
 
@@ -53,7 +53,7 @@ for (const createStore of [
     );
 
     await assert.rejects(
-      () => Promise.resolve(store.claimToolExecution!(runId, "call-2", "b".repeat(64))),
+      () => Promise.resolve().then(() => store.claimToolExecution!(runId, "call-2", "b".repeat(64))),
       /terminal execution/,
     );
     assert.equal((await store.get(runId))?.toolReceipts?.["call-2"], undefined);

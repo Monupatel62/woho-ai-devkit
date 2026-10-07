@@ -140,18 +140,18 @@ try {
   const writerA = new FileExecutionStore({ directory: root });
   const writerB = new FileExecutionStore({ directory: root });
   await Promise.all([
-    writerA.update(record.runId, { input: "from-a" }),
-    writerB.update(record.runId, { sessionId: "from-b" }),
+    writerA.update(record.runId, { error: "from-a" }),
+    writerB.update(record.runId, { availableAt: 123 }),
   ]);
   const merged = await writerA.get(record.runId);
-  assert.equal(merged?.input, "from-a");
-  assert.equal(merged?.sessionId, "from-b");
+  assert.equal(merged?.error, "from-a");
+  assert.equal(merged?.availableAt, 123);
 
   const lockPath = path.join(root, ".execution-store.lock");
   await writeFile(lockPath, "active", { flag: "w", mode: 0o600 });
   const blocked = new FileExecutionStore({ directory: root, lockTimeoutMs: 40, lockRetryMs: 5, lockStaleMs: 1_000 });
   await assert.rejects(
-    () => blocked.update(record.runId, { input: "blocked" }),
+    () => blocked.update(record.runId, { error: "blocked" }),
     /Timed out acquiring execution store lock/,
   );
   await rm(lockPath, { force: true });
@@ -160,8 +160,8 @@ try {
   const staleTime = new Date(Date.now() - 10_000);
   await utimes(lockPath, staleTime, staleTime);
   const recoveredLock = new FileExecutionStore({ directory: root, lockTimeoutMs: 100, lockRetryMs: 5, lockStaleMs: 50 });
-  await recoveredLock.update(record.runId, { input: "after-stale-lock" });
-  assert.equal((await recoveredLock.get(record.runId))?.input, "after-stale-lock");
+  await recoveredLock.update(record.runId, { error: "after-stale-lock" });
+  assert.equal((await recoveredLock.get(record.runId))?.error, "after-stale-lock");
   const reopened = new FileExecutionStore({ directory: root });
   const loaded = await reopened.get(record.runId);
   assert.equal(loaded?.status, "succeeded");
@@ -297,7 +297,7 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
   assert.equal(second?.fencingToken, 2);
 
   await assert.rejects(
-    async () => { await store.updateFenced!(runId, first!.fencingToken, { input: "stale-write" }); },
+    async () => { await store.updateFenced!(runId, first!.fencingToken, { error: "stale-write" }); },
     /fencing token is stale/,
   );
   await assert.rejects(
@@ -310,8 +310,8 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
     /fencing token is stale/,
   );
 
-  await store.updateFenced!(runId, second!.fencingToken, { input: "current-write" });
-  assert.equal((await store.get(runId))?.input, "current-write");
+  await store.updateFenced!(runId, second!.fencingToken, { error: "current-write" });
+  assert.equal((await store.get(runId))?.error, "current-write");
   assert.equal((await store.get(runId))?.lease?.fencingToken, 2);
 }
 

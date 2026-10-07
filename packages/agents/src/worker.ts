@@ -38,6 +38,7 @@ export class AgentExecutionWorker {
   private readonly maxAttempts: number;
   private readonly retryDelayMs: number;
   private readonly projectId?: string;
+  private runOnceInFlight = false;
 
   constructor(store: ExecutionStore, options: AgentExecutionWorkerOptions = {}) {
     this.store = store;
@@ -60,9 +61,15 @@ export class AgentExecutionWorker {
   }
 
   async runOnce(handler: AgentExecutionWorkerHandler): Promise<AgentExecutionWorkerOutcome | undefined> {
-    const claim = await this.store.claimNextExecution(this.workerId, this.leaseTtlMs, { projectId: this.projectId });
-    if (!claim) return undefined;
-    return this.executeClaim(claim, handler);
+    if (this.runOnceInFlight) return undefined;
+    this.runOnceInFlight = true;
+    try {
+      const claim = await this.store.claimNextExecution!(this.workerId, this.leaseTtlMs, { projectId: this.projectId });
+      if (!claim) return undefined;
+      return await this.executeClaim(claim, handler);
+    } finally {
+      this.runOnceInFlight = false;
+    }
   }
 
   async drain(handler: AgentExecutionWorkerHandler, maxJobs = Number.MAX_SAFE_INTEGER): Promise<AgentExecutionWorkerOutcome[]> {
@@ -81,7 +88,7 @@ export class AgentExecutionWorker {
     const controller = new AbortController();
     let leaseLost = false;
     const heartbeat = setInterval(() => {
-      void this.store.renewLease!(record.runId, this.workerId, lease.fencingToken, this.leaseTtlMs).then((renewed) => {
+      void Promise.resolve(this.store.renewLease!(record.runId, this.workerId, lease.fencingToken, this.leaseTtlMs)).then((renewed) => {
         if (!renewed) {
           leaseLost = true;
           controller.abort(new AIError("Execution worker lease was lost", "EXECUTION_LEASE_LOST"));
@@ -101,17 +108,25 @@ export class AgentExecutionWorker {
       });
       if (leaseLost || controller.signal.aborted) return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "lease_lost" };
       const timestamp = Date.now();
-      await this.store.transitionFenced!(record.runId, lease.fencingToken, {
-        status: "succeeded",
-        completedAt: timestamp,
-        updatedAt: timestamp,
-        availableAt: undefined,
-      }, {
-        type: "run.completed",
-        runId: record.runId,
-        timestamp,
-        data: { eventId: randomUUID(), workerId: this.workerId, attempt: record.attempts },
-      });
+      try {
+        await this.store.transitionFenced!(record.runId, lease.fencingToken, {
+          status: "succeeded",
+          completedAt: timestamp,
+          updatedAt: timestamp,
+          availableAt: undefined,
+        }, {
+          type: "run.completed",
+          runId: record.runId,
+          timestamp,
+          data: { eventId: randomUUID(), workerId: this.workerId, attempt: record.attempts },
+        });
+      } catch (error) {
+        const current = this.store.get ? await this.store.get(record.runId) : undefined;
+        if (current?.status === "cancelled" || current?.status === "succeeded" || current?.status === "failed" || leaseLost) {
+          return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "lease_lost" };
+        }
+        throw error;
+      }
       return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "succeeded" };
     } catch (error) {
       if (leaseLost || controller.signal.aborted) {
@@ -121,35 +136,51 @@ export class AgentExecutionWorker {
       const message = error instanceof Error ? error.message.slice(0, 4096) : "Worker execution failed";
       if (record.attempts < this.maxAttempts) {
         const availableAt = timestamp + this.retryDelayMs;
-        await this.store.transitionFenced!(record.runId, lease.fencingToken, {
-          status: "queued",
-          updatedAt: timestamp,
-          availableAt,
-          error: message,
-        }, {
-          type: "run.waiting",
-          runId: record.runId,
-          timestamp,
-          data: { eventId: randomUUID(), reason: "worker-retry", attempt: record.attempts, availableAt },
-        });
+        try {
+          await this.store.transitionFenced!(record.runId, lease.fencingToken, {
+            status: "queued",
+            updatedAt: timestamp,
+            availableAt,
+            error: message,
+          }, {
+            type: "run.waiting",
+            runId: record.runId,
+            timestamp,
+            data: { eventId: randomUUID(), reason: "worker-retry", attempt: record.attempts, availableAt },
+          });
+        } catch (transitionError) {
+          const current = this.store.get ? await this.store.get(record.runId) : undefined;
+          if (current?.status === "cancelled" || current?.status === "succeeded" || current?.status === "failed" || leaseLost) {
+            return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "lease_lost" };
+          }
+          throw transitionError;
+        }
         return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "queued" };
       }
-      await this.store.transitionFenced!(record.runId, lease.fencingToken, {
-        status: "failed",
-        updatedAt: timestamp,
-        completedAt: timestamp,
-        availableAt: undefined,
-        error: message,
-      }, {
-        type: "run.failed",
-        runId: record.runId,
-        timestamp,
-        data: { eventId: randomUUID(), reason: "worker-execution-failed", attempt: record.attempts },
-      });
+      try {
+        await this.store.transitionFenced!(record.runId, lease.fencingToken, {
+          status: "failed",
+          updatedAt: timestamp,
+          completedAt: timestamp,
+          availableAt: undefined,
+          error: message,
+        }, {
+          type: "run.failed",
+          runId: record.runId,
+          timestamp,
+          data: { eventId: randomUUID(), reason: "worker-execution-failed", attempt: record.attempts },
+        });
+      } catch (transitionError) {
+        const current = this.store.get ? await this.store.get(record.runId) : undefined;
+        if (current?.status === "cancelled" || current?.status === "succeeded" || current?.status === "failed" || leaseLost) {
+          return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "lease_lost" };
+        }
+        throw transitionError;
+      }
       return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "failed" };
     } finally {
       clearInterval(heartbeat);
-      await this.store.releaseLease!(record.runId, this.workerId, lease.fencingToken).catch(() => false);
+      await Promise.resolve(this.store.releaseLease!(record.runId, this.workerId, lease.fencingToken)).catch(() => false);
     }
   }
 }

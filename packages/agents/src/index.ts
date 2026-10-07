@@ -77,6 +77,8 @@ export interface AgentToolCompletion {
 export interface AgentRunOptions {
   signal?: AbortSignal;
   runId?: string;
+  projectId?: string;
+  sessionId?: string;
   onEvent?: (event: ExecutionEvent) => void | Promise<void>;
   approval?: AgentApprovalHandler;
   /** Continue from a durable checkpoint without replaying the original user message. */
@@ -374,8 +376,6 @@ export class Agent {
         if (this.maxTotalTokens !== undefined && usage.totalTokens > this.maxTotalTokens) {
           throw new AIError("Agent exceeded maxTotalTokens", "AGENT_TOKEN_BUDGET_EXCEEDED");
         }
-      }
-          : { ...response.usage, cost: response.usage.cost ? { ...response.usage.cost } : undefined };
       }
       const calls = response.toolCalls ?? [];
       if (calls.length > this.maxToolCallsPerStep) {

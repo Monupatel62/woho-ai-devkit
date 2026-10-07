@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { createAI, createMockProvider, AIError } from "@woho/core";
 import { createInMemoryStore } from "@woho/memory";
-import { createAgent, AgentRegistry, AgentRuntime, InMemoryExecutionStore, runAgentPlan } from "./index.js";
+import { Agent, createAgent, AgentRegistry, AgentRuntime, InMemoryExecutionStore, runAgentPlan } from "./index.js";
 import { createSpecializedAgent } from "./specialized.js";
 
 const run = async () => {
@@ -867,7 +868,7 @@ const run = async () => {
 run().catch((error) => { console.error(error); process.exitCode = 1; });
 test("tool execution receives project and session scope", async () => {
   let observed: { projectId?: string; sessionId?: string } | undefined;
-  const agent = createAgent(createAI({ provider: createMockProvider({ response: "done" }) }), {
+  const agent = createAgent(createAI({ provider: createMockProvider({ response: "done", toolCall: { name: "scope", arguments: "{}" } }) }), {
     name: "scope-tool",
     tools: [{
       name: "scope",

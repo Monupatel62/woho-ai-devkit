@@ -58,6 +58,8 @@ export interface ExecutionRecord {
   readonly input?: string;
   /** Child run ID atomically claimed for a durable resume, when one has been started. */
   readonly resumeRunId?: string;
+  /** Earliest time a queued execution may be claimed by a worker. */
+  readonly availableAt?: number;
   readonly parentRunId?: string;
   readonly sessionId?: string;
   readonly metadata: Readonly<Record<string, unknown>>;
@@ -218,6 +220,16 @@ function validateExecutionStatus(status: unknown): asserts status is ExecutionSt
   }
 }
 
+
+function validateImmutableExecutionPatch(current: ExecutionRecord, patch: Partial<ExecutionRecord>): void {
+  const immutableFields = ["runId", "projectId", "agent", "input", "parentRunId", "sessionId", "startedAt"] as const;
+  for (const field of immutableFields) {
+    if (Object.prototype.hasOwnProperty.call(patch, field) && patch[field] !== current[field]) {
+      throw new Error("Execution identity field cannot be mutated: " + field);
+    }
+  }
+}
+
 function validateExecutionRecord(record: ExecutionRecord): void {
   if (!isRecord(record)) throw new Error("Invalid execution record");
   validateRunId(record.runId);
@@ -259,7 +271,7 @@ function validateExecutionRecord(record: ExecutionRecord): void {
     validateCallId(record.approval.callId);
     if (record.approval.inputFingerprint !== undefined && (typeof record.approval.inputFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(record.approval.inputFingerprint))) throw new Error("Invalid execution approval inputFingerprint");
     if (!["pending", "approved", "denied"].includes(record.approval.status)) throw new Error("Invalid execution approval status");
-    for (const key of ["tool", "capability", "action"]) if (typeof record.approval[key] !== "string" || !record.approval[key].trim()) throw new Error("Invalid execution approval " + key);
+    for (const key of ["tool", "capability", "action"] as const) { const value = record.approval[key]; if (typeof value !== "string" || !value.trim()) throw new Error("Invalid execution approval " + key); }
     validateRequiredTimestamp(record.approval.requestedAt, "Execution approval requestedAt");
     validateTimestamp(record.approval.decidedAt, "Execution approval decidedAt");
     if (record.approval.decidedAt !== undefined && record.approval.decidedAt < record.approval.requestedAt) throw new Error("Execution approval decidedAt cannot be before requestedAt");
@@ -342,6 +354,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
+    validateImmutableExecutionPatch(current, patch);
     validateExecutionTransition(current, patch.status);
     const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
     validateExecutionRecord(next);
@@ -363,6 +376,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (!current) throw new Error("Execution not found: " + runId);
     if (isTerminalExecution(current)) throw new Error("Cannot transition a terminal execution: " + runId);
     if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
+    validateImmutableExecutionPatch(current, patch);
     validateExecutionTransition(current, patch.status);
     validateExecutionEvent(event, runId);
     const next = {
@@ -377,7 +391,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
   updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
-    assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot mutate a terminal execution through a fenced update: " + runId); validateExecutionTransition(current,patch.status);
+    assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot mutate a terminal execution through a fenced update: " + runId); validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current,patch.status);
     const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events}; validateExecutionRecord(next); this.records.set(runId,cloneRecord(next));
   }
   appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): void {
@@ -387,7 +401,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
     assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot transition a terminal execution: " + runId); if(expectedUpdatedAt!==undefined&&current.updatedAt!==expectedUpdatedAt) throw new Error("Execution changed before transition: "+runId);
-    validateExecutionTransition(current,patch.status); validateExecutionEvent(event,runId);
+    validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current,patch.status); validateExecutionEvent(event,runId);
     const next={...current,...patch,updatedAt:Math.max(current.updatedAt,event.timestamp),events:this.withAppendedEvent(current,event).events}; validateExecutionRecord(next); this.records.set(runId,cloneRecord(next));
   }
 
@@ -429,7 +443,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current || current.updatedAt !== expectedUpdatedAt) return false;
-    try { validateExecutionTransition(current, patch.status); } catch { return false; }
+    try { validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current, patch.status); } catch { return false; }
     const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
     try { validateExecutionRecord(next); } catch { return false; }
     this.records.set(runId, cloneRecord(next));
@@ -499,7 +513,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (current.status !== "queued" && current.status !== "running") return undefined;
     if (current.availableAt !== undefined && current.availableAt > now) return undefined;
     if (current.lease && current.lease.expiresAt > now) {
-      return current.lease.ownerId === ownerId ? { record: cloneRecord(current), lease: { ...current.lease }, recovered: false } : undefined;
+      return undefined;
     }
     const recovered = current.status === "running";
     const lease: ExecutionLease = {
@@ -655,6 +669,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
+      validateImmutableExecutionPatch(current, patch);
       validateExecutionTransition(current, patch.status);
       const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
       validateExecutionRecord(next);
@@ -682,6 +697,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current) throw new Error("Execution not found: " + runId);
       if (isTerminalExecution(current)) throw new Error("Cannot transition a terminal execution: " + runId);
       if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
+      validateImmutableExecutionPatch(current, patch);
       validateExecutionTransition(current, patch.status);
       validateExecutionEvent(event, runId);
       const next = {
@@ -696,13 +712,13 @@ export class FileExecutionStore implements ExecutionStore {
   }
 
   async updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): Promise<void> {
-    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot mutate a terminal execution through a fenced update: "+runId);validateExecutionTransition(current,patch.status);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events};validateExecutionRecord(next);await this.writeRecord(target,cloneRecord(next),true);}));
+    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot mutate a terminal execution through a fenced update: "+runId);validateImmutableExecutionPatch(current,patch);validateExecutionTransition(current,patch.status);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events};validateExecutionRecord(next);await this.writeRecord(target,cloneRecord(next),true);}));
   }
   async appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): Promise<void> {
     validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot append an event to a terminal execution: "+runId);validateExecutionEvent(event,runId);await this.writeRecord(target,this.withAppendedEvent(current,event),true);}));
   }
   async transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): Promise<void> {
-    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot transition a terminal execution: "+runId);if(expectedUpdatedAt!==undefined&&current.updatedAt!==expectedUpdatedAt)throw new Error("Execution changed before transition: "+runId);validateExecutionTransition(current,patch.status);validateExecutionEvent(event,runId);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,event.timestamp),events:this.withAppendedEvent(current,event).events};validateExecutionRecord(next);await this.writeRecord(target,next,true);}));
+    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);if(isTerminalExecution(current))throw new Error("Cannot transition a terminal execution: "+runId);if(expectedUpdatedAt!==undefined&&current.updatedAt!==expectedUpdatedAt)throw new Error("Execution changed before transition: "+runId);validateImmutableExecutionPatch(current,patch);validateExecutionTransition(current,patch.status);validateExecutionEvent(event,runId);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,event.timestamp),events:this.withAppendedEvent(current,event).events};validateExecutionRecord(next);await this.writeRecord(target,next,true);}));
   }
 
   async get(runId: string): Promise<ExecutionRecord | undefined> {
@@ -757,7 +773,7 @@ export class FileExecutionStore implements ExecutionStore {
       const target = this.filePath(runId);
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
-      try { validateExecutionTransition(current, patch.status); } catch { return false; }
+      try { validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current, patch.status); } catch { return false; }
       const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
       try { validateExecutionRecord(next); } catch { return false; }
       await this.writeRecord(target, cloneRecord(next), true);
@@ -833,7 +849,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (!current || (current.status !== "queued" && current.status !== "running")) return undefined;
       if (current.availableAt !== undefined && current.availableAt > now) return undefined;
       if (current.lease && current.lease.expiresAt > now) {
-        return current.lease.ownerId === ownerId ? { record: cloneRecord(current), lease: { ...current.lease }, recovered: false } : undefined;
+        return undefined;
       }
       const recovered = current.status === "running";
       const lease: ExecutionLease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
