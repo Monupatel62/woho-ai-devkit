@@ -374,6 +374,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     if (!current) throw new Error("Execution not found: " + runId);
     if (isTerminalExecution(current)) throw new Error("Cannot transition a terminal execution: " + runId);
     if (expectedUpdatedAt !== undefined && current.updatedAt !== expectedUpdatedAt) throw new Error("Execution changed before transition: " + runId);
+    validateImmutableExecutionPatch(current, patch);
     validateExecutionTransition(current, patch.status);
     validateExecutionEvent(event, runId);
     const next = {
@@ -388,7 +389,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
 
   updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
-    assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot mutate a terminal execution through a fenced update: " + runId); validateExecutionTransition(current,patch.status);
+    assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot mutate a terminal execution through a fenced update: " + runId); validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current,patch.status);
     const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events}; validateExecutionRecord(next); this.records.set(runId,cloneRecord(next));
   }
   appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): void {
@@ -398,7 +399,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   transitionFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
     assertCurrentFencingToken(current,fencingToken); if (isTerminalExecution(current)) throw new Error("Cannot transition a terminal execution: " + runId); if(expectedUpdatedAt!==undefined&&current.updatedAt!==expectedUpdatedAt) throw new Error("Execution changed before transition: "+runId);
-    validateExecutionTransition(current,patch.status); validateExecutionEvent(event,runId);
+    validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current,patch.status); validateExecutionEvent(event,runId);
     const next={...current,...patch,updatedAt:Math.max(current.updatedAt,event.timestamp),events:this.withAppendedEvent(current,event).events}; validateExecutionRecord(next); this.records.set(runId,cloneRecord(next));
   }
 
