@@ -456,6 +456,7 @@ async function assertDeleteDirectorySync(): Promise<void> {
       attempts: 1,
       events: [],
     });
+    syncCalls.length = 0;
     assert.equal(await store.remove("delete-sync"), true);
     assert.equal(syncCalls.length, 1);
     await store.create({
