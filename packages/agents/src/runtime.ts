@@ -149,11 +149,17 @@ export class AgentRuntime {
     this.validateInput(task.input);
     const retry = this.validateRetry(task.retry ?? this.defaultRetry);
     await this.acquire(task.signal);
+    const executionController = new AbortController();
+    const abortFromTask = () => executionController.abort(task.signal?.reason);
+    if (task.signal) {
+      if (task.signal.aborted) executionController.abort(task.signal.reason);
+      else task.signal.addEventListener("abort", abortFromTask, { once: true });
+    }
     const context: ExecutionContext = {
       runId,
       sessionId: task.sessionId,
       parentRunId: task.parentRunId,
-      signal: task.signal,
+      signal: executionController.signal,
       metadata: task.metadata ?? {},
     };
     const startedAt = Date.now();
@@ -169,7 +175,7 @@ export class AgentRuntime {
             const now = Date.now();
             if (lease && this.store?.renewLease) {
               const renewed = await this.store.renewLease(runId, leaseOwnerId, lease.fencingToken, this.executionLeaseTtlMs, now);
-              if (!renewed) { leaseLost = true; return; }
+              if (!renewed) { leaseLost = true; executionController.abort(new AIError("Execution lease was lost or cancelled", "EXECUTION_CANCELLED")); return; }
             }
             await this.updateExecution(runId, { updatedAt: now }, lease);
           })().catch(() => undefined);
@@ -181,7 +187,7 @@ export class AgentRuntime {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
         try {
           if (leaseLost) throw new AIError("Execution lease was lost", "EXECUTION_LEASE_LOST");
-          if (task.signal?.aborted) throw task.signal.reason ?? new Error("Aborted");
+          if (executionController.signal.aborted) throw executionController.signal.reason ?? new AIError("Execution cancelled", "EXECUTION_CANCELLED");
           await this.updateExecution(runId, { attempts: attempt, status: "running", updatedAt: Date.now() }, lease);
           const agent = this.registry.create(task.agent, ai);
           const approvalHandler = task.approval ?? this.approval;
@@ -244,7 +250,7 @@ export class AgentRuntime {
               }
             : approvalHandler;
           const result = await agent.run(task.input, {
-            signal: context.signal,
+            signal: executionController.signal,
             runId,
             onEvent: async (event) => {
               await this.recordAgentEvent(event, lease);
@@ -343,7 +349,7 @@ export class AgentRuntime {
           }
           return { ...result, runId };
         } catch (error) {
-          if (task.signal?.aborted) throw error;
+          if (executionController.signal.aborted) throw error;
           if (attempt >= retry.maxAttempts) throw error;
           const delay = retry.delayMs * Math.pow(retry.backoff, attempt - 1);
           const waitingAt = Date.now();
@@ -365,7 +371,11 @@ export class AgentRuntime {
       }
       throw new Error("Agent runtime exhausted retry loop");
     } catch (error) {
-      if (task.signal?.aborted) {
+      const durableRecord = await this.store?.get(runId);
+      if (durableRecord?.status === "cancelled") {
+        throw error;
+      }
+      if (task.signal?.aborted || executionController.signal.aborted) {
         const cancelledAt = Date.now();
         const cancelledEvent: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { agent: task.agent } };
         if (this.store?.transition) {
@@ -395,6 +405,7 @@ export class AgentRuntime {
       throw error;
     } finally {
       if (heartbeat) clearInterval(heartbeat);
+      task.signal?.removeEventListener("abort", abortFromTask);
       if (lease && this.store?.releaseLease) {
         try {
           await this.store.releaseLease(runId, leaseOwnerId, lease.fencingToken);
@@ -455,6 +466,12 @@ export class AgentRuntime {
       if (approval.status === "denied") return false;
       await this.sleep(this.approvalPollIntervalMs, signal);
     }
+  }
+
+  /** Atomically request cancellation of a durable execution. */
+  async cancel(runId: string, reason = "Execution cancelled"): Promise<boolean> {
+    if (!this.store?.cancelExecution) throw new Error("Execution store does not support durable cancellation");
+    return this.store.cancelExecution(runId, this.sanitizeError(reason));
   }
 
   /** Restart a persisted failed/cancelled execution as a new run linked to the original. */
