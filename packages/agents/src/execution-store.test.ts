@@ -371,6 +371,36 @@ async function assertMonotonicMutationTimestamps(store: InMemoryExecutionStore |
   assert.equal(await store.completeToolExecution!(runId, "call-tool-" + label, "fp-" + label, { status: "completed", result: "ok", updatedAt: 450 }), false);
 }
 
+async function assertMonotonicClaimTimestamp(store: InMemoryExecutionStore | FileExecutionStore, label: string): Promise<void> {
+  const runId = "claim-monotonic-" + label;
+  await store.create({
+    runId,
+    agent: "general",
+    metadata: {},
+    status: "queued",
+    startedAt: 100,
+    updatedAt: 500,
+    attempts: 0,
+    events: [],
+  });
+  const claim = await store.claimNextExecution!("worker-" + label, 1_000, { now: 400 });
+  assert.equal(claim?.record.updatedAt, 500);
+  assert.equal((await store.get(runId))?.updatedAt, 500);
+}
+
+const claimMonotonicMemory = new InMemoryExecutionStore();
+await assertMonotonicClaimTimestamp(claimMonotonicMemory, "memory");
+
+const claimMonotonicRoot = await mkdtemp(path.join(os.tmpdir(), "woho-claim-monotonic-store-"));
+try {
+  const claimMonotonicFile = new FileExecutionStore({ directory: claimMonotonicRoot });
+  await assertMonotonicClaimTimestamp(claimMonotonicFile, "file");
+} finally {
+  await rm(claimMonotonicRoot, { recursive: true, force: true });
+}
+
+console.log("claim timestamp monotonicity tests passed");
+
 const monotonicMemory = new InMemoryExecutionStore();
 await assertMonotonicMutationTimestamps(monotonicMemory, "memory");
 
