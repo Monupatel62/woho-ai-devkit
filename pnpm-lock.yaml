@@ -8,6 +8,44 @@ importers:
 
   .: {}
 
+  apps/cli:
+    dependencies:
+      '@woho/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@woho/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@woho/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@woho/provider-openai':
+        specifier: workspace:*
+        version: link:../../packages/provider-openai
+      '@woho/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
+
+  apps/phone-agent:
+    dependencies:
+      '@woho/agents':
+        specifier: workspace:*
+        version: link:../../packages/agents
+      '@woho/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@woho/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
+
   examples/agent:
     dependencies:
       '@woho/agents':
@@ -27,48 +65,8 @@ importers:
         version: link:../../packages/provider-openai
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
-
-  apps/cli:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
-
-    dependencies:
-      '@woho/agents':
-        specifier: workspace:*
-        version: link:../../packages/agents
-      '@woho/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@woho/memory':
-        specifier: workspace:*
-        version: link:../../packages/memory
-      '@woho/provider-openai':
-        specifier: workspace:*
-        version: link:../../packages/provider-openai
-      '@woho/tools':
-        specifier: workspace:*
-        version: link:../../packages/tools
-
-  apps/phone-agent:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
-
-    dependencies:
-      '@woho/agents':
-        specifier: workspace:*
-        version: link:../../packages/agents
-      '@woho/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@woho/memory':
-        specifier: workspace:*
-        version: link:../../packages/memory
+        specifier: ^26.6.4
+        version: 26.6.4
 
   packages/agents:
     dependencies:
@@ -83,26 +81,26 @@ importers:
         version: link:../memory
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
+        specifier: ^26.6.4
+        version: 26.6.4
 
   packages/core:
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
+        specifier: ^26.6.4
+        version: 26.6.4
 
   packages/mcp:
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
+        specifier: ^26.6.4
+        version: 26.6.4
 
   packages/memory:
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
+        specifier: ^26.6.4
+        version: 26.6.4
 
   packages/provider-openai:
     dependencies:
@@ -111,8 +109,8 @@ importers:
         version: link:../core
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
+        specifier: ^26.6.4
+        version: 26.6.4
 
   packages/tools:
     dependencies:
@@ -121,21 +119,21 @@ importers:
         version: link:../agents
     devDependencies:
       '@types/node':
-        specifier: ^22.0.0
-        version: 22.20.5
+        specifier: ^26.6.4
+        version: 26.6.4
 
 packages:
 
-  '@types/node@22.20.5':
-    resolution: {integrity: sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==}
+  '@types/node@26.6.4':
+    resolution: {integrity: sha512-ldVPDCzj7fsaGZrLB0NuHuTvJcsNasysBAqMolr/cgxrLd1xbqxIr3XJiPnHHJUCxj5sNF1vnRj9aWnrVh5Jcg==}
 
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+  undici-types@8.9.0:
+    resolution: {integrity: sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==}
 
 snapshots:
 
-  '@types/node@22.20.5':
+  '@types/node@26.6.4':
     dependencies:
-      undici-types: 6.21.0
+      undici-types: 8.9.0
 
-  undici-types@6.21.0: {}
+  undici-types@8.9.0: {}
