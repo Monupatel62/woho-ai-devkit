@@ -139,7 +139,7 @@ try {
   assert.equal(boundedRecord?.events.length, 2);
   assert.deepEqual(boundedRecord?.events.map((item) => item.timestamp), [4, 5]);
 
-  const inMemoryBounded = new (await import("./execution-store.js")).InMemoryExecutionStore({ maxEvents: 2 });
+  const inMemoryBounded = new InMemoryExecutionStore({ maxEvents: 2 });
   const inMemorySeed = { ...record, runId: "bounded-memory" };
   await inMemoryBounded.create(inMemorySeed);
   await inMemoryBounded.appendEvent(inMemorySeed.runId, { type: "tool.started", runId: inMemorySeed.runId, timestamp: 3, data: { step: 1 } });
