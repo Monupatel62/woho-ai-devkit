@@ -93,6 +93,7 @@ try {
     /Execution record is missing, not a regular file, or too large/,
   );
   await rm(symlinkPath, { force: true });
+  await rm(symlinkTarget, { force: true });
 
 
   await assert.rejects(
