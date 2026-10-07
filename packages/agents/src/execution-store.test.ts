@@ -437,5 +437,48 @@ try {
   await rm(monotonicRoot, { recursive: true, force: true });
 }
 
+async function assertDeleteDirectorySync(): Promise<void> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "woho-delete-sync-"));
+  try {
+    const store = new FileExecutionStore({ directory: root });
+    const syncCalls: number[] = [];
+    const internal = store as unknown as { syncDirectory: () => Promise<void> };
+    const original = internal.syncDirectory;
+    internal.syncDirectory = async () => { syncCalls.push(Date.now()); return original.call(store); };
+    await store.create({
+      runId: "delete-sync",
+      agent: "general",
+      metadata: {},
+      status: "succeeded",
+      startedAt: 1,
+      updatedAt: 10,
+      completedAt: 10,
+      attempts: 1,
+      events: [],
+    });
+    syncCalls.length = 0;
+    assert.equal(await store.remove("delete-sync"), true);
+    assert.equal(syncCalls.length, 1);
+    await store.create({
+      runId: "remove-if-sync",
+      agent: "general",
+      metadata: {},
+      status: "failed",
+      startedAt: 1,
+      updatedAt: 20,
+      completedAt: 20,
+      attempts: 1,
+      events: [],
+    });
+    syncCalls.length = 0;
+    assert.equal(await store.removeIf("remove-if-sync", 20), true);
+    assert.equal(syncCalls.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+await assertDeleteDirectorySync();
+
 console.log("monotonic mutation timestamp tests passed");
 

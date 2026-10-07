@@ -751,6 +751,7 @@ export class FileExecutionStore implements ExecutionStore {
     return this.enqueue(() => this.withFileLock(async () => {
       try {
         await fs.unlink(this.filePath(runId));
+        await this.syncDirectory();
         return true;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
@@ -766,6 +767,7 @@ export class FileExecutionStore implements ExecutionStore {
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt || !["succeeded", "failed", "cancelled"].includes(current.status)) return false;
       await fs.unlink(target);
+      await this.syncDirectory();
       return true;
     }));
   }
