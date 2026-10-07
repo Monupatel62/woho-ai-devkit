@@ -201,7 +201,7 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         await rejectSymlinkAncestors(root, relative);
         const target = path.resolve(root, relative);
         const expected = await fs.lstat(target);
-        if (expected.isSymbolicLink()) throw new Error("Symbolic links are not allowed for this operation");
+        if (expected.isSymbolicLink()) throw new Error("Refusing symlink for this operation");
         if (!expected.isFile()) throw new Error("File is missing, not regular, or too large");
         const handle = await fs.open(target, process.platform === "win32" ? "r+" : fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
         try {
