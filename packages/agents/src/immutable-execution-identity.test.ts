@@ -4,7 +4,24 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-async function expectIdentityBlocked(operation: () => void | Promise<void>): Promise<void> {
+function seed(runId: string): ExecutionRecord {
+  return {
+    runId,
+    projectId: "project-a",
+    agent: "general",
+    input: "original-input",
+    parentRunId: "parent-a",
+    sessionId: "session-a",
+    metadata: {},
+    status: "running",
+    startedAt: 10,
+    updatedAt: 10,
+    attempts: 0,
+    events: [],
+  };
+}
+
+async function expectBlocked(operation: () => void | Promise<void>): Promise<void> {
   try {
     await operation();
   } catch (error) {
@@ -14,20 +31,13 @@ async function expectIdentityBlocked(operation: () => void | Promise<void>): Pro
   assert.fail("Expected execution identity mutation to be rejected");
 }
 
-function seed(runId: string): ExecutionRecord {
-  return { runId, projectId: "project-a", agent: "general", input: "original-input", parentRunId: "parent-a", sessionId: "session-a", metadata: {}, status: "running", startedAt: 10, updatedAt: 10, attempts: 0, events: [] };
-}
-
-for (const makeStore of [
-  () => new InMemoryExecutionStore(),
-  async () => new FileExecutionStore({ directory: await mkdtemp(path.join(tmpdir(), "woho-identity-")) }),
-]) {
-  const store = await makeStore();
+async function exercise(store: InMemoryExecutionStore | FileExecutionStore): Promise<void> {
   const runId = "immutable-identity";
   await store.create(seed(runId));
   const lease = await store.acquireLease!(runId, "worker-a", 10_000, 20);
   assert.ok(lease);
-  const immutablePatches: Array<Partial<ExecutionRecord>> = [
+
+  const patches: Array<Partial<ExecutionRecord>> = [
     { runId: "different-run" },
     { projectId: "project-b" },
     { agent: "different-agent" },
@@ -36,13 +46,23 @@ for (const makeStore of [
     { sessionId: "different-session" },
     { startedAt: 999 },
   ];
-  for (const patch of immutablePatches) {
-    await expectIdentityBlocked(() => store.update(runId, patch));
-    assert.equal(await store.updateIf!(runId, 10, patch), false);
-    await expectIdentityBlocked(() => store.transition!(runId, patch, { type: "run.waiting", runId, timestamp: 20 }));
-    await expectIdentityBlocked(() => store.updateFenced!(runId, lease!.fencingToken, patch));
-    await expectIdentityBlocked(() => store.transitionFenced!(runId, lease!.fencingToken, patch, { type: "run.waiting", runId, timestamp: 20 }));
+
+  for (const patch of patches) {
+    await expectBlocked(() => store.update(runId, patch));
+    assert.equal(await store.updateIf!(runId, 20, patch), false);
+    await expectBlocked(() => store.updateFenced!(runId, lease!.fencingToken, patch));
+    await expectBlocked(() => store.transition!(runId, patch, {
+      type: "run.waiting",
+      runId,
+      timestamp: 20,
+    }));
+    await expectBlocked(() => store.transitionFenced!(runId, lease!.fencingToken, patch, {
+      type: "run.waiting",
+      runId,
+      timestamp: 20,
+    }));
   }
+
   const current = await store.get(runId);
   assert.equal(current?.runId, runId);
   assert.equal(current?.projectId, "project-a");
@@ -51,7 +71,16 @@ for (const makeStore of [
   assert.equal(current?.agent, "general");
   assert.equal(current?.input, "original-input");
   assert.equal(current?.startedAt, 10);
-  if (store instanceof FileExecutionStore) await rm((store as any).directory, { recursive: true, force: true });
+}
+
+const memory = new InMemoryExecutionStore();
+await exercise(memory);
+
+const directory = await mkdtemp(path.join(tmpdir(), "woho-identity-"));
+try {
+  await exercise(new FileExecutionStore({ directory }));
+} finally {
+  await rm(directory, { recursive: true, force: true });
 }
 
 console.log("immutable execution identity tests passed");
