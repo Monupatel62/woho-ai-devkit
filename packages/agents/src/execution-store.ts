@@ -193,6 +193,8 @@ function validateExecutionEvent(event: ExecutionEvent, expectedRunId?: string): 
   }
   validateRequiredTimestamp(event.timestamp, "Execution event timestamp");
   if (event.data !== undefined && !isRecord(event.data)) throw new Error("Invalid execution event data");
+  const eventId = event.data?.eventId;
+  if (eventId !== undefined && (typeof eventId !== "string" || !eventId.trim() || eventId.length > 200)) throw new Error("Invalid execution eventId");
 }
 
 function validateExecutionStatus(status: unknown): asserts status is ExecutionStatus {
@@ -795,6 +797,10 @@ export class FileExecutionStore implements ExecutionStore {
     validateExecutionEvent(event, record.runId);
     const last = record.events[record.events.length - 1];
     if (last && event.timestamp < last.timestamp) throw new Error("Execution events are out of order");
+    const eventId = event.data?.eventId;
+    if (typeof eventId === "string" && record.events.some((item) => item.data?.eventId === eventId)) {
+      throw new Error("Duplicate execution eventId: " + eventId);
+    }
     if (event.timestamp < record.updatedAt) throw new Error("Execution event timestamp cannot move execution history backwards");
     const events = [...record.events, event];
     if (events.length > this.maxEvents) events.splice(0, events.length - this.maxEvents);
