@@ -47,6 +47,21 @@ const result = await executor.execute(
 assert.equal(result, "ok");
 assert.equal(executed, 1);
 
+const mutableNestedAction = {
+  capability: "message.send" as const,
+  appPackage: "com.example.chat",
+  description: "Send message",
+  input: { text: "approved", nested: { value: 1 } },
+};
+let releaseNestedApproval!: () => void;
+const nestedApprovalStarted = new Promise<void>((resolve) => { releaseNestedApproval = resolve; });
+const nestedApproval = executor.execute(mutableNestedAction, { approve: async () => { await nestedApprovalStarted; return true; } });
+mutableNestedAction.input!.text = "tampered";
+(mutableNestedAction.input!.nested as { value: number }).value = 99;
+releaseNestedApproval();
+await assert.doesNotReject(() => nestedApproval);
+assert.deepEqual((lastAction as { input: typeof mutableNestedAction.input }).input, { text: "approved", nested: { value: 1 } });
+
 const mutableAction = { capability: "message.send" as const, appPackage: "com.example.chat", description: "Send message" };
 let releaseApproval!: () => void;
 const approvalStarted = new Promise<void>((resolve) => { releaseApproval = resolve; });
