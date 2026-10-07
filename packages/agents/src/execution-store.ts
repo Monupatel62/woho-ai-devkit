@@ -337,7 +337,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const current = this.records.get(runId);
     if (!current) throw new Error("Execution not found: " + runId);
     validateExecutionTransition(current, patch.status);
-    const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+    const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
     validateExecutionRecord(next);
     this.records.set(runId, cloneRecord(next));
   }
@@ -370,7 +370,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
   updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
     assertCurrentFencingToken(current,fencingToken); validateExecutionTransition(current,patch.status);
-    const next={...current,...patch,events:patch.events?[...patch.events]:current.events}; validateExecutionRecord(next); this.records.set(runId,cloneRecord(next));
+    const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events}; validateExecutionRecord(next); this.records.set(runId,cloneRecord(next));
   }
   appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): void {
     validateRunId(runId); const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId);
@@ -414,7 +414,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const current = this.records.get(runId);
     if (!current || current.updatedAt !== expectedUpdatedAt) return false;
     try { validateExecutionTransition(current, patch.status); } catch { return false; }
-    const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+    const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
     try { validateExecutionRecord(next); } catch { return false; }
     this.records.set(runId, cloneRecord(next));
     return true;
@@ -636,7 +636,7 @@ export class FileExecutionStore implements ExecutionStore {
       const current = await this.readRecord(target);
       if (!current) throw new Error("Execution not found: " + runId);
       validateExecutionTransition(current, patch.status);
-      const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+      const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
       validateExecutionRecord(next);
       await this.writeRecord(target, cloneRecord(next), true);
     }));
@@ -674,7 +674,7 @@ export class FileExecutionStore implements ExecutionStore {
   }
 
   async updateFenced(runId: string, fencingToken: number, patch: Partial<ExecutionRecord>): Promise<void> {
-    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);validateExecutionTransition(current,patch.status);const next={...current,...patch,events:patch.events?[...patch.events]:current.events};validateExecutionRecord(next);await this.writeRecord(target,cloneRecord(next),true);}));
+    validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);validateExecutionTransition(current,patch.status);const next={...current,...patch,updatedAt:Math.max(current.updatedAt,patch.updatedAt??current.updatedAt),events:patch.events?[...patch.events]:current.events};validateExecutionRecord(next);await this.writeRecord(target,cloneRecord(next),true);}));
   }
   async appendEventFenced(runId: string, fencingToken: number, event: ExecutionEvent): Promise<void> {
     validateRunId(runId); await this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);validateExecutionEvent(event,runId);await this.writeRecord(target,this.withAppendedEvent(current,event),true);}));
@@ -725,7 +725,7 @@ export class FileExecutionStore implements ExecutionStore {
       const current = await this.readRecord(target);
       if (!current || current.updatedAt !== expectedUpdatedAt) return false;
       try { validateExecutionTransition(current, patch.status); } catch { return false; }
-      const next = { ...current, ...patch, events: patch.events ? [...patch.events] : current.events };
+      const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
       try { validateExecutionRecord(next); } catch { return false; }
       await this.writeRecord(target, cloneRecord(next), true);
       return true;
@@ -1030,6 +1030,9 @@ export async function recoverStaleExecutions(
     const candidates = await store.list({ status });
     for (const candidate of candidates) {
       if (candidate.updatedAt > cutoff) continue;
+      // A valid active lease is stronger evidence of liveness than a possibly stale heartbeat timestamp.
+      // Never fail an execution that another worker still owns; its fenced worker can finish or lose the lease naturally.
+      if (candidate.lease && candidate.lease.expiresAt > now) continue;
       const patch: Partial<ExecutionRecord> = {
         status: "failed",
         error: "Execution became stale without a heartbeat",
