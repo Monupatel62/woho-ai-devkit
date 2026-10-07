@@ -196,7 +196,32 @@ try {
 
   const safe = await reopened.get("../not-a-path");
   assert.equal(safe, undefined);
-  console.log("file execution store tests passed");
+  const checkpointStore = new InMemoryExecutionStore();
+checkpointStore.create({
+  runId: "checkpoint-monotonic",
+  agent: "general",
+  metadata: {},
+  status: "running",
+  startedAt: 1,
+  updatedAt: 200,
+  attempts: 1,
+  events: [],
+  checkpoint: {
+    step: 2,
+    messages: [],
+    updatedAt: 200,
+  },
+});
+assert.throws(
+  () => checkpointStore.update("checkpoint-monotonic", {
+    checkpoint: { step: 1, messages: [], updatedAt: 100 },
+    updatedAt: 200,
+  }),
+  /checkpoint cannot move backwards/,
+);
+assert.equal(checkpointStore.get("checkpoint-monotonic")?.checkpoint?.step, 2);
+
+console.log("file execution store tests passed");
 } finally {
   await rm(root, { recursive: true, force: true });
 }
