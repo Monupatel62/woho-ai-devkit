@@ -63,7 +63,7 @@ function mapError(status: number, _body: string): Error {
 async function readBodyWithLimit(response: Response, maxBytes: number): Promise<string> {
   if (!response.body) throw new NetworkError("Provider returned no response body");
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
   const chunks: string[] = [];
   let received = 0;
   try {
