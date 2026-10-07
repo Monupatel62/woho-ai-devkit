@@ -206,6 +206,7 @@ export class AgentRuntime {
     const leaseOwnerId = randomUUID();
     let lease: ExecutionLease | undefined;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let leaseLost = false;
     try {
       if (this.store) {
         const existing = await this.store.get(runId);
@@ -219,10 +220,8 @@ export class AgentRuntime {
         }
       }
       await this.store?.create({ runId, projectId: task.projectId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [], ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
-      leaseOwnerId = randomUUID();
       lease = this.store?.acquireLease ? await this.store.acquireLease(runId, leaseOwnerId, this.executionLeaseTtlMs, startedAt) : undefined;
       if (this.store?.acquireLease && !lease) throw new AIError("Execution is already owned by another worker", "EXECUTION_LEASE_CONFLICT");
-      let leaseLost = false;
       await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } }, lease);
       await this.telemetry({ type: "run.started", runId, projectId: task.projectId, agent: task.agent, parentRunId: task.parentRunId });
       heartbeat = this.store
