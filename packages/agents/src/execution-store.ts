@@ -771,7 +771,7 @@ export class FileExecutionStore implements ExecutionStore {
       if (current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return undefined;
       if (current.lease && current.lease.expiresAt > now && current.lease.ownerId !== ownerId) return undefined;
       const lease = { ownerId, fencingToken: (current.lease?.fencingToken ?? 0) + 1, expiresAt: now + ttlMs };
-      await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: now }), true); return lease;
+      await this.writeRecord(target, cloneRecord({ ...current, lease, updatedAt: Math.max(current.updatedAt, now) }), true); return lease;
     }));
   }
 
