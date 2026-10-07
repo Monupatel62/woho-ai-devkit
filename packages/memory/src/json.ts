@@ -67,7 +67,9 @@ export class JsonFileStore implements MemoryStore {
       const parsed: unknown = JSON.parse(raw);
       return validate(parsed);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") return [];
+      if (code === "ELOOP") throw new Error("Memory file is missing, not a regular file, or too large");
       throw error;
     } finally {
       await handle?.close().catch(() => undefined);
