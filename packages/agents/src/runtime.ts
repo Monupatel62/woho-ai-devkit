@@ -9,6 +9,7 @@ import {
   type PruneExecutionHistoryOptions,
   type RecoverStaleExecutionsOptions,
   type ExecutionRecord,
+  type ExecutionLease,
 } from "./execution-store.js";
 
 export interface AgentRetryPolicy {
@@ -202,37 +203,47 @@ export class AgentRuntime {
       metadata: task.metadata ?? {},
     };
     const startedAt = Date.now();
-    if (this.store) {
-      const existing = await this.store.get(runId);
-      if (existing) {
-        if (existing.status !== "failed" && existing.status !== "cancelled") {
-          throw new AIError("Execution runId is already active or terminal: " + runId, "EXECUTION_RUN_ID_CONFLICT");
-        }
-        if (existing.projectId !== task.projectId || existing.sessionId !== task.sessionId) {
-          throw new AIError("Execution recovery scope does not match the original run", "EXECUTION_RECOVERY_SCOPE_MISMATCH");
+    const leaseOwnerId = randomUUID();
+    let lease: ExecutionLease | undefined;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let leaseLost = false;
+    try {
+      if (this.store) {
+        const existing = await this.store.get(runId);
+        if (existing) {
+          if (existing.status !== "failed" && existing.status !== "cancelled") {
+            throw new AIError("Execution runId is already active or terminal: " + runId, "EXECUTION_RUN_ID_CONFLICT");
+          }
+          if (existing.projectId !== task.projectId || existing.sessionId !== task.sessionId) {
+            throw new AIError("Execution recovery scope does not match the original run", "EXECUTION_RECOVERY_SCOPE_MISMATCH");
+          }
         }
       }
-    }
-    await this.store?.create({ runId, projectId: task.projectId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [], ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
-    const leaseOwnerId = randomUUID();
-    const lease = this.store?.acquireLease ? await this.store.acquireLease(runId, leaseOwnerId, this.executionLeaseTtlMs, startedAt) : undefined;
-    if (this.store?.acquireLease && !lease) throw new AIError("Execution is already owned by another worker", "EXECUTION_LEASE_CONFLICT");
-    let leaseLost = false;
-    await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } }, lease);
-    await this.telemetry({ type: "run.started", runId, projectId: task.projectId, agent: task.agent, parentRunId: task.parentRunId });
-    const heartbeat = this.store
-      ? setInterval(() => {
-          void (async () => {
-            const now = Date.now();
-            if (lease && this.store?.renewLease) {
-              const renewed = await this.store.renewLease(runId, leaseOwnerId, lease.fencingToken, this.executionLeaseTtlMs, now);
-              if (!renewed) { leaseLost = true; executionController.abort(new AIError("Execution lease was lost or cancelled", "EXECUTION_CANCELLED")); return; }
-            }
-            await this.updateExecution(runId, { updatedAt: now }, lease);
-          })().catch(() => undefined);
-        }, this.heartbeatIntervalMs)
-      : undefined;
+      await this.store?.create({ runId, projectId: task.projectId, agent: task.agent, ...(this.persistInput ? { input: task.input } : {}), parentRunId: task.parentRunId, sessionId: task.sessionId, metadata: task.metadata ?? {}, status: "running", startedAt, updatedAt: startedAt, attempts: 0, events: [], ...(task.checkpoint ? { checkpoint: task.checkpoint } : {}) });
+      lease = this.store?.acquireLease ? await this.store.acquireLease(runId, leaseOwnerId, this.executionLeaseTtlMs, startedAt) : undefined;
+      if (this.store?.acquireLease && !lease) throw new AIError("Execution is already owned by another worker", "EXECUTION_LEASE_CONFLICT");
+      await this.emit({ type: "run.started", runId, timestamp: startedAt, data: { agent: task.agent, sessionId: task.sessionId } }, lease);
+      await this.telemetry({ type: "run.started", runId, projectId: task.projectId, agent: task.agent, parentRunId: task.parentRunId });
+      heartbeat = this.store
+        ? setInterval(() => {
+            void (async () => {
+              const now = Date.now();
+              if (lease && this.store?.renewLease) {
+                const renewed = await this.store.renewLease(runId, leaseOwnerId, lease.fencingToken, this.executionLeaseTtlMs, now);
+                if (!renewed) { leaseLost = true; executionController.abort(new AIError("Execution lease was lost or cancelled", "EXECUTION_CANCELLED")); return; }
+              }
+              await this.updateExecution(runId, { updatedAt: now }, lease);
+            })().catch(() => undefined);
+          }, this.heartbeatIntervalMs)
+        : undefined;
 
+
+    } catch (error) {
+      this.release();
+      task.signal?.removeEventListener("abort", abortFromTask);
+      if (timeout) clearTimeout(timeout);
+      throw error;
+    }
     let latestCheckpoint = task.checkpoint;
     try {
       for (let attempt = 1; attempt <= retry.maxAttempts; attempt += 1) {
