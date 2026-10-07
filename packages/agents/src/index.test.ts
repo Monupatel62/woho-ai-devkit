@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { createAI, createMockProvider, AIError } from "@woho/core";
 import { createInMemoryStore } from "@woho/memory";
-import { createAgent, AgentRegistry, AgentRuntime, InMemoryExecutionStore, runAgentPlan } from "./index.js";
+import { Agent, createAgent, AgentRegistry, AgentRuntime, InMemoryExecutionStore, runAgentPlan } from "./index.js";
 import { createSpecializedAgent } from "./specialized.js";
 
 const run = async () => {
