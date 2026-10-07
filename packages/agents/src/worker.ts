@@ -60,7 +60,7 @@ export class AgentExecutionWorker {
   }
 
   async runOnce(handler: AgentExecutionWorkerHandler): Promise<AgentExecutionWorkerOutcome | undefined> {
-    const claim = await this.store.claimNextExecution(this.workerId, this.leaseTtlMs, { projectId: this.projectId });
+    const claim = await this.store.claimNextExecution!(this.workerId, this.leaseTtlMs, { projectId: this.projectId });
     if (!claim) return undefined;
     return this.executeClaim(claim, handler);
   }
@@ -81,7 +81,7 @@ export class AgentExecutionWorker {
     const controller = new AbortController();
     let leaseLost = false;
     const heartbeat = setInterval(() => {
-      void this.store.renewLease!(record.runId, this.workerId, lease.fencingToken, this.leaseTtlMs).then((renewed) => {
+      void Promise.resolve(this.store.renewLease!(record.runId, this.workerId, lease.fencingToken, this.leaseTtlMs)).then((renewed) => {
         if (!renewed) {
           leaseLost = true;
           controller.abort(new AIError("Execution worker lease was lost", "EXECUTION_LEASE_LOST"));
@@ -149,7 +149,7 @@ export class AgentExecutionWorker {
       return { runId: record.runId, attempt: record.attempts, recovered: claim.recovered, status: "failed" };
     } finally {
       clearInterval(heartbeat);
-      await this.store.releaseLease!(record.runId, this.workerId, lease.fencingToken).catch(() => false);
+      await Promise.resolve(this.store.releaseLease!(record.runId, this.workerId, lease.fencingToken)).catch(() => false);
     }
   }
 }
