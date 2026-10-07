@@ -80,7 +80,15 @@ export class AuthorizedPhoneActionExecutor {
   } = {}): Promise<unknown> {
     if (options.signal?.aborted) throw options.signal.reason ?? new Error("Action aborted");
 
-    const authorizedAction = Object.freeze({ ...action });
+    let boundInput = action.input;
+    if (action.input !== undefined) {
+      try {
+        boundInput = structuredClone(action.input);
+      } catch {
+        throw new Error("Phone action input must be cloneable");
+      }
+    }
+    const authorizedAction = Object.freeze({ ...action, ...(action.input !== undefined ? { input: boundInput } : {}) });
     const decision = this.permissions.check(authorizedAction);
     if (!decision.allowed) throw new Error(decision.reason ?? "Permission denied");
 
