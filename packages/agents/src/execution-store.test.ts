@@ -271,16 +271,16 @@ async function assertMutationFencing(store: InMemoryExecutionStore | FileExecuti
   assert.equal(second?.fencingToken, 2);
 
   await assert.rejects(
-    () => Promise.resolve(store.updateFenced!(runId, first!.fencingToken, { input: "stale-write" })),
+    async () => { await store.updateFenced!(runId, first!.fencingToken, { input: "stale-write" }); },
     /fencing token is stale/,
   );
   await assert.rejects(
-    () => Promise.resolve(store.transitionFenced!(
+    async () => { await store.transitionFenced!(
       runId,
       first!.fencingToken,
       { status: "waiting" },
       { type: "run.waiting", runId, timestamp: 31 },
-    )),
+    ); },
     /fencing token is stale/,
   );
 
