@@ -193,6 +193,7 @@ export class AgentRuntime {
             action: string;
             inputFingerprint: string;
           } | undefined;
+          const claimedToolCalls = new Set<string>();
           const auditedApproval = this.persistApprovalAudit && this.store
             ? async (request: Parameters<NonNullable<AgentApprovalHandler>>[0]): Promise<boolean> => {
                 const approvalId = randomUUID();
@@ -280,7 +281,10 @@ export class AgentRuntime {
               }
               const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
               const receipt = await this.store!.claimToolExecutionFenced!(runId, lease!.fencingToken, callId, fingerprint);
-              if (!receipt) return;
+              if (!receipt) {
+                claimedToolCalls.add(callId);
+                return;
+              }
               if (receipt.status === "in_flight") throw new AIError("Tool side effect is already in flight and cannot be replayed safely: " + callId, "TOOL_SIDE_EFFECT_AMBIGUOUS");
               if (receipt.fingerprint !== fingerprint) throw new AIError("Tool execution fingerprint conflict: " + callId, "TOOL_IDEMPOTENCY_CONFLICT");
               if (receipt.status === "failed") return { replay: true, result: { error: receipt.error ?? "TOOL_EXECUTION_ERROR" } };
@@ -290,6 +294,7 @@ export class AgentRuntime {
               return { replay: true, result: replayResult };
             } : undefined,
             onToolExecutionComplete: this.store?.completeToolExecutionFenced && lease ? async ({ callId, tool, input, result, error }) => {
+              if (!claimedToolCalls.has(callId)) return;
               const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
               const payload = result === undefined ? "__WOHO_UNDEFINED_RESULT__" : JSON.stringify(result);
               if (payload === undefined) throw new AIError("Tool result is not serializable for durable receipt", "TOOL_RECEIPT_INVALID");
