@@ -90,7 +90,7 @@ async function fetchPinnedHttps(
     };
     const req = httpsRequest({
       protocol: "https:",
-      hostname: url.hostname,
+      hostname: address,
       port: url.port ? Number(url.port) : 443,
       path: url.pathname + url.search,
       method: "GET",
@@ -99,7 +99,7 @@ async function fetchPinnedHttps(
         accept: "text/plain, application/json, text/*;q=0.9",
         host: url.host,
       },
-      lookup: (_hostname, _options, callback) => callback(null, address, family),
+      family,
       servername: url.hostname,
     }, (response) => {
       const contentLength = Number(response.headers["content-length"] ?? 0);
