@@ -38,6 +38,7 @@ export class AgentExecutionWorker {
   private readonly maxAttempts: number;
   private readonly retryDelayMs: number;
   private readonly projectId?: string;
+  private runOnceInFlight = false;
 
   constructor(store: ExecutionStore, options: AgentExecutionWorkerOptions = {}) {
     this.store = store;
@@ -60,9 +61,15 @@ export class AgentExecutionWorker {
   }
 
   async runOnce(handler: AgentExecutionWorkerHandler): Promise<AgentExecutionWorkerOutcome | undefined> {
-    const claim = await this.store.claimNextExecution!(this.workerId, this.leaseTtlMs, { projectId: this.projectId });
-    if (!claim) return undefined;
-    return this.executeClaim(claim, handler);
+    if (this.runOnceInFlight) return undefined;
+    this.runOnceInFlight = true;
+    try {
+      const claim = await this.store.claimNextExecution!(this.workerId, this.leaseTtlMs, { projectId: this.projectId });
+      if (!claim) return undefined;
+      return await this.executeClaim(claim, handler);
+    } finally {
+      this.runOnceInFlight = false;
+    }
   }
 
   async drain(handler: AgentExecutionWorkerHandler, maxJobs = Number.MAX_SAFE_INTEGER): Promise<AgentExecutionWorkerOutcome[]> {
