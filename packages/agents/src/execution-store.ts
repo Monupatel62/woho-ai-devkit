@@ -91,6 +91,8 @@ export interface ExecutionStore {
   claimResume?(runId: string, expectedUpdatedAt: number, resumeRunId: string): string | undefined | Promise<string | undefined>;
   /** Atomically resolve the currently pending approval for a run. */
   resolveApproval?(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt?: number): boolean | Promise<boolean>;
+  /** Atomically request cancellation and invalidate any active worker lease. */
+  cancelExecution?(runId: string, reason?: string, cancelledAt?: number): boolean | Promise<boolean>;
   /** Atomically apply a record patch and append its lifecycle event. */
   transition?(runId: string, patch: Partial<ExecutionRecord>, event: ExecutionEvent, expectedUpdatedAt?: number): void | Promise<void>;
   claimToolExecution?(runId: string, callId: string, fingerprint: string): ExecutionToolReceipt | undefined | Promise<ExecutionToolReceipt | undefined>;
@@ -515,6 +517,26 @@ export class InMemoryExecutionStore implements ExecutionStore {
     return undefined;
   }
 
+  cancelExecution(runId: string, reason = "Execution cancelled", cancelledAt = Date.now()): boolean {
+    validateRunId(runId);
+    validateRequiredTimestamp(cancelledAt, "cancelledAt");
+    const current = this.records.get(runId);
+    if (!current || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return false;
+    const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { eventId: "cancel-" + cancelledAt, reason: reason.slice(0, 4096) } };
+    const next: ExecutionRecord = {
+      ...current,
+      status: "cancelled",
+      completedAt: cancelledAt,
+      updatedAt: cancelledAt,
+      error: reason.slice(0, 4096),
+      lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
+      events: [...current.events, event],
+    };
+    validateExecutionRecord(next);
+    this.records.set(runId, cloneRecord(next));
+    return true;
+  }
+
   resolveApproval(runId: string, approvalId: string, approved: boolean, reason?: string, decidedAt = Date.now()): boolean {
     validateRunId(runId);
     validateApprovalId(approvalId);
@@ -812,6 +834,29 @@ export class FileExecutionStore implements ExecutionStore {
       validateExecutionRecord(next);
       await this.writeRecord(this.filePath(current.runId), cloneRecord(next), true);
       return { record: cloneRecord(next), lease: { ...lease }, recovered };
+    }));
+  }
+
+  async cancelExecution(runId: string, reason = "Execution cancelled", cancelledAt = Date.now()): Promise<boolean> {
+    validateRunId(runId);
+    validateRequiredTimestamp(cancelledAt, "cancelledAt");
+    return this.enqueue(() => this.withFileLock(async () => {
+      const target = this.filePath(runId);
+      const current = await this.readRecord(target);
+      if (!current || current.status === "succeeded" || current.status === "failed" || current.status === "cancelled") return false;
+      const event: ExecutionEvent = { type: "run.cancelled", runId, timestamp: cancelledAt, data: { eventId: "cancel-" + cancelledAt, reason: reason.slice(0, 4096) } };
+      const next: ExecutionRecord = {
+        ...current,
+        status: "cancelled",
+        completedAt: cancelledAt,
+        updatedAt: cancelledAt,
+        error: reason.slice(0, 4096),
+        lease: current.lease ? { ...current.lease, expiresAt: cancelledAt } : undefined,
+        events: [...current.events, event],
+      };
+      validateExecutionRecord(next);
+      await this.writeRecord(target, cloneRecord(next), true);
+      return true;
     }));
   }
 
