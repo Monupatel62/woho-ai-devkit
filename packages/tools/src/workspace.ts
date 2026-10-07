@@ -200,7 +200,6 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         }
         const target = await safeExisting(root, relative);
         const handle = await fs.open(target, process.platform === "win32" ? "r+" : fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
-        let current: string;
         try {
           const stat = await handle.stat();
           if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
@@ -216,9 +215,7 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
             chunks.push(decoder.write(buffer.subarray(0, bytesRead)));
           }
           chunks.push(decoder.end());
-          current = chunks.join("");
-        }
-        try {
+          const current = chunks.join("");
           const first = current.indexOf(oldText);
           if (first < 0) throw new Error("oldText was not found");
           if (!replaceAll && current.indexOf(oldText, first + oldText.length) >= 0) {
