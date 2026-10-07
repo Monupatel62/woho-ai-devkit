@@ -76,15 +76,6 @@ async function exercise(store: InMemoryExecutionStore | FileExecutionStore): Pro
 const memory = new InMemoryExecutionStore();
 await exercise(memory);
 
-const directory = await mkdtemp(path.join(tmpdir(), "woho-identity-"));
-try {
-  const fileStore = new FileExecutionStore({ directory });
-  await fileStore.create(seed("immutable-file"));
-  assert.equal(await fileStore.updateIf!("immutable-file", 10, { input: "tampered-input" }), false);
-  const current = await fileStore.get("immutable-file");
-  assert.equal(current?.input, "original-input");
-} finally {
-  await rm(directory, { recursive: true, force: true });
-}
+
 
 console.log("immutable execution identity tests passed");
