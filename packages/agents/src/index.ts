@@ -77,6 +77,8 @@ export interface AgentToolCompletion {
 export interface AgentRunOptions {
   signal?: AbortSignal;
   runId?: string;
+  projectId?: string;
+  sessionId?: string;
   onEvent?: (event: ExecutionEvent) => void | Promise<void>;
   approval?: AgentApprovalHandler;
   /** Continue from a durable checkpoint without replaying the original user message. */
