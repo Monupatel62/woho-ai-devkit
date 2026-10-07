@@ -8,6 +8,8 @@ export interface ExecutionApprovalRecord {
   readonly approvalId: string;
   /** Model/tool call identity that triggered the approval. */
   readonly callId: string;
+  /** SHA-256 fingerprint of the exact approved tool input. */
+  readonly inputFingerprint?: string;
   readonly status: "pending" | "approved" | "denied";
   readonly tool: string;
   readonly capability: string;
@@ -238,6 +240,7 @@ function validateExecutionRecord(record: ExecutionRecord): void {
     if (!isRecord(record.approval)) throw new Error("Invalid execution approval");
     validateApprovalId(record.approval.approvalId);
     validateCallId(record.approval.callId);
+    if (record.approval.inputFingerprint !== undefined && (typeof record.approval.inputFingerprint !== "string" || !/^[a-f0-9]{64}$/.test(record.approval.inputFingerprint))) throw new Error("Invalid execution approval inputFingerprint");
     if (!["pending", "approved", "denied"].includes(record.approval.status)) throw new Error("Invalid execution approval status");
     for (const key of ["tool", "capability", "action"]) if (typeof record.approval[key] !== "string" || !record.approval[key].trim()) throw new Error("Invalid execution approval " + key);
     validateRequiredTimestamp(record.approval.requestedAt, "Execution approval requestedAt");
@@ -402,7 +405,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     const current=this.records.get(runId); if(!current) throw new Error("Execution not found: "+runId); assertCurrentFencingToken(current,fencingToken);
     const existing=current.toolReceipts?.[callId]; if(existing){if(existing.fingerprint!==fingerprint) throw new Error("Tool execution fingerprint conflict: "+callId); return existing;}
     const receipt={callId,fingerprint,status:"in_flight" as const,updatedAt:Date.now()}; const next={...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:receipt},updatedAt:Math.max(current.updatedAt,receipt.updatedAt)};
-    validateExecutionRecord(next); this.records.set(runId,cloneRecord(next)); return receipt;
+    validateExecutionRecord(next); this.records.set(runId,cloneRecord(next)); return undefined;
   }
   completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): boolean {
     validateRunId(runId); validateCallId(callId); const current=this.records.get(runId); if(!current) return false; assertCurrentFencingToken(current,fencingToken);
@@ -644,7 +647,7 @@ export class FileExecutionStore implements ExecutionStore {
 
   async claimToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string): Promise<ExecutionToolReceipt | undefined> {
     validateRunId(runId); validateCallId(callId); if(!fingerprint.trim())throw new Error("Tool execution fingerprint is required");
-    return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);const existing=current.toolReceipts?.[callId];if(existing){if(existing.fingerprint!==fingerprint)throw new Error("Tool execution fingerprint conflict: "+callId);return existing;}const receipt={callId,fingerprint,status:"in_flight" as const,updatedAt:Date.now()};await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:receipt},updatedAt:Math.max(current.updatedAt,receipt.updatedAt)}),true);return receipt;}));
+    return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)throw new Error("Execution not found: "+runId);assertCurrentFencingToken(current,fencingToken);const existing=current.toolReceipts?.[callId];if(existing){if(existing.fingerprint!==fingerprint)throw new Error("Tool execution fingerprint conflict: "+callId);return existing;}const receipt={callId,fingerprint,status:"in_flight" as const,updatedAt:Date.now()};await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:receipt},updatedAt:Math.max(current.updatedAt,receipt.updatedAt)}),true);return undefined;}));
   }
   async completeToolExecutionFenced(runId: string, fencingToken: number, callId: string, fingerprint: string, patch: { status: "completed" | "failed"; result?: string; error?: string; updatedAt?: number }): Promise<boolean> {
     validateRunId(runId); validateCallId(callId); return this.enqueue(()=>this.withFileLock(async()=>{const target=this.filePath(runId);const current=await this.readRecord(target);if(!current)return false;assertCurrentFencingToken(current,fencingToken);const receipt=current.toolReceipts?.[callId];if(!receipt||receipt.fingerprint!==fingerprint||receipt.status!=="in_flight")return false;const updatedAt=patch.updatedAt??Date.now();await this.writeRecord(target,cloneRecord({...current,toolReceipts:{...(current.toolReceipts??{}),[callId]:{...receipt,...patch,updatedAt}},updatedAt:Math.max(current.updatedAt,updatedAt)}),true);return true;}));

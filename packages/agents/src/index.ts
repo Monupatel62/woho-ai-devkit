@@ -52,6 +52,9 @@ export interface AgentToolLifecycleRequest {
   readonly callId: string;
   readonly tool: string;
   readonly input: unknown;
+  /** Permission binding used to authorize the exact side effect. */
+  readonly capability?: string;
+  readonly action?: PermissionAction;
 }
 
 export interface AgentToolReplay {
@@ -394,6 +397,7 @@ export class Agent {
         }
 
         let parsed: unknown;
+        let permission: PermissionRequest | undefined;
         try {
           parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
@@ -401,7 +405,7 @@ export class Agent {
             if (!this.permissions) {
               throw new AIError("Tool capability requires a permission policy: " + tool.name, "PERMISSION_POLICY_REQUIRED");
             }
-            const permission = tool.authorize
+            permission = tool.authorize
               ? await tool.authorize(parsed)
               : { capability: tool.capability as string, action: tool.action ?? "execute" };
             if (!permission.capability || !permission.action) {
@@ -421,7 +425,12 @@ export class Agent {
           if (runOptions.onCheckpoint) {
             await runOptions.onCheckpoint({ step, messages: [...messages], inFlightToolCallId: call.id, updatedAt: Date.now() });
           }
-          const replay = await runOptions.onBeforeToolExecution?.({ callId: call.id, tool: tool.name, input: parsed });
+          const replay = await runOptions.onBeforeToolExecution?.({
+            callId: call.id,
+            tool: tool.name,
+            input: parsed,
+            ...(permission ? { capability: permission.capability, action: permission.action } : {}),
+          });
           if (replay?.replay) {
             const replayResult = replay.result;
             toolResults[call.id] = replayResult;
