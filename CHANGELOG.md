@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.37
+
+- Hardened command execution allowlists so basename-only entries cannot be bypassed with attacker-controlled paths.
+- Hardened HTTP host validation against DNS rebinding by pinning connections to validated resolved addresses while preserving TLS/SNI hostname semantics.
+- Revalidated browser navigation targets after page operations so redirects or clicked links cannot escape the configured host policy.
+- Corrected MCP stdio environment precedence so explicit child-process environment overrides take effect over inherited variables.
+- Serialized workspace mutations per tool instance to prevent concurrent read-modify-write races.
+- Hardened phone-agent approval against time-of-check/time-of-use mutation by executing the immutable action snapshot that was actually approved.
+- Added regression coverage for command-path allowlisting, DNS rebinding, browser navigation, MCP environment precedence, workspace mutation serialization, and phone-agent approval integrity.
+- Bumped all six public packages for the coordinated release.
+
 ## 0.8.36
 
 - Corrected the coordinated release snapshot to include the current mainline platform work after the v0.8.35 release was created from an older commit.
