@@ -657,6 +657,60 @@ const run = async () => {
   assert.equal(durableApprovalStore.get(durableRun.runId)?.status, "succeeded");
   assert.equal(await durableApprovalRuntime.resolveApproval(pending.runId, pending.approvalId, true), false);
 
+  const exactApprovalStore = new InMemoryExecutionStore();
+  const exactApprovalRegistry = new AgentRegistry();
+  exactApprovalRegistry.register({ id: "exact-approval", name: "Exact Approval", role: "general" }, ({ ai }) => createAgent(ai, {
+    name: "exact-approval",
+    permissions: { check: () => ({ allowed: false, reason: "owner approval required", requiresApproval: true }) },
+    tools: [{ name: "protected-exact", description: "Protected exact action", capability: "filesystem", action: "write", execute: async () => "side-effect-ran" }],
+  }));
+  const exactApprovalRuntime = new AgentRuntime({ store: exactApprovalStore }, exactApprovalRegistry);
+  const exactApprovalResult = await exactApprovalRuntime.run(
+    createAI({ provider: createMockProvider({ response: "exact-approved", toolCall: { name: "protected-exact", arguments: JSON.stringify({ path: "a.txt" }) } }) }),
+    { agent: "exact-approval", input: "approve exact action" },
+  );
+  const exactApprovalRecord = exactApprovalStore.get(exactApprovalResult.runId);
+  assert.equal(exactApprovalRecord?.approval?.status, "approved");
+  assert.match(exactApprovalRecord?.approval?.inputFingerprint ?? "", /^[a-f0-9]{64}$/);
+  assert.equal(exactApprovalResult.toolResults["mock-call-1"], "side-effect-ran");
+
+  for (const [field, value] of [
+    ["callId", "replayed-call"],
+    ["tool", "different-tool"],
+    ["capability", "different-capability"],
+    ["action", "delete"],
+    ["inputFingerprint", "0".repeat(64)],
+  ] as const) {
+    class TamperingApprovalStore extends InMemoryExecutionStore {
+      private tampered = false;
+      override updateFenced(runId: string, fencingToken: number, patch: Parameters<InMemoryExecutionStore["updateFenced"]>[2]): void {
+        super.updateFenced(runId, fencingToken, patch);
+        if (!this.tampered && patch.approval?.status === "approved") {
+          this.tampered = true;
+          const current = this.get(runId)!;
+          super.updateFenced(runId, fencingToken, {
+            approval: { ...current.approval!, [field]: value },
+          });
+        }
+      }
+    }
+    const tamperStore = new TamperingApprovalStore();
+    const tamperRegistry = new AgentRegistry();
+    tamperRegistry.register({ id: "tamper-approval", name: "Tamper Approval", role: "general" }, ({ ai }) => createAgent(ai, {
+      name: "tamper-approval",
+      permissions: { check: () => ({ allowed: false, reason: "owner approval required", requiresApproval: true }) },
+      tools: [{ name: "protected-tamper", description: "Protected tamper action", capability: "filesystem", action: "write", execute: async () => "must-not-run" }],
+    }));
+    const tamperRuntime = new AgentRuntime({ store: tamperStore }, tamperRegistry);
+    await assert.rejects(
+      () => tamperRuntime.run(
+        createAI({ provider: createMockProvider({ response: "tamper", toolCall: { name: "protected-tamper", arguments: JSON.stringify({ path: "a.txt" }) } }) }),
+        { agent: "tamper-approval", input: "tamper " + field },
+      ),
+      (error) => error instanceof AIError && error.code === "APPROVAL_BINDING_INVALID",
+    );
+  }
+
   const toolErrorEvents: import("@woho/core").ExecutionEvent[] = [];
   const secretErrorAgent = createAgent(
     createAI({ provider: createMockProvider({ response: "tool-failed", toolCall: { name: "secret-tool", arguments: "{}" } }) }),
