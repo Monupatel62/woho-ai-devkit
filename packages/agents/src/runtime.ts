@@ -185,14 +185,24 @@ export class AgentRuntime {
           await this.updateExecution(runId, { attempts: attempt, status: "running", updatedAt: Date.now() }, lease);
           const agent = this.registry.create(task.agent, ai);
           const approvalHandler = task.approval ?? this.approval;
+          let approvedBinding: {
+            approvalId: string;
+            callId: string;
+            tool: string;
+            capability: string;
+            action: string;
+            inputFingerprint: string;
+          } | undefined;
           const auditedApproval = this.persistApprovalAudit && this.store
             ? async (request: Parameters<NonNullable<AgentApprovalHandler>>[0]): Promise<boolean> => {
                 const approvalId = randomUUID();
                 const requestedAt = Date.now();
                 const reason = request.reason ? this.sanitizeError(request.reason) : undefined;
+                const inputFingerprint = createHash("sha256").update(JSON.stringify(request.input)).digest("hex");
                 const approval = {
                   approvalId,
                   callId: request.callId,
+                  inputFingerprint,
                   status: "pending" as const,
                   tool: request.tool,
                   capability: request.capability,
@@ -212,6 +222,14 @@ export class AgentRuntime {
                     status: "running",
                     updatedAt: decidedAt,
                   }, lease);
+                  approvedBinding = approved ? {
+                    approvalId,
+                    callId: request.callId,
+                    tool: request.tool,
+                    capability: request.capability,
+                    action: request.action,
+                    inputFingerprint,
+                  } : undefined;
                   return approved;
                 } catch (approvalError) {
                   const decidedAt = Date.now();
@@ -232,7 +250,34 @@ export class AgentRuntime {
             },
             approval: auditedApproval,
             checkpoint: latestCheckpoint,
-            onBeforeToolExecution: this.store?.claimToolExecutionFenced && lease ? async ({ callId, tool, input }) => {
+            onBeforeToolExecution: this.store?.claimToolExecutionFenced && lease ? async ({ callId, tool, input, capability, action }) => {
+              if (approvedBinding) {
+                const inputFingerprint = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+                if (
+                  approvedBinding.callId !== callId ||
+                  approvedBinding.tool !== tool ||
+                  approvedBinding.capability !== capability ||
+                  approvedBinding.action !== action ||
+                  approvedBinding.inputFingerprint !== inputFingerprint
+                ) {
+                  throw new AIError("Approved side effect does not match the exact owner approval binding", "APPROVAL_BINDING_MISMATCH");
+                }
+                const current = await this.store!.get(runId);
+                const approval = current?.approval;
+                if (
+                  !approval ||
+                  approval.status !== "approved" ||
+                  approval.approvalId !== approvedBinding.approvalId ||
+                  approval.callId !== callId ||
+                  approval.tool !== tool ||
+                  approval.capability !== capability ||
+                  approval.action !== action ||
+                  approval.inputFingerprint !== inputFingerprint
+                ) {
+                  throw new AIError("Durable owner approval is stale or does not match the requested side effect", "APPROVAL_BINDING_INVALID");
+                }
+                approvedBinding = undefined;
+              }
               const fingerprint = createHash("sha256").update(tool).update("\0").update(JSON.stringify(input)).digest("hex");
               const receipt = await this.store!.claimToolExecutionFenced!(runId, lease!.fencingToken, callId, fingerprint);
               if (!receipt) return;
