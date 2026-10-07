@@ -393,8 +393,9 @@ export class Agent {
           continue;
         }
 
+        let parsed: unknown;
         try {
-          const parsed = parseArguments(call.arguments);
+          parsed = parseArguments(call.arguments);
           validateToolParameters(tool, parsed);
           if (tool.capability || tool.authorize) {
             if (!this.permissions) {
