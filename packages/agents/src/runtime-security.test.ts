@@ -46,3 +46,23 @@ test("runtime bounds and redacts persisted failure messages", async () => {
 test("runtime rejects invalid error-message limit", () => {
   assert.throws(() => new AgentRuntime({ maxErrorMessageBytes: 0 }));
 });
+
+test("runtime enforces wall-clock execution timeout", async () => {
+  const registry = new AgentRegistry();
+  registry.register({ id: "slow", name: "Slow", role: "general" }, () => ({
+    run: async (_input: string, options: { signal?: AbortSignal }) => {
+      await new Promise<void>((resolve) => {
+        if (options.signal?.aborted) return resolve();
+        options.signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      throw options.signal?.reason ?? new Error("timed out");
+    },
+  } as unknown as Agent));
+  const store = new InMemoryExecutionStore();
+  const runtime = new AgentRuntime({ store, executionTimeoutMs: 20 }, registry);
+  await assert.rejects(
+    () => runtime.run({} as never, { agent: "slow", input: "test", runId: "run-timeout" }),
+    /timed out|Execution timed out/,
+  );
+  assert.equal(store.get("run-timeout")?.status, "failed");
+});
