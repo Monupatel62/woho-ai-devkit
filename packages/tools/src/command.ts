@@ -37,7 +37,14 @@ async function commandMatchesPathAllowlist(command: string, allowedCommands: str
         return false;
       }
     }
-    if (normalizedCommand.includes("/") || commandBase !== normalizedEntry) continue;
+    if (commandBase !== normalizedEntry) continue;
+    if (normalizedCommand.includes("/")) {
+      try {
+        const stat = await fs.lstat(command);
+        if (stat.isFile() && !stat.isSymbolicLink()) return true;
+      } catch {}
+      continue;
+    }
     const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
     for (const directory of (process.env.PATH ?? "").split(pathModule.delimiter).filter(Boolean)) {
       for (const extension of extensions) {
