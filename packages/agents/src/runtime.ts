@@ -314,6 +314,8 @@ export class AgentRuntime {
           const result = await agent.run(task.input, {
             signal: executionController.signal,
             runId,
+            projectId: task.projectId,
+            sessionId: task.sessionId,
             onEvent: async (event) => {
               await this.recordAgentEvent(event, lease);
             },
