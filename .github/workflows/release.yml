@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.sha }}
 
       - uses: pnpm/action-setup@v6
         with:
@@ -42,6 +44,21 @@ jobs:
       - run: pnpm release:check
       - run: pnpm pack:check
       - run: pnpm consumer:check
+
+      - name: Verify release tag matches workspace version
+        if: ${{ github.event_name == 'release' }}
+        run: |
+          set -euo pipefail
+          expected="v$(node -p \"require('./package.json').version\")"
+          actual="${GITHUB_REF_NAME}"
+          if [ "$actual" != "$expected" ]; then
+            echo "Release tag $actual does not match workspace version $expected"
+            exit 1
+          fi
+          if [ "${{ github.event.release.tag_name }}" != "$actual" ]; then
+            echo "Published release tag does not match checked-out ref"
+            exit 1
+          fi
 
       - name: Verify package metadata
         run: |
