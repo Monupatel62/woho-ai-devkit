@@ -102,6 +102,18 @@ const run = async () => {
 
   const command = commandTool({ allowedCommands: ["node"], allowedDirectories: [process.cwd()], timeoutMs: 2_000, maxOutputBytes: 10_000 });
   await assert.rejects(() => command.execute({ command: join(process.cwd(), "node"), args: ["-e", "process.exit(0)"], cwd: process.cwd() }), /not allowed/);
+  const commandSymlinkRoot = await mkdtemp(join(tmpdir(), "woho-command-"));
+  const commandSymlink = join(commandSymlinkRoot, "node");
+  try {
+    await (await import("node:fs/promises")).symlink(process.execPath, commandSymlink);
+    const symlinkAllowed = commandTool({ allowedCommands: [commandSymlink], allowedDirectories: [process.cwd()] });
+    await assert.rejects(
+      () => symlinkAllowed.execute({ command: commandSymlink, args: ["-e", "process.exit(0)"], cwd: process.cwd() }),
+      /not allowed/,
+    );
+  } finally {
+    await rm(commandSymlinkRoot, { recursive: true, force: true });
+  }
   assert.equal(command.capability, "command");
   assert.equal(command.action, "execute");
   assert.deepEqual(command.authorize?.({ command: process.execPath, cwd: process.cwd() }), {

@@ -28,23 +28,33 @@ async function commandMatchesPathAllowlist(command: string, allowedCommands: str
   for (const entry of allowedCommands) {
     const normalizedEntry = normalizedCommandPath(entry);
     if (normalizedEntry.includes("/")) {
-      if (normalizedCommand === normalizedEntry) return true;
+      if (normalizedCommand !== normalizedEntry) continue;
+      try {
+        const stat = await fs.lstat(command);
+        if (!stat.isFile() || stat.isSymbolicLink()) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    if (commandBase !== normalizedEntry) continue;
+    if (normalizedCommand.includes("/")) {
+      try {
+        const stat = await fs.lstat(command);
+        if (stat.isFile() && !stat.isSymbolicLink()) return true;
+      } catch {}
       continue;
     }
-    if (!normalizedCommand.includes("/") && commandBase === normalizedEntry) return true;
-    if (commandBase !== normalizedEntry) continue;
-    try {
-      const commandReal = normalizedCommandPath(await fs.realpath(command));
-      const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
-      for (const directory of (process.env.PATH ?? "").split(pathModule.delimiter).filter(Boolean)) {
-        for (const extension of extensions) {
-          const candidate = pathModule.join(directory, commandBase + extension.toLowerCase());
-          try {
-            if (commandReal === normalizedCommandPath(await fs.realpath(candidate))) return true;
-          } catch {}
-        }
+    const extensions = process.platform === "win32" ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";") : [""];
+    for (const directory of (process.env.PATH ?? "").split(pathModule.delimiter).filter(Boolean)) {
+      for (const extension of extensions) {
+        const candidate = pathModule.join(directory, commandBase + extension.toLowerCase());
+        try {
+          const stat = await fs.stat(candidate);
+          if (stat.isFile()) return true;
+        } catch {}
       }
-    } catch {}
+    }
   }
   return false;
 }
