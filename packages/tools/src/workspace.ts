@@ -198,11 +198,16 @@ export function createWorkspaceTool(inputPolicy: WorkspaceToolPolicy): AgentTool
         if (Buffer.byteLength(oldText, "utf8") > policy.maxFileBytes || Buffer.byteLength(newText, "utf8") > policy.maxFileBytes) {
           throw new Error("Edit text exceeds maxFileBytes");
         }
-        const target = await safeExisting(root, relative);
+        await rejectSymlinkAncestors(root, relative);
+        const target = path.resolve(root, relative);
+        const expected = await fs.lstat(target);
+        if (!expected.isFile() || expected.isSymbolicLink()) throw new Error("File is missing, not regular, or too large");
         const handle = await fs.open(target, process.platform === "win32" ? "r+" : fs.constants.O_RDWR | fs.constants.O_NOFOLLOW);
         try {
           const stat = await handle.stat();
-          if (!stat.isFile() || stat.size > policy.maxFileBytes) throw new Error("File is missing, not regular, or too large");
+          if (!stat.isFile() || stat.size > policy.maxFileBytes || stat.dev !== expected.dev || stat.ino !== expected.ino) {
+            throw new Error("File is missing, not regular, or too large");
+          }
           const decoder = new StringDecoder("utf8");
           const chunks: string[] = [];
           const buffer = Buffer.alloc(Math.min(64 * 1024, policy.maxFileBytes + 1));
