@@ -38,6 +38,17 @@ async function testMemoryWorker(): Promise<void> {
 
   const empty = await workerA.runOnce(handler);
   assert.equal(empty, undefined);
+
+  await store.create(makeRecord("same-worker"));
+  let concurrentExecutions = 0;
+  const slowHandler = async () => {
+    concurrentExecutions += 1;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  };
+  const sameWorker = new AgentExecutionWorker(store, { workerId: "same-worker", leaseTtlMs: 1000, heartbeatIntervalMs: 100 });
+  const sameWorkerResults = await Promise.all([sameWorker.runOnce(slowHandler), sameWorker.runOnce(slowHandler)]);
+  assert.equal(sameWorkerResults.filter(Boolean).length, 1);
+  assert.equal(concurrentExecutions, 1);
 }
 
 async function testRetryAndBackoff(): Promise<void> {
