@@ -37,7 +37,7 @@
     "test": "pnpm typecheck && pnpm build && node dist/index.test.js && node dist/execution-store.test.js && node dist/execution-maintenance.test.js && node dist/queue-worker.test.js && node dist/chaos.test.js && node dist/cancelled-approval-race.test.js && node dist/runtime-slot-leak.test.js && node dist/terminal-mutation-invariants.test.js && node dist/terminal-fenced-lifecycle.test.js && node dist/resume-claim-recovery.test.js && node dist/lease-reacquire.test.js && node dist/immutable-execution-identity.test.js && node dist/delegation.test.js && node dist/platform.test.js && node dist/coding-loop.test.js && node dist/browser.test.js && node dist/dynamic-permissions.test.js && node dist/runtime-security.test.js && node dist/project-context.test.js"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^26.6.4"
   },
   "engines": {
     "node": ">=20"

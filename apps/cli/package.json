@@ -7,7 +7,7 @@
   "bin": { "woho": "./dist/index.js" },
   "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "test": "node --test dist/index.test.js" },
   "devDependencies": {
-    "@types/node": "^22.0.0"
+    "@types/node": "^26.6.4"
   },
   "dependencies": {
     "@woho/agents": "workspace:*",
