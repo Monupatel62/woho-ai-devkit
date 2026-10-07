@@ -702,13 +702,18 @@ const run = async () => {
       tools: [{ name: "protected-tamper", description: "Protected tamper action", capability: "filesystem", action: "write", execute: async () => "must-not-run" }],
     }));
     const tamperRuntime = new AgentRuntime({ store: tamperStore, approval: async () => true }, tamperRegistry);
-    await assert.rejects(
-      () => tamperRuntime.run(
-        createAI({ provider: createMockProvider({ response: "tamper", toolCall: { name: "protected-tamper", arguments: JSON.stringify({ path: "a.txt" }) } }) }),
-        { agent: "tamper-approval", input: "tamper " + field },
-      ),
-      (error) => error instanceof AIError && error.code === "APPROVAL_BINDING_INVALID",
+    let tamperExecutions = 0;
+    tamperRegistry.register({ id: "tamper-counted", name: "Tamper Counted", role: "general" }, ({ ai }) => createAgent(ai, {
+      name: "tamper-counted",
+      permissions: { check: () => ({ allowed: false, reason: "owner approval required", requiresApproval: true }) },
+      tools: [{ name: "protected-tamper-counted", description: "Protected tamper action", capability: "filesystem", action: "write", execute: async () => { tamperExecutions += 1; return "must-not-run"; } }],
+    }));
+    const tamperResult = await tamperRuntime.run(
+      createAI({ provider: createMockProvider({ response: "tamper", toolCall: { name: "protected-tamper-counted", arguments: JSON.stringify({ path: "a.txt" }) } }) }),
+      { agent: "tamper-counted", input: "tamper " + field },
     );
+    assert.equal(tamperExecutions, 0);
+    assert.equal(tamperResult.toolResults["mock-call-1"]?.error, "APPROVAL_BINDING_INVALID");
   }
 
   const toolErrorEvents: import("@woho/core").ExecutionEvent[] = [];
