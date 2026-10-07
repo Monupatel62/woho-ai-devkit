@@ -443,7 +443,7 @@ export class InMemoryExecutionStore implements ExecutionStore {
     validateRunId(runId);
     const current = this.records.get(runId);
     if (!current || current.updatedAt !== expectedUpdatedAt) return false;
-    try { validateExecutionTransition(current, patch.status); } catch { return false; }
+    try { validateImmutableExecutionPatch(current, patch); validateExecutionTransition(current, patch.status); } catch { return false; }
     const next = { ...current, ...patch, updatedAt: Math.max(current.updatedAt, patch.updatedAt ?? current.updatedAt), events: patch.events ? [...patch.events] : current.events };
     try { validateExecutionRecord(next); } catch { return false; }
     this.records.set(runId, cloneRecord(next));
