@@ -492,9 +492,9 @@ async function assertDeleteDirectorySync(): Promise<void> {
       attempts: 1,
       events: [],
     });
-    syncCalls.length = 0;
+    const beforeDelete = syncCalls.length;
     assert.equal(await store.remove("delete-sync"), true);
-    assert.equal(syncCalls.length, 1);
+    assert.equal(syncCalls.length, beforeDelete + 1);
     await store.create({
       runId: "remove-if-sync",
       agent: "general",
@@ -506,9 +506,9 @@ async function assertDeleteDirectorySync(): Promise<void> {
       attempts: 1,
       events: [],
     });
-    syncCalls.length = 0;
+    const beforeRemoveIf = syncCalls.length;
     assert.equal(await store.removeIf("remove-if-sync", 20), true);
-    assert.equal(syncCalls.length, 1);
+    assert.equal(syncCalls.length, beforeRemoveIf + 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
